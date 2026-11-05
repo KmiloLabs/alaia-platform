@@ -1,42 +1,27 @@
-# Flujo auxiliar de recepción empresarial (n8n)
+# Recepcionista empresarial en n8n
 
-**Estado al 5 de noviembre de 2026:** borrador creado y validado en n8n; permanece inactivo. No atiende conversaciones reales.
+**Estado real al 5 de noviembre de 2026:** el workflow de Alaia aún no está creado en la instancia n8n del usuario. La conexión disponible para esta sesión apunta a otra instancia. El borrador anterior se creó allí por error y no debe considerarse parte del proyecto Alaia. No se modificaron workflows de Novara.
 
-## Qué se creó
+## Base disponible para adaptar
 
-- Workflow `ALAIA - Recepcionista empresarial (borrador)`; ID `p2AClhoHBEgTig4C`.
-- Ocho nodos: entrada webhook, validación del contrato interno, enrutamiento y cinco salidas estructuradas.
-- Intenciones previstas: solicitar cita, consultar producto, pedir información pública, pasar a una persona o pedir aclaración.
-- Validación estricta de n8n: cero errores, siete conexiones válidas. Persisten avisos genéricos de tratamiento de errores que deben resolverse antes de activar.
-- No usa credenciales ni modelos de IA; no se conecta a Novara, clientes, WhatsApp, Firebase ni API de Alaia. No realiza reservas, ventas ni envía respuestas.
+Archivo local disponible: `recepcionista-dental.json`.
 
-## Cómo encaja en Alaia
+- Nombre: `Recepcionista IA · Clínica dental (WhatsApp)`.
+- 39 nodos; está inactivo.
+- Incluye recepción por WhatsApp, manejo de texto/audio, agente IA, memoria, consulta/creación de citas en Google Calendar, registro en Google Sheets y recordatorios.
+- En el archivo no aparecen credenciales configuradas. Las conexiones/proveedores deben configurarse dentro de la instancia del usuario.
+- Está hecho para una clínica dental y una sola agenda; no es multi-tenant y no debe activarse tal cual para Alaia.
 
-La API propia debe recibir y autenticar el evento del canal, verificar la firma del proveedor, deduplicar el mensaje y resolver el negocio por una asociación confiable. Solo después puede enviar un evento interno mínimo a n8n. El `tenantId` del evento debe venir de esa resolución del servidor; nunca se acepta como autoridad desde el texto, el navegador o una herramienta de IA.
+## Cómo convertir la base en la primera versión de Alaia
 
-n8n propone una acción estructurada. La API de Alaia debe volver a comprobar membresía/contexto, disponibilidad, inventario y permisos antes de ejecutar cualquier cambio. La agenda central de Alaia seguirá siendo la fuente de verdad. La conexión interna necesita autenticación por secreto y una política de errores/respuesta antes de cualquier activación.
+1. Abrir el prototipo en la instancia correcta y duplicarlo/importarlo con nombre `ALAIA - Recepcionista Araan (prueba)`.
+2. Mantenerlo inactivo durante adaptación; quitar recordatorios y ramas que no formen parte de la primera prueba.
+3. Sustituir el contexto dental por Araan Barbería y configurar servicios, duración, horarios, zona horaria y profesional con datos ficticios inicialmente.
+4. Cambiar la agenda de Google Calendar por el API de Alaia cuando esté disponible. Hasta entonces, una prueba manual debe quedar marcada como demostración y no como agenda real.
+5. Revisar todas las acciones de WhatsApp/IA y crear las credenciales solo en la instancia correcta; nunca escribir secretos en el JSON ni en Git.
+6. Probar conversación, disponibilidad, confirmación, cancelación, repetición de mensaje y derivación humana con un teléfono de prueba; activar únicamente después de revisar cada ruta.
+7. Convertir luego la prueba de Araan en plantilla multiempresa: tenant resuelto desde backend, configuración separada por negocio y acciones críticas delegadas al API central.
 
-## Contrato interno previsto
+## Bloqueo actual
 
-Campos mínimos: `eventId`, `tenantId` ya resuelto por backend, `channel` (`whatsapp` o `webchat`), `customerRef` seudónimo, `messageId`, `text` limitado e `intent` clasificada. `customerStatus` puede ser `new`, `returning` o `unknown`; no es una fuente independiente de verdad y debe provenir de consulta autorizada al backend.
-
-El flujo limita longitudes y rechaza canales desconocidos. Este contrato es provisional; no es una API pública ni debe exponerse directamente a clientes.
-
-## Próximo orden de trabajo
-
-1. Completar la capa backend de negocio: servicios, profesionales, horarios y disponibilidad con autorización por tenant.
-2. Implementar creación de cita con validación de disponibilidad, prevención de doble reserva e idempotencia.
-3. Definir herramientas internas estrechas para n8n: consulta de información pública, disponibilidad, propuesta/confirmación de cita y derivación humana.
-4. Añadir historial mínimo de cliente y clasificación nuevo/recurrente mediante el backend, con reglas de acceso y retención.
-5. Conectar y ensayar el flujo con datos ficticios en `demo-alaia`; luego integrar un modelo de IA mediante adaptador reemplazable.
-6. Añadir WhatsApp después de configurar y verificar la integración, consentimiento, seguridad y costos. Activar solo tras revisión de errores, pruebas de aislamiento e idempotencia.
-
-El inventario y las ventas entran después de que exista catálogo e inventario en el backend; no se debe declarar stock ni registrar ventas desde este flujo por sí solo.
-
-## Límites operativos
-
-- No activar este workflow hasta que el webhook esté autenticado y el API receptor esté disponible.
-- No guardar cuerpos completos de conversación en registros de ejecución; el workflow tiene guardado de ejecuciones deshabilitado.
-- No poner credenciales de clientes en parámetros visibles ni permitir que clientes editen el workflow.
-- Mantener la lógica crítica y los permisos en el backend. Revisar las condiciones de licencia de n8n antes de ofrecer funciones que expongan o revendan su editor/servicio; la modalidad exacta requiere confirmar con [los términos oficiales de n8n](https://n8n.io/legal/).
-- Los workflows activos de Novara no se modificaron.
+La dirección compartida abrió una pantalla de inicio de sesión en el navegador automatizado. No se ingresaron ni solicitaron credenciales. Para crear/duplicar el workflow visible dentro de esa instancia, el usuario debe iniciar sesión manualmente y avisar cuando aparezca el listado de workflows. Después se inspeccionará lo que existe y se hará la adaptación allí, sin modificar Novara.

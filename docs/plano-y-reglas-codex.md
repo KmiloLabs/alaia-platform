@@ -1,7 +1,7 @@
 # Plataforma de servicios — plano técnico por capas e instrucciones para Codex
 
 **Versión:** 0.1 · **Fecha:** 5 de noviembre de 2026  
-**Estado:** Alaia; prototipo visual y API inicial de identidad/tenant implementados. Se creó un borrador auxiliar de recepción en n8n, inactivo y sin integraciones, validado con cero errores estructurales. El agente funcional y el ensayo del piloto siguen pendientes; falta instalar/ejecutar el entorno local y completar la interfaz de acceso.
+**Estado:** Alaia; prototipo visual y API inicial de identidad/tenant implementados. El workflow de recepción aún no se creó en la instancia n8n del usuario; se identificó una discrepancia entre la instancia de la herramienta conectada y la URL de n8n compartida. El prototipo dental de 39 nodos está disponible localmente para adaptar, pero no debe activarse tal cual. El agente funcional y el ensayo del piloto siguen pendientes.
 
 
 ## 1. Estado comprobado y límites de esta entrega
@@ -10,7 +10,7 @@ Auditoría inicial (5 de noviembre de 2026): el directorio de la conversación s
 
 La conversación de referencia confirma las decisiones funcionales. La dirección inicial es web/PWA, Cloudflare para entrada y dominios, Firebase Auth/Firestore, Cloud Run para operaciones críticas; n8n auxiliar sujeto a licencia. Los detalles se validarán por capa; no hay servicios conectados ni secretos en el repositorio.
 
-El workflow `ALAIA - Recepcionista empresarial (borrador)` está en n8n con ID `p2AClhoHBEgTig4C`. Es solo un esqueleto de enrutamiento; su contrato y límites están documentados en `docs/n8n-recepcionista-empresarial.md`.
+La auditoría del prototipo dental y los pasos para adaptarlo están en `docs/n8n-recepcionista-empresarial.md`. La sesión de navegador de la URL del usuario mostró inicio de sesión; no se ingresaron credenciales ni se tocó esa instancia.
 
 ## 2. Decisiones confirmadas
 
