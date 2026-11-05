@@ -4,7 +4,7 @@ Plataforma SaaS multiempresa para negocios de servicios. Su agente atiende las c
 
 ## Estado
 
-Fase inicial: prototipo visual del panel y primera API de identidad/tenant implementada. El flujo de recepción de Alaia aún no se ha creado en la instancia n8n del usuario. El prototipo dental local (39 nodos, inactivo) está disponible para auditar y adaptar. Araan Barbería es el piloto previsto y trabaja con un profesional; el panel aún usa datos de muestra. El ensayo completo será cuando las funciones estén conectadas; los datos reales se cargarán cuando el dueño pueda revisar el sistema.
+Fase inicial: prototipo visual del panel y primera API de identidad/tenant implementada. En el n8n del usuario ya existe una copia de trabajo llamada `ALAIA - Araan Barbería - base de adaptación (borrador)`, duplicada desde `Recepcionista epresarial IA` (39 nodos). La copia sigue sin adaptar y sin publicar; el original quedó intacto. Araan Barbería es el piloto previsto y trabaja con un profesional; el panel aún usa datos de muestra.
 
 ## Abrir el prototipo
 
