@@ -4,7 +4,7 @@ Plataforma SaaS multiempresa para negocios de servicios: barberías, peluquería
 
 ## Estado
 
-Fase inicial: prototipo visual del panel del negocio. Araan Barbería es el piloto previsto y trabaja con un profesional; todos los datos que aparecen son de muestra y viven solo en la sesión del navegador. Todavía no hay login, backend ni persistencia. Los datos reales se cargarán cuando la estructura esté lista y el dueño pueda revisarlos.
+Fase inicial: prototipo visual del panel del negocio. Araan Barbería es el piloto previsto y trabaja con un profesional; todos los datos que aparecen son de muestra y viven solo en la sesión del navegador. Todavía no hay login, backend, agente, agenda real, WhatsApp, caja ni inventario. El ensayo completo del piloto será después de construir e integrar esas funciones; los datos reales se cargarán cuando la estructura esté lista y el dueño pueda revisarlos.
 
 ## Abrir el prototipo
 

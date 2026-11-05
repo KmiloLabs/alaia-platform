@@ -129,7 +129,7 @@ No asumir que los planes gratuitos alcanzan para este volumen: Firestore cobra p
 
 ## Capas de trabajo y criterios para aprobar
 
-El trabajo sigue una ruta incremental: 1) terminar base y diseño; 2) login, membresías y aislamiento tenant; 3) configurar Araan con un solo profesional y datos ficticios; 4) agenda y reserva web; 5) panel e ingresos conectados a operaciones; 6) QA en staging con el dueño; 7) piloto real autorizado; 8) WhatsApp/Google Calendar y pagos; 9) superadmin y expansión; 10) analítica social, IA y voz. Cada paso se prueba antes del siguiente; no se construye todo el sistema para ensayarlo una sola vez al final.
+El panel visual no está listo para un ensayo de producto. La ruta es: 1) login y aislamiento tenant; 2) negocio, profesional, servicios y horarios; 3) agenda y reserva web; 4) administrador real con citas, caja e inventario; 5) agente que atiende, reserva y registra ventas con reglas del backend; 6) ensayo end-to-end en staging; 7) revisión del dueño de Araan con datos ficticios; 8) piloto real autorizado; 9) WhatsApp real, Calendar opcional y administración comercial ampliada; 10) analítica social, IA avanzada y voz.
 
 Para QA: datos ficticios en local, luego proyecto Firebase aislado de staging y cuentas de prueba. Araan revisa flujos en staging antes de compartir datos reales. No se envían mensajes ni cobros reales desde staging; Google Calendar queda opcional y secundario a la agenda de Alaia. Métricas de redes sociales quedan para una etapa posterior y dependen del acceso que permitan las APIs de cada plataforma.
 

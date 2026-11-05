@@ -66,13 +66,14 @@ Es una arquitectura lógica, no una elección de microservicios. Para el inicio 
 | 1. Identidad y tenant — siguiente | Inicio de sesión, negocio/tenant, membresías, roles y selección segura del negocio activo. | Pruebas de autorización confirman que un usuario de Araan no puede leer ni alterar datos de otro tenant, incluso manipulando IDs. |
 | 2. Configuración del piloto | Crear Araan en staging con un profesional, servicios, precios, duración, horarios y zona horaria. | El dueño puede revisar y corregir los datos de muestra; ningún dato real se carga sin su autorización. |
 | 3. Agenda y reservas | Disponibilidad y agenda propia, creación, confirmación, cancelación y reprogramación; página pública de reservas. | No hay doble reserva; horarios y zona horaria son correctos; toda transición queda registrada y limitada al tenant. |
-| 4. Panel del negocio | Citas por fecha, clientes atendidos, clientes nuevos y ventas diarias/semanales/mensuales basadas en movimientos registrados; perfil del profesional. | Los totales coinciden con reservas y pagos de prueba; el dueño ve el equipo de su negocio y cada perfil respeta los permisos. |
-| 5. QA de piloto — antes de datos reales | Probar en local con datos ficticios y en staging separado de producción; revisar móvil, escritorio, permisos, errores y recuperación. | El dueño de Araan puede completar el flujo en staging con clientes ficticios; se corrigen bloqueos antes de cargar información real. |
-| 6. Integraciones de atención | Recordatorios; Google Calendar opcional y secundario; WhatsApp mediante adaptador, con credenciales protegidas. | Reintentos no duplican citas ni mensajes; Calendar no reemplaza la agenda de Alaia; WhatsApp solo se activa con configuración y consentimiento revisados. |
-| 7. Administración SaaS y finanzas | Superadmin, planes, suscripciones, límites, consumo, cobros de Alaia, afiliados, conciliación y liquidaciones. | Acciones privilegiadas auditadas; cobros y reembolsos son idempotentes; liquidaciones cerradas no se editan silenciosamente. |
-| 8. Crecimiento | Plantillas para otros sectores, dominios propios, métricas de redes sociales cuando las APIs oficiales den acceso, IA y voz más adelante. | Cada integración tiene permisos y costos por tenant; no se incorporan funciones que no puedan probarse o sostenerse. |
+| 4. Administrador, caja e inventario | Panel conectado a datos reales del tenant; citas y profesionales; registro de ventas; productos, existencias, entradas y salidas; ingresos por día/semana/mes. | Solo se descuentan existencias al confirmar la venta; historial de movimientos conserva quién hizo el cambio; totales financieros se derivan de operaciones registradas. |
+| 5. Agente de atención y ventas | Agente para web/WhatsApp que consulta servicios, horarios, disponibilidad y productos; propone y crea/actualiza citas usando herramientas del backend; deriva casos a una persona. | El agente nunca inventa disponibilidad, precio ni stock. Pide confirmación antes de reservar o registrar venta; una acción repetida no duplica cita, venta ni descuento de inventario. |
+| 6. Ensayo integrado en staging | Completar un recorrido entero con datos ficticios: configurar negocio, reservar por web y agente, atender, registrar venta y revisar inventario/ingresos. Proyecto y cuentas separados de producción. | El dueño de Araan completa el flujo con datos ficticios; permisos, citas, stock y reportes coinciden; se corrigen errores bloqueantes antes del piloto real. |
+| 7. Piloto real de Araan | Cargar únicamente la información necesaria y aprobada por el dueño; acompañar el uso inicial y registrar incidencias. | Consentimiento y privacidad revisados; respaldo y soporte listos; no activar pagos o mensajes automáticos hasta aprobarlos expresamente. |
+| 8. Integraciones y administración SaaS ampliada | Google Calendar opcional y secundario, WhatsApp real, planes, suscripciones, límites, consumo, cobros de Alaia y afiliados. | Webhooks y reintentos idempotentes; acciones de superadmin auditadas; credenciales protegidas; Calendar no reemplaza la agenda de Alaia. |
+| 9. Crecimiento | Plantillas para otros sectores, dominios propios, métricas sociales si las APIs oficiales conceden acceso, IA avanzada y voz. | Cada integración tiene permisos y costos por tenant; se incorpora después de validar demanda y soporte. |
 
-No esperamos a construir el sistema completo para probarlo: cada capa debe pasar sus criterios antes de avanzar. El piloto de Araan entra después de que identidad, tenant, agenda y reserva estén listos en staging.
+Se revisa cada cambio mientras se construye, pero el **ensayo del MVP completo** ocurre en staging cuando estén integrados administrador, agenda, inventario, agente y reportes. No se prueba el producto con datos reales antes de superar ese recorrido.
 
 ## 6. Modelo de datos inicial
 
@@ -90,6 +91,10 @@ Nombres conceptuales; se ajustan al ORM, base de datos y convenciones existentes
 | `Customer` | `tenantId`, datos mínimos de contacto, consentimiento, preferencias, estado; identificadores externos opcionales. |
 | `Appointment` | `tenantId`, cliente, servicio, profesional/sede, inicio/fin, zona, estado, canal, precio congelado, política/versiones relevantes, claves de idempotencia. |
 | `AppointmentEvent` | `tenantId`, cita, transición, actor, fecha, motivo y metadatos seguros; registro append-only. |
+| `Product` | `tenantId`, nombre, SKU opcional, precio, estado, stock mínimo y política de venta. |
+| `InventoryMovement` | `tenantId`, producto, tipo (entrada/venta/ajuste/devolución), cantidad, actor, venta de origen y fecha; registro append-only. |
+| `Sale` / `SaleLine` | `tenantId`, productos/servicios, cantidades, precios congelados, descuentos autorizados, estado y forma de pago; claves de idempotencia. |
+| `AgentSession` / `AgentAction` | `tenantId`, canal, cliente, estado y acciones/herramientas solicitadas; no guardar audio/transcripciones más tiempo del necesario. |
 | `TenantBranding` / `PublicPageConfig` | `tenantId`, dominio/slug, plantilla/version, campos publicables y estado de publicación. |
 | `Subscription` / `Plan` | estado, ciclo, fechas, límites, precio/moneda/versiones; no almacenar datos de tarjeta. |
 | `Payment` / `PaymentEvent` | referencia de proveedor, importe, moneda, estado, intento, firma verificada, timestamps e idempotencia; eventos inmutables. |
@@ -126,6 +131,8 @@ Los nombres siguientes son contratos conceptuales, no rutas ya implementadas. La
 - `GET /me/tenants`, `POST /tenants/{tenantId}/members/invitations`, `PATCH /members/{id}`.
 - `GET/POST /services`, `GET/POST /professionals`, `GET/PUT /availability`.
 - `GET /availability-slots?serviceId=...&from=...&to=...`, `POST /appointments`, `GET /appointments`, `POST /appointments/{id}/cancel`, `POST /appointments/{id}/reschedule`.
+- `GET/POST /products`, `GET /inventory`, `POST /inventory/movements`, `POST /sales`; una venta y su salida de inventario se confirman en una operación idempotente.
+- Herramientas internas del agente: consultar catálogo/disponibilidad, proponer cita, solicitar confirmación y registrar una cita o venta por las mismas reglas de backend; nunca acceso general a Firestore.
 - `GET/POST /customers` sujeto a permiso; endpoints públicos separados para consultar servicios/horarios publicables y solicitar una reserva.
 - `GET /billing/subscription`, `POST /billing/checkout` según proveedor; operaciones manuales de pago reservadas a usuarios autorizados y auditadas.
 - `GET /settlements`, `POST /settlements/{id}/close`, `POST /settlements/{id}/adjust` con política de inmutabilidad.
@@ -149,15 +156,14 @@ Los nombres siguientes son contratos conceptuales, no rutas ya implementadas. La
 
 ## 10. Pruebas y evidencia esperada por capa
 
-El ensayo se hace por etapas, no solo al final:
+La comprobación se hace en dos niveles:
 
-1. **Local:** interfaz y lógica con datos ficticios; se corrigen errores evidentes de flujo.
-2. **Staging:** proyecto Firebase separado, cuentas de prueba y datos simulados; nunca copiar la base de producción.
-3. **QA funcional:** probar cada rol en móvil y escritorio, acceso entre tenants, reservas simultáneas, cambio/cancelación, fechas y totales financieros.
-4. **Revisión del piloto:** el dueño de Araan recorre el flujo en staging con clientes ficticios y da sus observaciones.
-5. **Piloto real limitado:** solo después de cerrar errores críticos, contar con autorización del dueño y definir consentimiento, privacidad, respaldo y soporte.
+1. **Durante cada capa:** probar las reglas pequeñas con datos ficticios y corregir errores antes de añadir la siguiente.
+2. **Ensayo MVP integrado:** en staging, completar de principio a fin el uso del dueño, barbero, cliente y agente, incluyendo venta/stock y reportes.
+3. **Revisión del piloto:** el dueño de Araan recorre el sistema de staging con clientes ficticios y da sus observaciones.
+4. **Piloto real limitado:** solo tras cerrar errores críticos, contar con autorización del dueño y preparar consentimiento, privacidad, respaldo y soporte.
 
-Las pruebas automatizadas se añaden a las capas que verifican reglas críticas; cada criterio debe tener evidencia reproducible. Antes del piloto real se prohíben mensajes o cobros reales desde staging. No se necesitan seguidores sociales, voz ni todos los sectores para validar las reservas iniciales.
+Las pruebas automatizadas se añaden a las capas que verifican reglas críticas: aislamiento tenant, disponibilidad sin dobles reservas, permisos del agente, movimientos de inventario y cálculo de ingresos. Antes del piloto real no se envían mensajes ni se procesan cobros reales desde staging. No se necesitan seguidores sociales, voz ni todos los sectores para validar el primer MVP.
 
 ## 11. Riesgos y decisiones pendientes
 
@@ -212,5 +218,5 @@ La auditoría inicial concluyó antes de crear este repositorio. Para los siguie
 
 ## 14. Próximo paso
 
-La base visual está en `apps/web/`. Araan Barbería es el primer piloto previsto, con un solo profesional; por ahora usa exclusivamente datos ficticios. El siguiente corte conecta Firebase Authentication, membresías y resolución de tenant en el servidor; después se implementan servicios, horario, disponibilidad y reservas. Google Calendar será opcional y secundario. Los datos reales de Araan se cargan cuando el dueño pueda revisar el flujo y autorice el uso.
+La base visual está en `apps/web/`; aún no es un sistema ensayable. Araan Barbería es el piloto previsto, con un solo profesional. El siguiente corte es identidad y tenant; después se completan configuración, agenda, administrador con stock/caja y agente. Cuando ese MVP esté integrado, se hace el ensayo en staging con datos ficticios y luego se invita al dueño de Araan a revisarlo. Los datos reales solo se cargan con autorización. Google Calendar es opcional y secundario.
 
