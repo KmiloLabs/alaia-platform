@@ -4,31 +4,56 @@ Plataforma SaaS multiempresa para negocios de servicios. Su agente atiende las c
 
 ## Estado
 
-Fase inicial: prototipo visual del panel, API inicial de identidad/tenant y workflow interno de recepción cargado y probado en n8n con datos ficticios. Clasifica solicitudes y propone acciones; aún no integra IA, WhatsApp ni APIs de negocio. Permanece inactivo. La copia anterior de adaptación contiene el gráfico dental más un intento añadido encima: no debe publicarse y se conserva para revisión. El prototipo dental original sigue intacto. El panel usa datos de muestra; Araan es un piloto futuro.
+Corte actual (**panel real con citas guardadas**, 5 de noviembre de 2026): el panel ya no es una demostración. Tiene acceso con correo y contraseña (Firebase Auth), creación y selección de negocio, y una agenda que crea, lista y cancela citas **persistidas** en Firestore con aislamiento por `tenantId`, zona horaria del negocio, prevención de doble reserva e idempotencia.
 
-## Abrir el prototipo
+Estado por capas del [plano técnico](docs/plano-y-reglas-codex.md):
 
-Abre `apps/web/index.html` en un navegador moderno. Puedes cambiar la fecha, revisar ingresos de muestra por día/semana/mes, ver el perfil del profesional y agregar citas de demostración; al recargar, los cambios desaparecen.
+- **Capa 1 (identidad y tenant):** API y pantalla de acceso funcionando contra emuladores. Pendiente: invitaciones, verificación de correo, consola de plataforma.
+- **Capa 5 (agenda y reservas):** primera parte lista en backend y panel. Pendiente: disponibilidad por horario, reprogramación, página pública de reservas.
+- **Resto de capas:** documentadas, no implementadas. WhatsApp, IA, pagos e inventario siguen fuera de este corte.
+- **n8n:** la plantilla de recepción multiempresa existe en `infra/n8n/` como arnés de contrato; sigue inactiva y no es el agente final.
 
-## API local (emuladores)
+Todo se prueba con datos ficticios en emuladores locales. No hay despliegue ni datos reales de clientes.
 
-1. Copia `.env.example` a `.env` en la raíz.
-2. Ejecuta `npm install`.
-3. En una terminal ejecuta `npm run emulators`.
-4. En otra terminal ejecuta `npm run dev:api`.
-5. La comprobación de salud local responde en `http://localhost:3001/health`.
+## Arranque local
 
-La configuración de ejemplo apunta al proyecto ficticio `demo-alaia` y a emuladores locales. **No cambies esa configuración a `novara-bot`**; Alaia requiere un proyecto Firebase independiente antes de usar servicios reales.
+Requisitos: Node.js ≥ 22 y Java ≥ 11 (el emulador de Firestore lo necesita).
+
+```bash
+npm install
+cp .env.example .env        # en PowerShell: Copy-Item .env.example .env
+```
+
+Tres terminales desde la raíz del repositorio:
+
+1. `npm run emulators` — Auth en `127.0.0.1:9099`, Firestore en `127.0.0.1:8081`, UI en `http://127.0.0.1:4000`.
+   (Firestore usa **8081**: en esta máquina el 8080 lo ocupa Evolution API.)
+2. `npm run dev:api` — API en `http://localhost:3001`.
+3. `npm run dev:web` — panel en `http://localhost:5173`.
+
+Si el equipo tiene el JDK 21 portátil, `scripts/start-local.ps1` abre las tres ventanas con el `JAVA_HOME` correcto y el orden adecuado.
+
+La configuración de ejemplo apunta al proyecto ficticio `demo-alaia`. **No cambies esa configuración a `novara-bot`** ni a ningún proyecto real; Alaia requiere un proyecto Firebase independiente antes de usar servicios reales.
+
+## Pruebas
+
+```bash
+npm --workspace @alaia/api run test   # pruebas puras de zona horaria y validación (28)
+npm run verify                        # end-to-end contra emuladores + API (26 comprobaciones)
+```
+
+`npm run verify` crea dos cuentas y dos negocios ficticios y comprueba, entre otras cosas: aislamiento entre negocios (lectura y escritura cruzadas), no doble reserva, idempotencia, cancelación y validaciones. Requiere emuladores y API en marcha.
 
 ## Documentos
 
+- `docs/corte-agenda-panel-real.md`: contrato del corte actual (rutas, reglas, criterios de aceptación).
 - `docs/arquitectura.md`: arquitectura, seguridad, costos y escalabilidad.
 - `docs/plano-y-reglas-codex.md`: roadmap por capas e instrucciones para agentes de código.
-- `apps/web/`: prototipo del panel para el dueño, sin conexión a servicios externos.
-- `apps/api/`: verificación de token, creación de negocio y resolución de membresía tenant.
+- `apps/web/`: panel real (acceso, negocio activo, agenda, ingresos).
+- `apps/api/`: identidad, tenant y agenda (`/api/v1`).
 - `docs/capa-1-identidad-tenant.md`: alcance y rutas de la primera capa de backend.
-- `docs/n8n-recepcionista-empresarial.md`: auditoría del prototipo dental y próximos pasos para crear el flujo en la instancia correcta.
-- `infra/n8n/alaia-reception-v1.json`: plantilla n8n nueva, sin credenciales ni efectos de negocio.
+- `docs/n8n-recepcionista-empresarial.md`: auditoría del prototipo dental y próximos pasos del flujo n8n.
+- `infra/n8n/alaia-reception-v1.json`: plantilla n8n, sin credenciales ni efectos de negocio.
 - `infra/n8n/workflow-contract.test.js`: pruebas locales del contrato y de las propuestas seguras.
 
 ## Principios

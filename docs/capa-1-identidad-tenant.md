@@ -33,7 +33,7 @@ Todas las rutas `/api/v1` requieren `Authorization: Bearer <Firebase ID token>`.
 
 Desde la raíz del repositorio: copia `.env.example` a `.env`, ejecuta `npm install`, inicia `npm run emulators` y luego `npm run dev:api` en otra terminal. El proyecto emulado se llama `demo-alaia`; la configuración local no apunta a `novara-bot`.
 
-No hay login visual ni usuarios de prueba en esta capa todavía. La siguiente parte de identidad es la pantalla de acceso/registro conectada al emulador, selección del negocio activo y una ruta protegida del panel. Después se configura el perfil real de Araan dentro de staging.
+Ya existe la pantalla de acceso/registro en `apps/web/` conectada al emulador, la creación del primer negocio, la selección del negocio activo (recordada en el navegador) y el panel protegido que consume estas rutas. Sigue pendiente: invitaciones, verificación de correo, recuperación de contraseña y consola de superadministrador. El detalle del corte está en `docs/corte-agenda-panel-real.md`.
 
 ## Límites conocidos antes de exponer en internet
 

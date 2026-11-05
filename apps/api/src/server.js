@@ -1,5 +1,6 @@
 import express from "express";
 import { tenantRoutes } from "./tenant-routes.js";
+import { appointmentRoutes } from "./appointment-routes.js";
 import { sendError } from "./http.js";
 
 const app = express();
@@ -36,6 +37,7 @@ app.use("/api/v1", (_req, res, next) => {
 
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "alaia-api" }));
 app.use("/api/v1", tenantRoutes);
+app.use("/api/v1", appointmentRoutes);
 app.use((_req, res) => sendError(res, 404, "not_found", "No encontramos esa ruta."));
 app.use((error, _req, res, _next) => {
   const status = Number(error.status || error.statusCode || 500);

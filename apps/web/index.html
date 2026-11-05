@@ -6,10 +6,115 @@
     <meta name="theme-color" content="#f5f7f6" />
     <meta name="description" content="Alaia ayuda a organizar las citas y el día de tu negocio." />
     <title>Alaia — Tu negocio, en orden</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='26' fill='%230f766e'/%3E%3Ctext x='50' y='70' font-size='62' font-family='Georgia,serif' text-anchor='middle' fill='white'%3Ea%3C/text%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <div class="screen boot-screen" id="boot-screen">
+      <div class="boot-card">
+        <a class="brand" href="#inicio" aria-label="Alaia, inicio">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="brand-name">alaia<span class="brand-dot">.</span></span>
+        </a>
+        <p class="boot-text" role="status" id="boot-text">Preparando tu panel…</p>
+        <p class="form-error boot-error" id="boot-error" role="alert" aria-live="assertive"></p>
+        <button class="secondary-button" id="boot-retry" type="button" hidden>Reintentar</button>
+      </div>
+    </div>
+
+    <section class="screen auth-screen" id="auth-screen" aria-labelledby="auth-title" hidden>
+      <div class="auth-shell">
+        <div class="auth-intro">
+          <a class="brand" href="#acceso" aria-label="Alaia, inicio">
+            <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="brand-name">alaia<span class="brand-dot">.</span></span>
+          </a>
+          <p class="eyebrow">TU NEGOCIO, EN ORDEN</p>
+          <h1 id="auth-title">La agenda real de tu negocio, sin hojas sueltas<span class="title-period">.</span></h1>
+          <p class="auth-copy">Entra con tu cuenta para ver las citas del día, crear nuevas y seguir tus ingresos.</p>
+          <ul class="auth-points">
+            <li><span aria-hidden="true">▦</span>Agenda ordenada por día y hora.</li>
+            <li><span aria-hidden="true">♙</span>Clientes y servicios de cada cita.</li>
+            <li><span aria-hidden="true">$</span>Ingresos calculados con tus citas.</li>
+          </ul>
+        </div>
+
+        <div class="auth-card">
+          <div class="auth-tabs" role="group" aria-label="Elige cómo entrar">
+            <button class="auth-tab is-active" id="auth-tab-signin" type="button" aria-pressed="true">Entrar</button>
+            <button class="auth-tab" id="auth-tab-signup" type="button" aria-pressed="false">Crear cuenta</button>
+          </div>
+          <h2 id="auth-form-title">Bienvenido de nuevo</h2>
+          <p class="auth-form-copy" id="auth-form-copy">Usa tu correo y contraseña para abrir tu panel.</p>
+
+          <form id="auth-form">
+            <label for="auth-email">Correo electrónico</label>
+            <input id="auth-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="tu@negocio.com" required />
+            <label for="auth-password">Contraseña</label>
+            <input id="auth-password" name="password" type="password" autocomplete="current-password" placeholder="Mínimo 6 caracteres" minlength="6" required aria-describedby="auth-password-hint" />
+            <p class="field-hint" id="auth-password-hint">Mínimo 6 caracteres.</p>
+            <div id="auth-confirm-field" hidden>
+              <label for="auth-confirm">Confirmar contraseña</label>
+              <input id="auth-confirm" name="confirm" type="password" autocomplete="new-password" minlength="6" />
+            </div>
+            <p class="form-error" id="auth-error" role="alert" aria-live="assertive"></p>
+            <button class="primary-button auth-submit" id="auth-submit" type="submit">Entrar</button>
+          </form>
+          <p class="auth-foot">Alaia · entorno local con emulador de Firebase</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen onboarding-screen" id="onboarding-screen" aria-labelledby="onboarding-title" hidden>
+      <div class="onboarding-card">
+        <a class="brand" href="#primer-paso" aria-label="Alaia, inicio">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="brand-name">alaia<span class="brand-dot">.</span></span>
+        </a>
+        <p class="eyebrow">PRIMER PASO</p>
+        <h1 id="onboarding-title">Crea tu negocio<span class="title-period">.</span></h1>
+        <p class="onboarding-copy" id="onboarding-copy">Tu cuenta todavía no tiene un negocio. Crea el primero para empezar a usar la agenda.</p>
+
+        <form id="tenant-form">
+          <label for="tenant-name">Nombre del negocio</label>
+          <input id="tenant-name" name="name" type="text" autocomplete="organization" placeholder="Ej. Barbería Aurora" minlength="2" maxlength="120" required />
+
+          <div class="form-pair">
+            <div>
+              <label for="tenant-sector">Sector</label>
+              <select id="tenant-sector" name="sector" required>
+                <option value="barberia">Barbería</option>
+                <option value="peluqueria">Peluquería</option>
+                <option value="spa">Spa</option>
+                <option value="servicios">Servicios</option>
+              </select>
+            </div>
+            <div>
+              <label for="tenant-timezone">Zona horaria</label>
+              <select id="tenant-timezone" name="timeZone" required>
+                <option value="America/Bogota" selected>Bogotá (Colombia)</option>
+                <option value="America/Mexico_City">Ciudad de México</option>
+                <option value="America/Lima">Lima (Perú)</option>
+                <option value="America/Santiago">Santiago (Chile)</option>
+                <option value="America/Argentina/Buenos_Aires">Buenos Aires (Argentina)</option>
+                <option value="America/Guayaquil">Guayaquil (Ecuador)</option>
+                <option value="America/Panama">Panamá</option>
+                <option value="America/Santo_Domingo">Santo Domingo</option>
+              </select>
+            </div>
+          </div>
+
+          <p class="form-error" id="tenant-error" role="alert" aria-live="assertive"></p>
+          <div class="dialog-actions">
+            <button class="secondary-button" id="onboarding-signout" type="button">Cerrar sesión</button>
+            <button class="primary-button" id="tenant-submit" type="submit">Crear negocio</button>
+          </div>
+        </form>
+        <p class="auth-foot">Después podrás cambiar de negocio desde el panel.</p>
+      </div>
+    </section>
+
+    <div class="app-shell" id="panel-screen" hidden>
       <aside class="sidebar" aria-label="Navegación principal">
         <a class="brand" href="#inicio" aria-label="Alaia, inicio">
           <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
@@ -17,9 +122,10 @@
         </a>
 
         <div class="workspace-switcher">
-          <span class="workspace-avatar" aria-hidden="true">B</span>
-          <span class="workspace-copy"><strong>Araan Barbería</strong><small>Negocio piloto · demo</small></span>
+          <span class="workspace-avatar" id="workspace-avatar" aria-hidden="true">A</span>
+          <span class="workspace-copy"><strong id="workspace-name">Tu negocio</strong><small id="workspace-meta">Cargando…</small></span>
           <span class="chevron" aria-hidden="true">⌄</span>
+          <select id="tenant-select" class="workspace-select" aria-label="Negocio activo"></select>
         </div>
 
         <p class="nav-label">MENÚ</p>
@@ -27,10 +133,10 @@
           <button class="nav-item is-active" data-view="resumen" aria-current="page">
             <span class="nav-icon" aria-hidden="true">⌂</span><span>Resumen</span>
           </button>
-          <button class="nav-item" data-view="agenda"><span class="nav-icon" aria-hidden="true">▦</span><span>Agenda</span><span class="nav-count">8</span></button>
-          <button class="nav-item" data-view="clientes"><span class="nav-icon" aria-hidden="true">♙</span><span>Clientes</span></button>
-          <button class="nav-item" data-view="equipo"><span class="nav-icon" aria-hidden="true">♧</span><span>Equipo</span></button>
-          <button class="nav-item" data-view="servicios"><span class="nav-icon" aria-hidden="true">◇</span><span>Servicios</span></button>
+          <button class="nav-item" data-view="agenda"><span class="nav-icon" aria-hidden="true">▦</span><span>Agenda</span><span class="nav-count" id="nav-count">0</span></button>
+          <button class="nav-item" data-view="clientes" data-future="Clientes"><span class="nav-icon" aria-hidden="true">♙</span><span>Clientes</span></button>
+          <button class="nav-item" data-view="equipo" data-future="Equipo"><span class="nav-icon" aria-hidden="true">♧</span><span>Equipo</span></button>
+          <button class="nav-item" data-view="servicios" data-future="Servicios"><span class="nav-icon" aria-hidden="true">◇</span><span>Servicios</span></button>
         </nav>
 
         <div class="sidebar-bottom">
@@ -40,11 +146,15 @@
             <p>Estamos aquí para acompañarte.</p>
             <button class="text-button" data-toast="Pronto podrás contactar al equipo de Alaia desde aquí.">Conocer más <span aria-hidden="true">→</span></button>
           </div>
-          <button class="nav-item settings-item" data-view="configuracion"><span class="nav-icon" aria-hidden="true">⚙</span><span>Configuración</span></button>
+          <div class="session-actions">
+            <button class="session-button" id="change-tenant" type="button"><span class="nav-icon" aria-hidden="true">⇄</span><span>Cambiar negocio</span></button>
+            <button class="session-button" id="sign-out" type="button"><span class="nav-icon" aria-hidden="true">⏻</span><span>Cerrar sesión</span></button>
+          </div>
+          <button class="nav-item settings-item" data-view="configuracion" data-future="Configuración"><span class="nav-icon" aria-hidden="true">⚙</span><span>Configuración</span></button>
           <div class="profile-row">
-            <span class="profile-avatar" aria-hidden="true">A</span>
-            <span class="profile-copy"><strong>Administrador</strong><small>Propietario</small></span>
-            <button class="icon-button" aria-label="Opciones de perfil" data-toast="La gestión de perfil estará disponible al conectar tu cuenta.">···</button>
+            <span class="profile-avatar" id="profile-avatar" aria-hidden="true">A</span>
+            <span class="profile-copy"><strong id="profile-name">Cuenta</strong><small id="profile-role">Propietario</small></span>
+            <button class="icon-button" aria-label="Opciones de perfil" data-toast="La gestión de perfil llegará en una próxima etapa.">···</button>
           </div>
         </div>
       </aside>
@@ -53,7 +163,8 @@
         <header class="topbar">
           <div class="breadcrumb"><span>Mi negocio</span><span class="breadcrumb-separator">/</span><strong id="current-section">Resumen</strong></div>
           <div class="topbar-actions">
-            <span class="sample-badge"><span class="sample-dot"></span>Vista de demostración</span>
+            <span class="sample-badge" id="sync-status"><span class="sample-dot" id="sync-dot"></span><span id="sync-text">Conectando…</span></span>
+            <button class="icon-button account-button" id="open-account" type="button" aria-label="Cuenta y sesión" title="Cuenta y sesión"><span class="profile-avatar" id="account-avatar" aria-hidden="true">A</span></button>
             <button class="icon-button notification-button" aria-label="Notificaciones" data-toast="No tienes notificaciones nuevas.">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
               <span class="notification-dot"></span>
@@ -64,9 +175,9 @@
         <div class="page-wrap" id="page-wrap">
           <section class="welcome-row">
             <div>
-              <p class="eyebrow" id="today-label">JUEVES, 5 DE NOVIEMBRE</p>
+              <p class="eyebrow" id="today-label">HOY</p>
               <h1 id="page-title">Tu día, en orden<span class="title-period">.</span></h1>
-              <p class="page-subtitle">Aquí tienes lo que pasa hoy en tu negocio.</p>
+              <p class="page-subtitle" id="page-subtitle">Aquí tienes lo que pasa hoy en tu negocio.</p>
             </div>
             <button class="primary-button" id="new-appointment">
               <span class="plus-icon" aria-hidden="true">+</span> Nueva cita
@@ -76,27 +187,28 @@
           <section class="metric-grid" aria-label="Resumen del día seleccionado">
             <article class="metric-card metric-featured">
               <div class="metric-top"><span class="metric-icon calendar-icon" aria-hidden="true">▦</span><span class="metric-caption">DÍA SELECCIONADO</span></div>
-              <p class="metric-value" id="appointments-total">8</p>
+              <p class="metric-value" id="appointments-total">0</p>
               <p class="metric-label">Citas programadas</p>
-              <div class="metric-foot"><span class="trend-pill">+2</span><span>vs. ayer</span></div>
+              <div class="metric-foot"><span id="day-duration">Sin citas en la agenda</span></div>
             </article>
             <article class="metric-card">
-              <div class="metric-top"><span class="metric-icon people-icon" aria-hidden="true">♙</span><span class="metric-caption">ASISTENCIA</span></div>
-              <p class="metric-value" id="clients-attended">5<span class="metric-denominator">/8</span></p>
-              <p class="metric-label">Clientes atendidos</p>
-              <div class="progress-track"><span style="width:62.5%"></span></div>
+              <div class="metric-top"><span class="metric-icon people-icon" aria-hidden="true">♙</span><span class="metric-caption">CANCELADAS</span></div>
+              <p class="metric-value" id="cancelled-total">0</p>
+              <p class="metric-label">Citas canceladas</p>
+              <div class="progress-track" id="cancelled-progress" aria-hidden="true"><span style="width:0%"></span></div>
+              <div class="metric-foot"><span id="cancelled-foot">Sin cancelaciones</span></div>
             </article>
             <article class="metric-card">
               <div class="metric-top"><span class="metric-icon cash-icon" aria-hidden="true">$</span><label class="metric-caption revenue-range-label" for="revenue-range">INGRESOS</label></div>
-              <p class="metric-value money-value" id="revenue-total">$ 320.000</p>
-              <p class="metric-label">Ingresos registrados</p>
-              <div class="metric-foot muted-foot"><select id="revenue-range" aria-label="Periodo de ingresos"><option value="day">Hoy</option><option value="week">Esta semana</option><option value="month">Este mes</option></select><span>· datos de muestra</span></div>
+              <p class="metric-value money-value" id="revenue-total">$ 0</p>
+              <p class="metric-label">Ingresos por citas activas</p>
+              <div class="metric-foot muted-foot"><select id="revenue-range" aria-label="Periodo de ingresos"><option value="day">Hoy</option><option value="week">Esta semana</option><option value="month">Este mes</option></select><span id="revenue-period-note">del día</span></div>
             </article>
             <article class="metric-card">
               <div class="metric-top"><span class="metric-icon star-icon" aria-hidden="true">✳</span><span class="metric-caption">CLIENTES</span></div>
-              <p class="metric-value">3</p>
-              <p class="metric-label">Nuevos este mes</p>
-              <div class="metric-foot"><span class="trend-text">Tu negocio está creciendo</span></div>
+              <p class="metric-value" id="unique-clients">0</p>
+              <p class="metric-label">Clientes en la agenda</p>
+              <div class="metric-foot"><span class="trend-text" id="clients-foot">del día elegido</span></div>
             </article>
           </section>
 
@@ -112,50 +224,17 @@
                 </div>
                 <button class="quiet-button" id="agenda-toggle">Ver agenda <span aria-hidden="true">→</span></button>
               </div>
-              <div class="agenda-list" id="agenda-list" aria-live="polite">
-                <article class="appointment-row">
-                  <div class="appointment-time"><strong>09:00</strong><span>45 min</span></div>
-                  <span class="appointment-rail rail-green"></span>
-                  <div class="client-avatar avatar-mint">SR</div>
-                  <div class="appointment-info"><strong>Sofía Ramírez</strong><span>Corte clásico · Profesional principal</span></div>
-                  <span class="status status-done">Atendida</span>
-                  <button class="row-menu" aria-label="Opciones para Sofía Ramírez" data-toast="Cita de demostración.">···</button>
-                </article>
-                <article class="appointment-row">
-                  <div class="appointment-time"><strong>10:30</strong><span>30 min</span></div>
-                  <span class="appointment-rail rail-blue"></span>
-                  <div class="client-avatar avatar-lilac">MR</div>
-                  <div class="appointment-info"><strong>Mateo Rojas</strong><span>Arreglo de barba · Profesional principal</span></div>
-                  <span class="status status-next">En curso</span>
-                  <button class="row-menu" aria-label="Opciones para Mateo Rojas" data-toast="Cita de demostración.">···</button>
-                </article>
-                <article class="appointment-row">
-                  <div class="appointment-time"><strong>11:15</strong><span>60 min</span></div>
-                  <span class="appointment-rail rail-amber"></span>
-                  <div class="client-avatar avatar-peach">LC</div>
-                  <div class="appointment-info"><strong>Lucía Cárdenas</strong><span>Corte + barba · Profesional principal</span></div>
-                  <span class="status status-upcoming">Próxima</span>
-                  <button class="row-menu" aria-label="Opciones para Lucía Cárdenas" data-toast="Cita de demostración.">···</button>
-                </article>
-                <article class="appointment-row">
-                  <div class="appointment-time"><strong>12:30</strong><span>45 min</span></div>
-                  <span class="appointment-rail rail-gray"></span>
-                  <div class="client-avatar avatar-sky">DP</div>
-                  <div class="appointment-info"><strong>Daniel Pardo</strong><span>Corte degradado · Profesional principal</span></div>
-                  <span class="status status-upcoming">Próxima</span>
-                  <button class="row-menu" aria-label="Opciones para Daniel Pardo" data-toast="Cita de demostración.">···</button>
-                </article>
-              </div>
-              <div class="agenda-footer"><span class="footer-line"></span><span>4 de 8 citas visibles</span><span class="footer-line"></span></div>
+              <div class="agenda-list" id="agenda-list" aria-live="polite" aria-busy="false"></div>
+              <div class="agenda-footer" id="agenda-footer"><span class="footer-line"></span><span>Sin citas para esta fecha</span><span class="footer-line"></span></div>
             </article>
 
             <aside class="right-column">
               <article class="panel team-panel">
                 <div class="panel-heading compact-heading"><div><p class="eyebrow">TU EQUIPO</p><h2>Profesionales</h2></div><button class="icon-button small-plus" aria-label="Agregar profesional" data-toast="El equipo se configurará en la siguiente etapa.">+</button></div>
                 <div class="team-list">
-                  <button class="team-row team-person" id="open-professional" type="button" aria-label="Ver perfil del profesional principal"><span class="team-avatar avatar-navy">AP</span><span class="team-copy"><strong>Profesional principal</strong><small id="team-appointment-count">8 citas de muestra · activo</small></span><span class="availability-dot online"></span></button>
+                  <button class="team-row team-person" id="open-professional" type="button" aria-label="Ver perfil del profesional principal"><span class="team-avatar avatar-navy">AP</span><span class="team-copy"><strong>Profesional principal</strong><small id="team-appointment-count">0 citas · activo</small></span><span class="availability-dot online"></span></button>
                 </div>
-                <button class="full-width-link" data-view="equipo">Ver equipo <span aria-hidden="true">→</span></button>
+                <button class="full-width-link" data-toast="La gestión del equipo llegará en una próxima etapa.">Ver equipo <span aria-hidden="true">→</span></button>
               </article>
 
               <article class="tip-card">
@@ -174,23 +253,40 @@
     </div>
 
     <dialog class="appointment-dialog" id="appointment-dialog" aria-labelledby="dialog-title">
-      <form method="dialog" id="appointment-form">
+      <form id="appointment-form">
         <div class="dialog-heading"><div><p class="eyebrow">AGENDA</p><h2 id="dialog-title">Crear una cita</h2></div><button class="dialog-close" id="close-dialog" type="button" aria-label="Cerrar">×</button></div>
-        <p class="dialog-note">Estás viendo una demostración. La cita solo aparecerá en esta sesión.</p>
-        <label>Nombre del cliente<input name="client" autocomplete="name" placeholder="Ej. Mariana López" required maxlength="80" /></label>
-        <div class="form-pair"><label>Servicio<input name="service" placeholder="Ej. Corte clásico" required maxlength="80" /></label><label>Profesional<input name="professional" placeholder="Ej. Andrés" required maxlength="80" /></label></div>
-        <div class="form-pair"><label>Fecha<input name="date" type="date" required /></label><label>Hora<input name="time" type="time" value="14:00" required /></label></div>
-        <div class="dialog-actions"><button class="secondary-button" value="cancel" formnovalidate>Cancelar</button><button class="primary-button" id="save-appointment" value="default">Agregar cita</button></div>
+        <p class="dialog-note">La cita se guarda en la agenda de tu negocio.</p>
+        <label for="appointment-client">Nombre del cliente<input id="appointment-client" name="client" autocomplete="name" placeholder="Ej. Mariana López" required minlength="2" maxlength="80" /></label>
+        <label for="appointment-service">Servicio<input id="appointment-service" name="service" placeholder="Ej. Corte clásico" required minlength="2" maxlength="80" /></label>
+        <div class="form-pair">
+          <label for="appointment-date">Fecha<input id="appointment-date" name="date" type="date" required /></label>
+          <label for="appointment-time">Hora<input id="appointment-time" name="time" type="time" value="14:00" required /></label>
+        </div>
+        <div class="form-pair">
+          <label for="appointment-duration">Duración (min)<input id="appointment-duration" name="duration" type="number" min="5" max="480" step="5" value="45" required /></label>
+          <label for="appointment-price">Precio (COP)<input id="appointment-price" name="price" type="number" min="0" max="10000000" step="1000" value="50000" required /></label>
+        </div>
+        <p class="form-error" id="appointment-error" role="alert" aria-live="assertive"></p>
+        <div class="dialog-actions"><button class="secondary-button" id="cancel-dialog" type="button">Cancelar</button><button class="primary-button" id="save-appointment" type="submit">Agregar cita</button></div>
       </form>
     </dialog>
+
     <dialog class="appointment-dialog professional-dialog" id="professional-dialog" aria-labelledby="professional-dialog-title">
-      <div class="dialog-heading"><div><p class="eyebrow">EQUIPO · ARAAN BARBERÍA</p><h2 id="professional-dialog-title">Profesional principal</h2></div><button class="dialog-close" id="close-professional-dialog" type="button" aria-label="Cerrar">×</button></div>
-      <p class="dialog-note">Perfil de demostración para el primer piloto, que empieza con una persona en el equipo.</p>
-      <div class="professional-summary"><span class="team-avatar avatar-navy">AP</span><div><strong>Profesional activo</strong><small>Propietario y barbero</small></div><span class="availability-dot online"></span></div>
-      <div class="professional-stats"><div><strong id="professional-appointments">8</strong><span>Citas del día elegido</span></div><div><strong>3</strong><span>Servicios de muestra</span></div></div>
-      <div class="professional-services"><p class="eyebrow">SERVICIOS ASIGNADOS</p><span>Corte clásico</span><span>Arreglo de barba</span><span>Corte + barba</span></div>
+      <div class="dialog-heading"><div><p class="eyebrow" id="professional-tenant">EQUIPO</p><h2 id="professional-dialog-title">Profesional principal</h2></div><button class="dialog-close" id="close-professional-dialog" type="button" aria-label="Cerrar">×</button></div>
+      <p class="dialog-note" id="professional-note">En este piloto la agenda la atiende una sola persona.</p>
+      <div class="professional-summary"><span class="team-avatar avatar-navy">AP</span><div><strong>Profesional activo</strong><small>Propietario del negocio</small></div><span class="availability-dot online"></span></div>
+      <div class="professional-stats"><div><strong id="professional-appointments">0</strong><span>Citas del día elegido</span></div><div><strong id="professional-services-count">0</strong><span>Servicios distintos</span></div></div>
+      <div class="professional-services"><p class="eyebrow">SERVICIOS DEL DÍA</p><div id="professional-services"><span>Sin citas en la fecha elegida</span></div></div>
     </dialog>
+
+    <dialog class="appointment-dialog account-dialog" id="account-dialog" aria-labelledby="account-dialog-title">
+      <div class="dialog-heading"><div><p class="eyebrow">CUENTA</p><h2 id="account-dialog-title">Tu cuenta</h2></div><button class="dialog-close" id="close-account-dialog" type="button" aria-label="Cerrar">×</button></div>
+      <p class="dialog-note" id="account-email">—</p>
+      <div class="account-tenant"><p class="eyebrow">NEGOCIO ACTIVO</p><p id="account-tenant-name">—</p></div>
+      <div class="dialog-actions"><button class="secondary-button" id="account-change-tenant" type="button">Cambiar negocio</button><button class="secondary-button" id="account-sign-out" type="button">Cerrar sesión</button></div>
+    </dialog>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js" defer></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>
