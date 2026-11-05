@@ -4,7 +4,7 @@ Plataforma SaaS multiempresa para negocios de servicios. Su agente atiende las c
 
 ## Estado
 
-Fase inicial: prototipo visual del panel y primera API de identidad/tenant implementada. Araan Barbería es el piloto previsto y trabaja con un profesional; los datos del panel siguen siendo de muestra. Todavía no hay interfaz de inicio de sesión, agente, agenda real, WhatsApp, caja ni inventario. El ensayo completo será cuando esas funciones estén conectadas; los datos reales se cargarán cuando el dueño pueda revisar el sistema.
+Fase inicial: prototipo visual del panel y primera API de identidad/tenant implementada. También existe en n8n un borrador inactivo del flujo de recepción, validado en configuración pero aún sin conexión a la API, IA, WhatsApp, agenda ni inventario. Araan Barbería es el piloto previsto y trabaja con un profesional; el panel aún usa datos de muestra. El ensayo completo será cuando las funciones estén conectadas; los datos reales se cargarán cuando el dueño pueda revisar el sistema.
 
 ## Abrir el prototipo
 
@@ -27,6 +27,7 @@ La configuración de ejemplo apunta al proyecto ficticio `demo-alaia` y a emulad
 - `apps/web/`: prototipo del panel para el dueño, sin conexión a servicios externos.
 - `apps/api/`: verificación de token, creación de negocio y resolución de membresía tenant.
 - `docs/capa-1-identidad-tenant.md`: alcance y rutas de la primera capa de backend.
+- `docs/n8n-recepcionista-empresarial.md`: alcance y estado real del flujo auxiliar de recepción en n8n.
 
 ## Principios
 
