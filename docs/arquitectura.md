@@ -2,7 +2,7 @@
 
 **Versión:** propuesta para revisión  
 **Fecha:** 5 de noviembre de 2026  
-**Estado:** arquitectura base aprobada por el usuario para iniciar; proveedores de pago y detalles comerciales se decidirán antes de activar integraciones.
+**Estado:** arquitectura base aprobada por el usuario para iniciar. El repositorio de Alaia es público; no subir secretos, datos personales ni configuraciones operativas.
 
 ## Decisión de producto
 
@@ -14,6 +14,7 @@ Nombre de trabajo: **Alaia**. El nombre comercial y el nombre del repositorio pu
 
 - La carpeta de trabajo abierta contiene documentos de planificación, no es el repositorio de código.
 - GitHub da acceso al repositorio privado **KmiloLabs/novara-bot**. Ese proyecto es el bot de Novara en producción: n8n, WhatsApp Cloud API, Firestore y Google Calendar. Se conserva separado; aporta experiencia y automatizaciones.
+- El repositorio público **KmiloLabs/alaia-platform** se creó para el producto nuevo. Solo debe contener código y documentación publicables; los secretos van fuera de Git.
 - El workflow principal de Novara está activo en n8n. Su exportación principal en GitHub no se puede leer como JSON válido, así que no se debe usar para restaurar ni modificar la instancia antes de reconciliarla.
 - El prototipo dental adjunto tiene 39 nodos y está inactivo. Muestra un flujo útil de WhatsApp, audios, preguntas, horarios y recordatorios; está configurado como una clínica individual y usa Google Calendar y Sheets. Es una referencia conversacional, no la base multiempresa.
 - La búsqueda de repositorios no encontró un proyecto popular que reúna SaaS multiempresa, gestión comercial, agenda por sectores, WhatsApp e IA con licencias adecuadas. Los repositorios con muchas estrellas cubren subconjuntos y algunos excluyen uso productivo o funciones de equipo.
@@ -128,8 +129,8 @@ No asumir que los planes gratuitos alcanzan para este volumen: Firestore cobra p
 
 ## Capas de trabajo y criterios para aprobar
 
-1. **Capa 0 — Repositorios y seguridad operativa:** reconciliar exportación de Novara con n8n vivo; mantener Novara intacto; crear repositorio privado nuevo de Alaia cuando el plan sea aprobado; documentar entorno, secretos y reglas Git.
-2. **Capa 1 — Fundamentos:** decidir stack final, estructura de datos, Auth, membresías, roles y tenant scoping. Criterio: cada petición demuestra pertenencia; pruebas de acceso cruzado son denegadas.
+1. **Capa 0 — Repositorios y seguridad operativa:** mantener Novara intacto; repositorio público de Alaia creado, con documentación y reglas Git.
+2. **Capa 1 — Fundamentos:** prototipo visual iniciado; implementar Auth, membresías, roles y tenant scoping sobre Firebase/Cloud Run. Criterio: cada petición demuestra pertenencia; pruebas de acceso cruzado son denegadas.
 3. **Capa 2 — Administración de plataforma:** alta/estado/plan/límites/consumo, soporte y auditoría. Criterio: el superadministrador actúa en herramientas separadas y todas las mutaciones sensibles quedan auditadas.
 4. **Capa 3 — Núcleo del negocio:** servicios, profesionales, disponibilidad y agenda propia. Criterio: una reserva simultánea no duplica el horario; historial de cancelación/reagendamiento queda completo.
 5. **Capa 4 — Panel y página pública:** plantillas por sector, subdominio, personalización visual y flujo de reserva. Criterio: un dominio no puede servir datos del tenant equivocado.
@@ -153,10 +154,10 @@ Cada capa debe cerrar con requisitos, modelo de datos, permisos, API/eventos, es
 - [Fish Audio: APIs y planes](https://fish.audio/developers/), [términos empresariales](https://beta.fish.audio/enterprise-terms/)
 - [WhatsApp Business Platform: precios y categorías](https://whatsappbusiness.com/products/platform-pricing/), [FAQ de tarifas](https://whatsappbusiness.com/resources/faq/)
 
-## Recomendación a aprobar
+## Dirección inicial aprobada
 
-Aprobar como dirección inicial: **web/PWA + Cloudflare para entrada/dominos + Firebase Auth/Firestore + Cloud Run para operaciones críticas + n8n solo como automatización auxiliar controlada + adaptadores separados para WhatsApp, pagos, Groq y Fish Audio**.
+Dirección inicial: **web/PWA + Cloudflare para entrada/dominios + Firebase Auth/Firestore + Cloud Run para operaciones críticas + n8n solo como automatización auxiliar controlada + adaptadores separados para WhatsApp, pagos, Groq y Fish Audio**.
 
-La aprobación de esta arquitectura habilita preparar el repositorio y la Capa 0. No fija contratos o proveedores comerciales de pago; se revisan antes de activar esas integraciones.
+El prototipo actual solo cubre la presentación visual del panel. No hay login, backend, datos persistentes ni integraciones. Los proveedores comerciales y secretos se revisan antes de activar cada conexión.
 
 

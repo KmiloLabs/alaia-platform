@@ -1,14 +1,14 @@
 # Plataforma de servicios — plano técnico por capas e instrucciones para Codex
 
 **Versión:** 0.1 · **Fecha:** 5 de noviembre de 2026  
-**Estado:** Alaia; base local iniciada. La arquitectura propuesta se usa como dirección inicial y se ajusta con evidencia al construir cada capa.
+**Estado:** Alaia; repositorio público creado y prototipo visual del panel iniciado. La arquitectura base está aprobada y se ajusta con evidencia al construir cada capa.
 
 
 ## 1. Estado comprobado y límites de esta entrega
 
-En la carpeta de trabajo activa solo se encontraron `work/` y `outputs/`, sin archivos de aplicación. La búsqueda bajo `Documents/Codex` tampoco encontró una carpeta de proyecto identificable ni manifiestos habituales de aplicación. La carpeta activa no es un repositorio Git. Por tanto, no se ha podido auditar código, stack, pruebas, infraestructura ni avance previo del producto. Esto no demuestra que el proyecto no exista en otra ubicación.
+Auditoría inicial (5 de noviembre de 2026): el directorio de la conversación solo contenía documentos; no existía una aplicación de Alaia que auditar. Después se creó el repositorio local y se publicó la base de documentación. El prototipo web actual está en `apps/web/` y no incluye backend ni persistencia.
 
-La conversación de referencia confirma las decisiones funcionales. Se inicia sobre la arquitectura recomendada en el documento de Alaia: web/PWA, Cloudflare para entrada y dominios, Firebase Auth/Firestore, Cloud Run para operaciones críticas; n8n auxiliar sujeto a licencia. Los detalles se validarán por capa, sin conectar servicios ni manejar secretos todavía.
+La conversación de referencia confirma las decisiones funcionales. La dirección inicial es web/PWA, Cloudflare para entrada y dominios, Firebase Auth/Firestore, Cloud Run para operaciones críticas; n8n auxiliar sujeto a licencia. Los detalles se validarán por capa; no hay servicios conectados ni secretos en el repositorio.
 
 ## 2. Decisiones confirmadas
 
@@ -205,10 +205,10 @@ REGLA DE ESTA ETAPA: trabaja únicamente dentro de la carpeta local de Alaia. Im
 7. Propón arquitectura compatible con lo encontrado, modelo de datos, contratos de API/eventos, permisos, seguridad, capas, dependencias, criterios de aceptación y matriz de pruebas futura. Compara alternativas solo donde el repo lo requiera. Marca qué decisiones son propuestas y cuáles confirmadas por el usuario.
 8. La aprobación para iniciar ya fue dada. Continúa con la primera capa dentro del repositorio Alaia; entrega cambios pequeños y explica cómo abrirlos. No avances a acciones externas o cobros reales sin autorización.
 
-Salida final de auditoría: un informe conciso pero suficiente para que el usuario pueda aprobar o corregir la arquitectura sin inspeccionar el código por sí mismo. No hagas cambios al repositorio durante esta tarea.
+La auditoría inicial concluyó antes de crear este repositorio. Para los siguientes cortes, informa en pocas líneas qué cambió, qué es demostración y qué dato/servicio todavía falta. No afirmes que hay pruebas o persistencia si no se han ejecutado o implementado.
 ```
 
 ## 14. Próximo paso
 
-Localizar/abrir la carpeta del repositorio real de la plataforma y ejecutar solamente la auditoría descrita en la sección 13. Con sus hallazgos, sustituir los supuestos de este documento por decisiones compatibles con la implementación existente. La aprobación del usuario debe ocurrir sobre ese diagnóstico y arquitectura ajustada, antes de realizar cambios de producto.
+La base visual está en `apps/web/`. El siguiente corte conecta Firebase Authentication, membresías y resolución de tenant en el servidor; antes de integrar datos reales, configurar el proyecto Firebase y variables locales fuera de Git. Las reglas deben denegar el acceso directo del cliente a los datos del negocio hasta que cada política esté definida.
 
