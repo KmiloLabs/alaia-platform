@@ -210,5 +210,5 @@ La auditoría inicial concluyó antes de crear este repositorio. Para los siguie
 
 ## 14. Próximo paso
 
-La base visual está en `apps/web/`. El siguiente corte conecta Firebase Authentication, membresías y resolución de tenant en el servidor; antes de integrar datos reales, configurar el proyecto Firebase y variables locales fuera de Git. Las reglas deben denegar el acceso directo del cliente a los datos del negocio hasta que cada política esté definida.
+La base visual está en `apps/web/`. Araan Barbería es el primer piloto previsto, con un solo profesional; por ahora usa exclusivamente datos ficticios. El siguiente corte conecta Firebase Authentication, membresías y resolución de tenant en el servidor; después se implementan servicios, horario, disponibilidad y reservas. Google Calendar será opcional y secundario. Los datos reales de Araan se cargan cuando el dueño pueda revisar el flujo y autorice el uso.
 

@@ -158,6 +158,6 @@ Cada capa debe cerrar con requisitos, modelo de datos, permisos, API/eventos, es
 
 Dirección inicial: **web/PWA + Cloudflare para entrada/dominios + Firebase Auth/Firestore + Cloud Run para operaciones críticas + n8n solo como automatización auxiliar controlada + adaptadores separados para WhatsApp, pagos, Groq y Fish Audio**.
 
-El prototipo actual solo cubre la presentación visual del panel. No hay login, backend, datos persistentes ni integraciones. Los proveedores comerciales y secretos se revisan antes de activar cada conexión.
+El primer piloto previsto es Araan Barbería, inicialmente con un solo profesional. El prototipo actual permite elegir fecha, ver un perfil de profesional, cambiar el periodo de ingresos (día/semana/mes) y agregar citas temporales. Todo usa datos ficticios; no hay login, backend, datos persistentes ni integraciones. Los datos reales se incorporan cuando la estructura esté lista y el dueño los apruebe. Google Calendar es opcional y secundario a la agenda de Alaia; métricas de redes sociales quedan para una etapa posterior.
 
 

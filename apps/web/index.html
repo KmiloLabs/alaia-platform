@@ -18,7 +18,7 @@
 
         <div class="workspace-switcher">
           <span class="workspace-avatar" aria-hidden="true">B</span>
-          <span class="workspace-copy"><strong>Barbería Demo</strong><small>Plan inicial</small></span>
+          <span class="workspace-copy"><strong>Araan Barbería</strong><small>Negocio piloto · demo</small></span>
           <span class="chevron" aria-hidden="true">⌄</span>
         </div>
 
@@ -73,24 +73,24 @@
             </button>
           </section>
 
-          <section class="metric-grid" aria-label="Resumen de hoy">
+          <section class="metric-grid" aria-label="Resumen del día seleccionado">
             <article class="metric-card metric-featured">
-              <div class="metric-top"><span class="metric-icon calendar-icon" aria-hidden="true">▦</span><span class="metric-caption">HOY</span></div>
+              <div class="metric-top"><span class="metric-icon calendar-icon" aria-hidden="true">▦</span><span class="metric-caption">DÍA SELECCIONADO</span></div>
               <p class="metric-value" id="appointments-total">8</p>
               <p class="metric-label">Citas programadas</p>
               <div class="metric-foot"><span class="trend-pill">+2</span><span>vs. ayer</span></div>
             </article>
             <article class="metric-card">
               <div class="metric-top"><span class="metric-icon people-icon" aria-hidden="true">♙</span><span class="metric-caption">ASISTENCIA</span></div>
-              <p class="metric-value">5<span class="metric-denominator">/8</span></p>
+              <p class="metric-value" id="clients-attended">5<span class="metric-denominator">/8</span></p>
               <p class="metric-label">Clientes atendidos</p>
               <div class="progress-track"><span style="width:62.5%"></span></div>
             </article>
             <article class="metric-card">
-              <div class="metric-top"><span class="metric-icon cash-icon" aria-hidden="true">$</span><span class="metric-caption">VENTAS DE HOY</span></div>
-              <p class="metric-value money-value">$ 320.000</p>
+              <div class="metric-top"><span class="metric-icon cash-icon" aria-hidden="true">$</span><label class="metric-caption revenue-range-label" for="revenue-range">INGRESOS</label></div>
+              <p class="metric-value money-value" id="revenue-total">$ 320.000</p>
               <p class="metric-label">Ingresos registrados</p>
-              <div class="metric-foot muted-foot">Actualizado hace un momento</div>
+              <div class="metric-foot muted-foot"><select id="revenue-range" aria-label="Periodo de ingresos"><option value="day">Hoy</option><option value="week">Esta semana</option><option value="month">Este mes</option></select><span>· datos de muestra</span></div>
             </article>
             <article class="metric-card">
               <div class="metric-top"><span class="metric-icon star-icon" aria-hidden="true">✳</span><span class="metric-caption">CLIENTES</span></div>
@@ -103,7 +103,13 @@
           <section class="content-grid">
             <article class="panel agenda-panel">
               <div class="panel-heading">
-                <div><p class="eyebrow" id="agenda-date-label">HOY</p><h2>Agenda de hoy</h2></div>
+                <div><p class="eyebrow" id="agenda-date-label">HOY</p><h2 id="agenda-day-title">Agenda de hoy</h2></div>
+                <div class="date-controls" aria-label="Elegir día de agenda">
+                  <button class="date-step" id="previous-day" type="button" aria-label="Día anterior">‹</button>
+                  <input id="agenda-date" type="date" aria-label="Seleccionar fecha de agenda" />
+                  <button class="date-step" id="next-day" type="button" aria-label="Día siguiente">›</button>
+                  <button class="today-button" id="go-today" type="button">Hoy</button>
+                </div>
                 <button class="quiet-button" id="agenda-toggle">Ver agenda <span aria-hidden="true">→</span></button>
               </div>
               <div class="agenda-list" id="agenda-list" aria-live="polite">
@@ -111,7 +117,7 @@
                   <div class="appointment-time"><strong>09:00</strong><span>45 min</span></div>
                   <span class="appointment-rail rail-green"></span>
                   <div class="client-avatar avatar-mint">SR</div>
-                  <div class="appointment-info"><strong>Sofía Ramírez</strong><span>Corte clásico · Andrés</span></div>
+                  <div class="appointment-info"><strong>Sofía Ramírez</strong><span>Corte clásico · Profesional principal</span></div>
                   <span class="status status-done">Atendida</span>
                   <button class="row-menu" aria-label="Opciones para Sofía Ramírez" data-toast="Cita de demostración.">···</button>
                 </article>
@@ -119,7 +125,7 @@
                   <div class="appointment-time"><strong>10:30</strong><span>30 min</span></div>
                   <span class="appointment-rail rail-blue"></span>
                   <div class="client-avatar avatar-lilac">MR</div>
-                  <div class="appointment-info"><strong>Mateo Rojas</strong><span>Arreglo de barba · Julián</span></div>
+                  <div class="appointment-info"><strong>Mateo Rojas</strong><span>Arreglo de barba · Profesional principal</span></div>
                   <span class="status status-next">En curso</span>
                   <button class="row-menu" aria-label="Opciones para Mateo Rojas" data-toast="Cita de demostración.">···</button>
                 </article>
@@ -127,7 +133,7 @@
                   <div class="appointment-time"><strong>11:15</strong><span>60 min</span></div>
                   <span class="appointment-rail rail-amber"></span>
                   <div class="client-avatar avatar-peach">LC</div>
-                  <div class="appointment-info"><strong>Lucía Cárdenas</strong><span>Corte + barba · Andrés</span></div>
+                  <div class="appointment-info"><strong>Lucía Cárdenas</strong><span>Corte + barba · Profesional principal</span></div>
                   <span class="status status-upcoming">Próxima</span>
                   <button class="row-menu" aria-label="Opciones para Lucía Cárdenas" data-toast="Cita de demostración.">···</button>
                 </article>
@@ -135,7 +141,7 @@
                   <div class="appointment-time"><strong>12:30</strong><span>45 min</span></div>
                   <span class="appointment-rail rail-gray"></span>
                   <div class="client-avatar avatar-sky">DP</div>
-                  <div class="appointment-info"><strong>Daniel Pardo</strong><span>Corte degradado · Julián</span></div>
+                  <div class="appointment-info"><strong>Daniel Pardo</strong><span>Corte degradado · Profesional principal</span></div>
                   <span class="status status-upcoming">Próxima</span>
                   <button class="row-menu" aria-label="Opciones para Daniel Pardo" data-toast="Cita de demostración.">···</button>
                 </article>
@@ -147,9 +153,7 @@
               <article class="panel team-panel">
                 <div class="panel-heading compact-heading"><div><p class="eyebrow">TU EQUIPO</p><h2>Profesionales</h2></div><button class="icon-button small-plus" aria-label="Agregar profesional" data-toast="El equipo se configurará en la siguiente etapa.">+</button></div>
                 <div class="team-list">
-                  <div class="team-row"><span class="team-avatar avatar-navy">AM</span><span class="team-copy"><strong>Andrés Mejía</strong><small>3 citas hoy</small></span><span class="availability-dot online"></span></div>
-                  <div class="team-row"><span class="team-avatar avatar-rose">JG</span><span class="team-copy"><strong>Julián Gómez</strong><small>2 citas hoy</small></span><span class="availability-dot online"></span></div>
-                  <div class="team-row"><span class="team-avatar avatar-olive">CP</span><span class="team-copy"><strong>Camilo Pérez</strong><small>En descanso</small></span><span class="availability-dot away"></span></div>
+                  <button class="team-row team-person" id="open-professional" type="button" aria-label="Ver perfil del profesional principal"><span class="team-avatar avatar-navy">AP</span><span class="team-copy"><strong>Profesional principal</strong><small id="team-appointment-count">8 citas de muestra · activo</small></span><span class="availability-dot online"></span></button>
                 </div>
                 <button class="full-width-link" data-view="equipo">Ver equipo <span aria-hidden="true">→</span></button>
               </article>
@@ -178,6 +182,13 @@
         <div class="form-pair"><label>Fecha<input name="date" type="date" required /></label><label>Hora<input name="time" type="time" value="14:00" required /></label></div>
         <div class="dialog-actions"><button class="secondary-button" value="cancel" formnovalidate>Cancelar</button><button class="primary-button" id="save-appointment" value="default">Agregar cita</button></div>
       </form>
+    </dialog>
+    <dialog class="appointment-dialog professional-dialog" id="professional-dialog" aria-labelledby="professional-dialog-title">
+      <div class="dialog-heading"><div><p class="eyebrow">EQUIPO · ARAAN BARBERÍA</p><h2 id="professional-dialog-title">Profesional principal</h2></div><button class="dialog-close" id="close-professional-dialog" type="button" aria-label="Cerrar">×</button></div>
+      <p class="dialog-note">Perfil de demostración para el primer piloto, que empieza con una persona en el equipo.</p>
+      <div class="professional-summary"><span class="team-avatar avatar-navy">AP</span><div><strong>Profesional activo</strong><small>Propietario y barbero</small></div><span class="availability-dot online"></span></div>
+      <div class="professional-stats"><div><strong id="professional-appointments">8</strong><span>Citas del día elegido</span></div><div><strong>3</strong><span>Servicios de muestra</span></div></div>
+      <div class="professional-services"><p class="eyebrow">SERVICIOS ASIGNADOS</p><span>Corte clásico</span><span>Arreglo de barba</span><span>Corte + barba</span></div>
     </dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="./app.js" defer></script>
