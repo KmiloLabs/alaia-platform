@@ -1,0 +1,98 @@
+{
+  "name": "Alaia · Recepción multiempresa · v1 (prueba interna)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alaia/internal/reception-v1",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a61f744a-61d3-4a01-a6d7-e48683239a20",
+      "name": "Evento interno Alaia",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "webhookId": "03be0dc4-88a9-44d4-a793-03b8f2a5b6bd"
+    },
+    {
+      "parameters": {
+        "jsCode": "function handle(event) {\n  const errors = [];\n  if (typeof event.tenantId !== 'string' || event.tenantId.trim().length < 2) errors.push('tenantId');\n  if (typeof event.eventId !== 'string' || event.eventId.trim().length < 4) errors.push('eventId');\n  if (!['web', 'whatsapp', 'internal_test'].includes(event.channel)) errors.push('channel');\n  if (typeof event.message !== 'string' || !event.message.trim() || event.message.length > 4000) errors.push('message');\n  if (event.authenticatedByBackend !== true) errors.push('backend_authentication');\n\n  if (errors.length) return { ok: false, error: 'invalid_or_untrusted_event', missing: errors, actionProposal: null };\n\n  const text = event.message.normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();\n  let intent = 'other';\n  let proposedAction = 'ask_clarifying_question';\n  let needsHuman = false;\n\n  if (/\\b(persona|humano|asesor|administrador|hablar con alguien)\\b/.test(text)) { intent = 'human_handoff'; proposedAction = 'handoff_to_business'; needsHuman = true; }\n  else if (/\\b(cancelar|cambiar|reagendar|mover mi cita|modificar cita)\\b/.test(text)) { intent = 'appointment_change'; proposedAction = 'request_appointment_lookup'; }\n  else if (/\\b(cita|turno|reservar|agendar|disponibilidad|horario para)\\b/.test(text)) { intent = 'appointment_request'; proposedAction = 'request_availability_lookup'; }\n  else if (/\\b(historial|ultima vez|ultima visita|referencia|que me hice)\\b/.test(text)) { intent = 'customer_history'; proposedAction = 'request_customer_context'; }\n  else if (/\\b(producto|stock|inventario|precio|cuesta|venden)\\b/.test(text)) { intent = 'product_question'; proposedAction = 'request_catalog_lookup'; }\n  else if (/\\b(horario|direccion|ubicacion|servicio|atienden|abren)\\b/.test(text)) { intent = 'business_information'; proposedAction = 'request_public_business_info'; }\n\n  return {\n    ok: true, tenantId: event.tenantId, eventId: event.eventId, channel: event.channel,\n    intent, actionProposal: { type: proposedAction, requiresBackendAuthorization: true, execute: false },\n    needsHuman, messageForCustomer: null,\n    controls: { noBookingCreated: true, noCustomerRecordRead: true, noInventoryChanged: true, noMessageSent: true }\n  };\n}\nreturn [{ json: handle($input.first().json) }];"
+      },
+      "id": "ba5fb52a-2418-46e0-9328-cf85a7d6f537",
+      "name": "Validar evento y proponer intención",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            { "id": "033a01d5-d7c6-4ed4-a8c3-8a93fa5e76a9", "leftValue": "={{ $json.ok }}", "rightValue": true, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2181d313-77d5-4849-93dc-93651ea10dce",
+      "name": "¿Evento válido y autenticado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [560, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "59f2a4a6-1a24-4851-a68a-754d87f7fc36",
+      "name": "Devolver propuesta segura",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [840, -100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": { "responseCode": 400 }
+      },
+      "id": "05f48db5-f5e2-4c6a-b334-7a084205b10e",
+      "name": "Rechazar evento no confiable",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [840, 100]
+    },
+    {
+      "parameters": {
+        "content": "PRUEBA INTERNA · INACTIVO. El evento debe venir del backend autenticado de Alaia, que verifica el canal, resuelve tenantId y deduplica eventId. Esta validación del payload no autentica por sí sola una petición HTTP. Antes de producción: configurar autenticación de webhook, desplegar contrato de API, pruebas de aislamiento y limitar/redactar datos enviados al modelo. Este flujo solo clasifica y devuelve una propuesta: no consulta ni modifica agenda, CRM, inventario o WhatsApp.",
+        "height": 240,
+        "width": 410,
+        "color": 5
+      },
+      "id": "2eaa4f69-fc78-4a12-8533-801a2c12d312",
+      "name": "Límites y prerequisitos",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-20, 250]
+    }
+  ],
+  "connections": {
+    "Evento interno Alaia": { "main": [[{ "node": "Validar evento y proponer intención", "type": "main", "index": 0 }]] },
+    "Validar evento y proponer intención": { "main": [[{ "node": "¿Evento válido y autenticado?", "type": "main", "index": 0 }]] },
+    "¿Evento válido y autenticado?": {
+      "main": [
+        [{ "node": "Devolver propuesta segura", "type": "main", "index": 0 }],
+        [{ "node": "Rechazar evento no confiable", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "ace2c0d5-759f-414e-a0de-05ff02664b24",
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": []
+}

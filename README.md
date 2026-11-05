@@ -4,7 +4,7 @@ Plataforma SaaS multiempresa para negocios de servicios. Su agente atiende las c
 
 ## Estado
 
-Fase inicial: prototipo visual del panel y primera API de identidad/tenant implementada. En el n8n del usuario ya existe una copia de trabajo llamada `ALAIA - Araan Barbería - base de adaptación (borrador)`, duplicada desde `Recepcionista epresarial IA` (39 nodos). La copia sigue sin adaptar y sin publicar; el original quedó intacto. Araan Barbería es el piloto previsto y trabaja con un profesional; el panel aún usa datos de muestra.
+Fase inicial: prototipo visual del panel, API inicial de identidad/tenant y plantilla limpia para ensayar el contrato de recepción. La plantilla de n8n está en `infra/n8n/alaia-reception-v1.json`; todavía requiere importarse como workflow nuevo y verificarse en la instancia correcta. La copia anterior de adaptación contiene el gráfico dental más un intento añadido encima: está inactiva, no debe publicarse y no se borró. El prototipo dental original sigue intacto. El panel usa datos de muestra; Araan es un piloto futuro.
 
 ## Abrir el prototipo
 
@@ -28,6 +28,8 @@ La configuración de ejemplo apunta al proyecto ficticio `demo-alaia` y a emulad
 - `apps/api/`: verificación de token, creación de negocio y resolución de membresía tenant.
 - `docs/capa-1-identidad-tenant.md`: alcance y rutas de la primera capa de backend.
 - `docs/n8n-recepcionista-empresarial.md`: auditoría del prototipo dental y próximos pasos para crear el flujo en la instancia correcta.
+- `infra/n8n/alaia-reception-v1.json`: plantilla n8n nueva, sin credenciales ni efectos de negocio.
+- `infra/n8n/workflow-contract.test.js`: pruebas locales del contrato y de las propuestas seguras.
 
 ## Principios
 

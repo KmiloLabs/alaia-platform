@@ -1,31 +1,32 @@
 # Recepcionista empresarial en n8n
 
-**Estado real al 5 de noviembre de 2026:** la instancia n8n correcta ya contiene una copia de trabajo `ALAIA - Araan Barbería - base de adaptación (borrador)`, creada desde el workflow existente `Recepcionista epresarial IA`. La copia conserva los 39 nodos de la base y sigue sin adaptar ni publicar. El original quedó intacto. No se modificaron workflows de Novara.
+**Estado auditado al 5 de noviembre de 2026:** existe una plantilla limpia para probar el contrato de recepción en `infra/n8n/alaia-reception-v1.json`. Falta importarla como workflow nuevo en la instancia correcta y comprobarla allí. El original dental sigue intacto. La copia de adaptación anterior quedó mezclada por una importación que añadió nodos en lugar de reemplazarlos; está inactiva y no debe publicarse. No se modificó Novara.
 
-## Base disponible para adaptar
+## Qué aporta cada base y qué no se copia
 
-Archivo local disponible: `recepcionista-dental.json`.
+- **TurnosPro:** producto SaaS central para varios negocios y sectores, aislamiento por `tenantId`, roles, historial de cliente y agenda propia; las acciones críticas quedan en backend.
+- **Novara:** patrones de normalización, intención, reserva/cambio/cancelación, pausa del bot, derivación humana y reportes. Es específico de un negocio y no mostró aislamiento por tenant. No se copian calendarios, destinos, credenciales ni acceso directo a Firestore.
+- **Clínica dental:** aporta secuencia de recepción, texto/audio, aclaración, consulta de disponibilidad antes de confirmar y derivación. Sus pacientes, doctora, agenda de Google y hojas no encajan como sistema central de Alaia.
+- **Código Alaia:** API actual implementa identidad, alta de tenant y verificación de membresía/contexto. No implementa todavía clientes, servicios, citas, productos, inventario, IA ni WhatsApp. El panel web es demostración.
 
-- Nombre: `Recepcionista IA · Clínica dental (WhatsApp)`.
-- 39 nodos; está inactivo.
-- Incluye recepción por WhatsApp, manejo de texto/audio, agente IA, memoria, consulta/creación de citas en Google Calendar, registro en Google Sheets y recordatorios.
-- En el archivo no aparecen credenciales configuradas. Las conexiones/proveedores deben configurarse dentro de la instancia del usuario.
-- Está hecho para una clínica dental y una sola agenda; no es multi-tenant y no debe activarse tal cual para Alaia.
+## Flujo de prueba v1
 
-## Base duplicada en n8n
+La plantilla nueva tiene seis elementos: webhook interno → validación del evento → clasificación básica de intención → bifurcación válida/inválida → respuesta JSON y nota de límites. Reconoce solicitudes de cita, cambio/cancelación, historial, productos, información pública, atención humana y otras.
 
-La copia está visible en la instancia correcta. Conserva la estructura dental para que podamos adaptarla por etapas; sus nodos todavía contienen lógica y referencias a clínica, doctora, pacientes y hojas de Google. No debe probarse con clientes ni publicarse en este estado.
+Es un arnés de contrato, no el agente IA final. Solo devuelve una propuesta; no lee ni modifica clientes, agenda, inventario o WhatsApp. No tiene credenciales y queda inactivo. La API debe verificar el canal, derivar `tenantId` desde una configuración confiable y deduplicar `eventId` antes de llamar al workflow. La marca `authenticatedByBackend` del JSON no autentica una petición HTTP por sí sola.
 
-## Cómo convertir la copia en la primera versión de Alaia
+## Pruebas realizadas / pendientes
 
-1. Mantener la copia `ALAIA - Araan Barbería - base de adaptación (borrador)` como área de trabajo y dejar intacto el original.
-2. Mantenerlo inactivo durante adaptación; quitar recordatorios y ramas que no formen parte de la primera prueba.
-3. Sustituir el contexto dental por Araan Barbería y configurar servicios, duración, horarios, zona horaria y profesional con datos ficticios inicialmente.
-4. Cambiar la agenda de Google Calendar por el API de Alaia cuando esté disponible. Hasta entonces, una prueba manual debe quedar marcada como demostración y no como agenda real.
-5. Revisar todas las acciones de WhatsApp/IA y crear las credenciales solo en la instancia correcta; nunca escribir secretos en el JSON ni en Git.
-6. Probar conversación, disponibilidad, confirmación, cancelación, repetición de mensaje y derivación humana con un teléfono de prueba; activar únicamente después de revisar cada ruta.
-7. Convertir luego la prueba de Araan en plantilla multiempresa: tenant resuelto desde backend, configuración separada por negocio y acciones críticas delegadas al API central.
+Las pruebas locales de contrato están en `infra/n8n/workflow-contract.test.js`: datos requeridos, clasificación de seis tipos de solicitud, rechazo de entradas inválidas, ausencia de credenciales e inactividad. La importación y ejecución dentro de n8n quedan pendientes de verificar.
 
-## Próximo paso
+## Secuencia siguiente
 
-Inspeccionar y adaptar primero la configuración/contexto del negocio y las rutas de cita de la copia. No sustituir Google Calendar por una falsa agenda central: la API de Alaia debe ofrecer las operaciones autorizadas antes de conectar reservas reales. Mantener WhatsApp, IA, recordatorios y reportes sin publicar hasta completar la prueba con datos ficticios.
+1. Importar el JSON como workflow nuevo, no sobre el flujo dental ni sobre la copia mezclada; revisar visualmente nodos y estado inactivo.
+2. Ejecutar casos ficticios de cada intención y entradas inválidas en la instancia correcta.
+3. Implementar en la API contratos protegidos para catálogo, perfil público, clientes, disponibilidad, reservas y productos; cada ruta deriva y autoriza el tenant.
+4. Conectar un modelo configurable con salida estructurada. La IA propone; backend y permisos deciden. Groq sigue como candidato por evaluar, no como integración ya hecha.
+5. Entrar desde WhatsApp solo mediante webhook verificado en backend; añadir voz más adelante.
+6. Probar idempotencia, intentos repetidos, acceso cruzado entre tenants, cliente nuevo/recurrente, conflictos de agenda, cambios, stock y derivación humana con datos ficticios.
+7. Usar Araan como piloto después, primero con configuración y clientes ficticios. Cargar datos reales requiere autorización del dueño.
+
+No activar el workflow hasta configurar autenticación de entrada, contratos de API y controles de tenant. No borrar la copia mezclada sin revisar su historial; se puede limpiar después de verificar la nueva plantilla.
