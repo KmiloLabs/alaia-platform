@@ -5,7 +5,7 @@ import vm from "node:vm";
 
 const workflow = JSON.parse(await readFile(new URL("./alaia-reception-v1.json", import.meta.url), "utf8"));
 const code = workflow.nodes.find((node) => node.name === "Validar evento y proponer intención").parameters.jsCode;
-const handlerSource = code.replace(/\nreturn \[\{ json: handle\(\$input\.first\(\)\.json\) \}\];\s*$/, "");
+const handlerSource = code.slice(0, code.indexOf("\nconst incoming ="));
 
 function classify(overrides = {}) {
   const event = {
@@ -25,6 +25,10 @@ test("rechaza evento sin tenant, idempotencia o autenticación declarada del bac
   const result = classify({ tenantId: "", eventId: "", authenticatedByBackend: false });
   assert.equal(result.ok, false);
   assert.deepEqual(Array.from(result.missing), ["tenantId", "eventId", "backend_authentication"]);
+});
+
+test("adapta el cuerpo HTTP que n8n entrega bajo la propiedad body", () => {
+  assert.match(code, /incoming\.body \?\? incoming/);
 });
 
 test("clasifica solicitudes de negocio y solo devuelve propuestas sin ejecutarlas", () => {

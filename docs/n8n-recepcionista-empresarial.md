@@ -1,6 +1,6 @@
 # Recepcionista empresarial en n8n
 
-**Estado auditado al 5 de noviembre de 2026:** existe una plantilla limpia para probar el contrato de recepción en `infra/n8n/alaia-reception-v1.json`. Falta importarla como workflow nuevo en la instancia correcta y comprobarla allí. El original dental sigue intacto. La copia de adaptación anterior quedó mezclada por una importación que añadió nodos en lugar de reemplazarlos; está inactiva y no debe publicarse. No se modificó Novara.
+**Estado auditado al 5 de noviembre de 2026:** la plantilla limpia `infra/n8n/alaia-reception-v1.json` ya fue importada como workflow nuevo en la instancia correcta: `Alaia · Recepción multiempresa · v1 (prueba interna)`. Se ensayó el webhook de prueba con un evento ficticio; el flujo devolvió `appointment_request` y una propuesta de consulta, sin efectos de negocio. El workflow permanece inactivo. El original dental sigue intacto. La copia de adaptación anterior quedó mezclada por una importación que añadió nodos en lugar de reemplazarlos; no se publicó ni borró. No se modificó Novara.
 
 ## Qué aporta cada base y qué no se copia
 
@@ -17,7 +17,7 @@ Es un arnés de contrato, no el agente IA final. Solo devuelve una propuesta; no
 
 ## Pruebas realizadas / pendientes
 
-Las pruebas locales de contrato están en `infra/n8n/workflow-contract.test.js`: datos requeridos, clasificación de seis tipos de solicitud, rechazo de entradas inválidas, ausencia de credenciales e inactividad. La importación y ejecución dentro de n8n quedan pendientes de verificar.
+Las pruebas locales de contrato están en `infra/n8n/workflow-contract.test.js`: datos requeridos, clasificación de seis tipos de solicitud, rechazo de entradas inválidas, ausencia de credenciales e inactividad. También se ejecutó el webhook de prueba en n8n con datos sintéticos. La primera llamada reveló que n8n coloca los campos bajo `body`; se corrigió el código del nodo y el archivo versionado para leer ese formato. La segunda llamada devolvió una propuesta `request_availability_lookup` y controles que confirman que no hubo reserva, lectura de CRM, cambio de inventario ni envío de WhatsApp.
 
 ## Secuencia siguiente
 

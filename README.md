@@ -4,7 +4,7 @@ Plataforma SaaS multiempresa para negocios de servicios. Su agente atiende las c
 
 ## Estado
 
-Fase inicial: prototipo visual del panel, API inicial de identidad/tenant y plantilla limpia para ensayar el contrato de recepción. La plantilla de n8n está en `infra/n8n/alaia-reception-v1.json`; todavía requiere importarse como workflow nuevo y verificarse en la instancia correcta. La copia anterior de adaptación contiene el gráfico dental más un intento añadido encima: está inactiva, no debe publicarse y no se borró. El prototipo dental original sigue intacto. El panel usa datos de muestra; Araan es un piloto futuro.
+Fase inicial: prototipo visual del panel, API inicial de identidad/tenant y workflow interno de recepción cargado y probado en n8n con datos ficticios. Clasifica solicitudes y propone acciones; aún no integra IA, WhatsApp ni APIs de negocio. Permanece inactivo. La copia anterior de adaptación contiene el gráfico dental más un intento añadido encima: no debe publicarse y se conserva para revisión. El prototipo dental original sigue intacto. El panel usa datos de muestra; Araan es un piloto futuro.
 
 ## Abrir el prototipo
 
