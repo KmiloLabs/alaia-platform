@@ -2,7 +2,7 @@
 
 **Versión:** propuesta para revisión  
 **Fecha:** 5 de noviembre de 2026  
-**Estado:** arquitectura base aprobada por el usuario para iniciar. El repositorio de Alaia es público; no subir secretos, datos personales ni configuraciones operativas.
+**Estado:** arquitectura base aprobada. El prototipo visual y el núcleo inicial de API para identidad/tenant están escritos; todavía no hay login visual, agenda real ni agente. El repositorio de Alaia es público; no subir secretos, datos personales ni configuraciones operativas.
 
 ## Decisión de producto
 
@@ -129,7 +129,7 @@ No asumir que los planes gratuitos alcanzan para este volumen: Firestore cobra p
 
 ## Capas de trabajo y criterios para aprobar
 
-El panel visual no está listo para un ensayo de producto. La ruta es: 1) login y aislamiento tenant; 2) negocio, profesional, servicios y horarios; 3) agenda y reserva web; 4) administrador real con citas, caja e inventario; 5) agente que atiende, reserva y registra ventas con reglas del backend; 6) ensayo end-to-end en staging; 7) revisión del dueño de Araan con datos ficticios; 8) piloto real autorizado; 9) WhatsApp real, Calendar opcional y administración comercial ampliada; 10) analítica social, IA avanzada y voz.
+El panel visual no está listo para un ensayo de producto. La ruta es: 1) login y aislamiento tenant; 2) negocio, profesional, servicios y horarios; 3) agenda y reserva web; 4) administrador real con citas, caja e inventario; 5) agente que lleva las conversaciones, reconoce clientes nuevos/recurrentes con historial autorizado, agenda y registra ventas con reglas del backend; 6) ensayo end-to-end en staging; 7) revisión del dueño de Araan con datos ficticios; 8) piloto real autorizado; 9) WhatsApp real, Calendar opcional y administración comercial ampliada; 10) analítica social, IA avanzada y voz.
 
 Para QA: datos ficticios en local, luego proyecto Firebase aislado de staging y cuentas de prueba. Araan revisa flujos en staging antes de compartir datos reales. No se envían mensajes ni cobros reales desde staging; Google Calendar queda opcional y secundario a la agenda de Alaia. Métricas de redes sociales quedan para una etapa posterior y dependen del acceso que permitan las APIs de cada plataforma.
 

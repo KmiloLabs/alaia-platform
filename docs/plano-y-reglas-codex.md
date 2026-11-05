@@ -1,7 +1,7 @@
 # Plataforma de servicios — plano técnico por capas e instrucciones para Codex
 
 **Versión:** 0.1 · **Fecha:** 5 de noviembre de 2026  
-**Estado:** Alaia; repositorio público creado y prototipo visual del panel iniciado. La arquitectura base está aprobada y se ajusta con evidencia al construir cada capa.
+**Estado:** Alaia; prototipo visual listo, API inicial de identidad/tenant implementada y emuladores configurados. Falta instalar/ejecutar el entorno local y completar la interfaz de acceso; el sistema todavía no está listo para el ensayo del piloto.
 
 
 ## 1. Estado comprobado y límites de esta entrega
@@ -20,6 +20,7 @@ La conversación de referencia confirma las decisiones funcionales. La direcció
 - Panel central para negocios, planes, suscripciones, cobros, vencimientos, estados, mantenimiento, soporte, integraciones y consumo.
 - Panel por negocio: agenda, empleados, servicios, clientes, finanzas, página pública, canales de atención y configuración.
 - Reservas web y por WhatsApp. IA con herramientas acotadas; voz como evolución posterior.
+- El agente lleva la conversación con el cliente para que el profesional pueda concentrarse en prestar el servicio. Identifica si es nuevo o recurrente usando hechos del sistema, consulta historial autorizado, responde, agenda y deriva casos que requieran una persona.
 - Agenda del producto como fuente de verdad. Google Calendar opcional y secundario.
 - Backend propio para reglas de negocio y operaciones críticas. n8n solo como auxiliar si la licencia, privacidad, aislamiento y seguridad son aceptables; nunca exponer su editor a clientes.
 - Proveedores intercambiables para pagos. Verificar firmas de webhooks, tolerar reintentos de forma idempotente y registrar conciliación y reembolsos cuando el proveedor los soporte.
@@ -67,7 +68,7 @@ Es una arquitectura lógica, no una elección de microservicios. Para el inicio 
 | 2. Configuración del piloto | Crear Araan en staging con un profesional, servicios, precios, duración, horarios y zona horaria. | El dueño puede revisar y corregir los datos de muestra; ningún dato real se carga sin su autorización. |
 | 3. Agenda y reservas | Disponibilidad y agenda propia, creación, confirmación, cancelación y reprogramación; página pública de reservas. | No hay doble reserva; horarios y zona horaria son correctos; toda transición queda registrada y limitada al tenant. |
 | 4. Administrador, caja e inventario | Panel conectado a datos reales del tenant; citas y profesionales; registro de ventas; productos, existencias, entradas y salidas; ingresos por día/semana/mes. | Solo se descuentan existencias al confirmar la venta; historial de movimientos conserva quién hizo el cambio; totales financieros se derivan de operaciones registradas. |
-| 5. Agente de atención y ventas | Agente para web/WhatsApp que consulta servicios, horarios, disponibilidad y productos; propone y crea/actualiza citas usando herramientas del backend; deriva casos a una persona. | El agente nunca inventa disponibilidad, precio ni stock. Pide confirmación antes de reservar o registrar venta; una acción repetida no duplica cita, venta ni descuento de inventario. |
+| 5. Agente de atención y ventas | Agente para web/WhatsApp que lleva la conversación, identifica clientes nuevos/recurrentes con historial autorizado, consulta servicios, horarios, disponibilidad y productos; crea/actualiza citas con herramientas del backend; deriva casos a una persona. | El agente nunca inventa disponibilidad, precio, historial ni stock. Pide confirmación antes de reservar, cancelar, reprogramar o registrar venta; acciones repetidas no duplican citas, ventas ni movimientos de inventario. |
 | 6. Ensayo integrado en staging | Completar un recorrido entero con datos ficticios: configurar negocio, reservar por web y agente, atender, registrar venta y revisar inventario/ingresos. Proyecto y cuentas separados de producción. | El dueño de Araan completa el flujo con datos ficticios; permisos, citas, stock y reportes coinciden; se corrigen errores bloqueantes antes del piloto real. |
 | 7. Piloto real de Araan | Cargar únicamente la información necesaria y aprobada por el dueño; acompañar el uso inicial y registrar incidencias. | Consentimiento y privacidad revisados; respaldo y soporte listos; no activar pagos o mensajes automáticos hasta aprobarlos expresamente. |
 | 8. Integraciones y administración SaaS ampliada | Google Calendar opcional y secundario, WhatsApp real, planes, suscripciones, límites, consumo, cobros de Alaia y afiliados. | Webhooks y reintentos idempotentes; acciones de superadmin auditadas; credenciales protegidas; Calendar no reemplaza la agenda de Alaia. |
@@ -88,13 +89,15 @@ Nombres conceptuales; se ajustan al ORM, base de datos y convenciones existentes
 | `Service` | `tenantId`, nombre, duración, precio, buffers, estado, política, categoría. |
 | `ProfessionalProfile` | `tenantId`, usuario/perfil asociado, servicios habilitados, presentación, estado. |
 | `AvailabilityRule` / `TimeOff` | `tenantId`, profesional/recurso, regla recurrente o excepción, intervalo con zona horaria. |
-| `Customer` | `tenantId`, datos mínimos de contacto, consentimiento, preferencias, estado; identificadores externos opcionales. |
+| `Customer` | `tenantId`, datos mínimos de contacto, consentimiento/preferencias de contacto, primera/última visita, conteo de visitas, estado e identificadores externos opcionales. |
+| `CustomerPreference` / `CustomerNote` | Servicio/producto/profesional preferido o nota estrictamente útil; actor, fecha, fuente y control de acceso. Evitar categorías sensibles y texto innecesario. |
+| `CustomerInteraction` | `tenantId`, canal, fecha, resultado y referencias a cita/venta; clasificación nuevo/recurrente derivada de hechos registrados, no inventada por el modelo. |
 | `Appointment` | `tenantId`, cliente, servicio, profesional/sede, inicio/fin, zona, estado, canal, precio congelado, política/versiones relevantes, claves de idempotencia. |
 | `AppointmentEvent` | `tenantId`, cita, transición, actor, fecha, motivo y metadatos seguros; registro append-only. |
 | `Product` | `tenantId`, nombre, SKU opcional, precio, estado, stock mínimo y política de venta. |
 | `InventoryMovement` | `tenantId`, producto, tipo (entrada/venta/ajuste/devolución), cantidad, actor, venta de origen y fecha; registro append-only. |
 | `Sale` / `SaleLine` | `tenantId`, productos/servicios, cantidades, precios congelados, descuentos autorizados, estado y forma de pago; claves de idempotencia. |
-| `AgentSession` / `AgentAction` | `tenantId`, canal, cliente, estado y acciones/herramientas solicitadas; no guardar audio/transcripciones más tiempo del necesario. |
+| `AgentSession` / `AgentAction` | `tenantId`, canal, cliente, estado y herramientas solicitadas; guardar solo contexto útil y referencias, no audio/transcripciones completos por defecto. |
 | `TenantBranding` / `PublicPageConfig` | `tenantId`, dominio/slug, plantilla/version, campos publicables y estado de publicación. |
 | `Subscription` / `Plan` | estado, ciclo, fechas, límites, precio/moneda/versiones; no almacenar datos de tarjeta. |
 | `Payment` / `PaymentEvent` | referencia de proveedor, importe, moneda, estado, intento, firma verificada, timestamps e idempotencia; eventos inmutables. |
@@ -163,7 +166,7 @@ La comprobación se hace en dos niveles:
 3. **Revisión del piloto:** el dueño de Araan recorre el sistema de staging con clientes ficticios y da sus observaciones.
 4. **Piloto real limitado:** solo tras cerrar errores críticos, contar con autorización del dueño y preparar consentimiento, privacidad, respaldo y soporte.
 
-Las pruebas automatizadas se añaden a las capas que verifican reglas críticas: aislamiento tenant, disponibilidad sin dobles reservas, permisos del agente, movimientos de inventario y cálculo de ingresos. Antes del piloto real no se envían mensajes ni se procesan cobros reales desde staging. No se necesitan seguidores sociales, voz ni todos los sectores para validar el primer MVP.
+Las pruebas automatizadas se añaden a las capas que verifican reglas críticas: aislamiento tenant, disponibilidad sin dobles reservas, permisos/memoria del agente, consentimiento/retención, inventario y cálculo de ingresos. El agente solo consulta historia dentro de su tenant y para el propósito permitido. Antes del piloto real no se envían mensajes ni se procesan cobros reales desde staging. No se necesitan seguidores sociales, voz ni todos los sectores para validar el primer MVP.
 
 ## 11. Riesgos y decisiones pendientes
 

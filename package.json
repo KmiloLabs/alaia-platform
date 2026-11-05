@@ -1,0 +1,19 @@
+{
+  "name": "alaia-platform",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/api"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace @alaia/api run dev",
+    "start:api": "npm --workspace @alaia/api run start",
+    "emulators": "firebase emulators:start --only auth,firestore --project demo-alaia"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "firebase-tools": "15.34.2"
+  }
+}

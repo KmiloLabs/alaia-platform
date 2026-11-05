@@ -2,6 +2,8 @@ node_modules/
 .env
 .env.*
 !.env.example
+firebase-debug.log
+ui-debug.log
 dist/
 build/
 coverage/
