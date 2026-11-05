@@ -62,21 +62,17 @@ Es una arquitectura lógica, no una elección de microservicios. Para el inicio 
 
 | Capa | Contenido y dependencias | Criterio de aceptación para avanzar |
 |---|---|---|
-| 0. Auditoría y decisión tecnológica | Inventario del repo, stack, flujos existentes, riesgos, ejecución local, pruebas, despliegue y secretos. Sin dependencias. | Informe reproducible con rutas/archivos, comandos observados, capacidades y vacíos; arquitectura ajustada al código existente y opciones justificadas. Aprobación explícita del usuario. |
-| 1. Fundaciones | Entornos, configuración, logging, errores, migraciones/esquema, CI existente, respaldo y estrategia de despliegue. | Aplicación ejecutable en entorno documentado; secretos fuera del código; logs no filtran datos personales; cambios de esquema reversibles o con plan de recuperación. |
-| 2. Identidad y tenant | Login, usuarios, organizaciones/negocios, membresías, roles, invitaciones, resolución del tenant. | Una suite de autorización demuestra que usuario de A no puede leer, modificar, listar ni inferir registros de B, incluso manipulando IDs. Superadmin usa permisos explícitos y auditados. |
-| 3. Catálogo y configuración sectorial | Negocios, sedes (si se requieren), tipos de negocio, servicios, duración, recursos, horarios, marca, módulos y plantillas versionadas. | El mismo código configura dos sectores distintos sin copiar la aplicación; validación de configuración y cambios auditables. |
-| 4. Profesionales y disponibilidad | Perfiles/membresías, habilidades/servicios, horarios, pausas, ausencias, capacidad y estrategia de asignación. | El cálculo evita conflictos y respeta la política elegida; cambios de disponibilidad no alteran reservas pasadas. |
-| 5. Agenda y reservas | Fuente de verdad; disponibilidad, reserva, confirmación, reprogramación, cancelación, estados, zona horaria y políticas. | Operaciones concurrentes no crean doble reserva; política de cancelación y zona horaria son comprobables; cada transición queda auditada. |
-| 6. Clientes y atención | Perfil de cliente por negocio, consentimiento/preferencias, historial autorizado y notas con control de acceso; web pública responsive. | Cliente ve su información; el negocio solo sus clientes; página pública consulta solo datos publicables y permite reservar por las reglas del tenant. |
-| 7. Notificaciones e integraciones | Correo/SMS/WhatsApp vía adaptadores; Google Calendar opcional; cola/reintentos y estado de entrega. | Fallos externos no duplican reservas; tokens protegidos; integraciones revocables y con estado visible; Calendar no sobrescribe la agenda propia. |
-| 8. Pagos y suscripciones | Planes, ciclos, intentos, pagos, reembolsos, método manual y pasarelas; webhooks firmados, idempotencia, conciliación y libro de eventos. | Reintentos del mismo webhook no duplican efectos; pago pendiente/fallido no se declara pagado; ajustes/reembolsos mantienen traza; conciliación detecta discrepancias. |
-| 9. Finanzas y liquidaciones | Ventas/servicios, reglas de remuneración con vigencia, cierres, ajustes y reportes. | Liquidación cerrada es inmutable; corrección crea ajuste/reverso; reglas nuevas aplican desde su fecha efectiva y el cálculo se puede reproducir. |
-| 10. Consola la plataforma y soporte | Negocios, estado, plan, suscripción, pagos, vencimientos, consumo, soporte, integraciones y acciones administrativas. | Cada acceso/acción privilegiada queda auditada; suspender limita acceso según política documentada sin borrar datos; separación de datos verificada. |
-| 11. IA y WhatsApp | Intenciones acotadas, herramientas permitidas, confirmación humana/cliente para acciones, límites de consumo y registros sin secretos. | La IA solo opera sobre tenant y herramientas autorizados; no puede crear una cita sin validar disponibilidad; fallos se escalan a atención humana y no producen efectos duplicados. |
-| 12. Voz y escalamiento | Canal de voz y proveedores de voz como adaptadores; carga/performance; endurecimiento operacional. | Se construye solo después de medir demanda y validar costos, consentimiento, retención y calidad. Umbrales y plan operativo documentados. |
+| 0. Base del proyecto — en curso | Repositorio, decisiones, reglas de seguridad y prototipo visual. | El proyecto abre localmente, los datos de ejemplo están identificados y no hay secretos en Git. |
+| 1. Identidad y tenant — siguiente | Inicio de sesión, negocio/tenant, membresías, roles y selección segura del negocio activo. | Pruebas de autorización confirman que un usuario de Araan no puede leer ni alterar datos de otro tenant, incluso manipulando IDs. |
+| 2. Configuración del piloto | Crear Araan en staging con un profesional, servicios, precios, duración, horarios y zona horaria. | El dueño puede revisar y corregir los datos de muestra; ningún dato real se carga sin su autorización. |
+| 3. Agenda y reservas | Disponibilidad y agenda propia, creación, confirmación, cancelación y reprogramación; página pública de reservas. | No hay doble reserva; horarios y zona horaria son correctos; toda transición queda registrada y limitada al tenant. |
+| 4. Panel del negocio | Citas por fecha, clientes atendidos, clientes nuevos y ventas diarias/semanales/mensuales basadas en movimientos registrados; perfil del profesional. | Los totales coinciden con reservas y pagos de prueba; el dueño ve el equipo de su negocio y cada perfil respeta los permisos. |
+| 5. QA de piloto — antes de datos reales | Probar en local con datos ficticios y en staging separado de producción; revisar móvil, escritorio, permisos, errores y recuperación. | El dueño de Araan puede completar el flujo en staging con clientes ficticios; se corrigen bloqueos antes de cargar información real. |
+| 6. Integraciones de atención | Recordatorios; Google Calendar opcional y secundario; WhatsApp mediante adaptador, con credenciales protegidas. | Reintentos no duplican citas ni mensajes; Calendar no reemplaza la agenda de Alaia; WhatsApp solo se activa con configuración y consentimiento revisados. |
+| 7. Administración SaaS y finanzas | Superadmin, planes, suscripciones, límites, consumo, cobros de Alaia, afiliados, conciliación y liquidaciones. | Acciones privilegiadas auditadas; cobros y reembolsos son idempotentes; liquidaciones cerradas no se editan silenciosamente. |
+| 8. Crecimiento | Plantillas para otros sectores, dominios propios, métricas de redes sociales cuando las APIs oficiales den acceso, IA y voz más adelante. | Cada integración tiene permisos y costos por tenant; no se incorporan funciones que no puedan probarse o sostenerse. |
 
-Las capas 8 y 9 pueden desarrollarse en secuencia después de la agenda básica, priorizando la necesidad comercial. La capa 11 depende de identidad, tenant, agenda, consentimiento y adaptadores; la voz queda expresamente fuera del MVP.
+No esperamos a construir el sistema completo para probarlo: cada capa debe pasar sus criterios antes de avanzar. El piloto de Araan entra después de que identidad, tenant, agenda y reserva estén listos en staging.
 
 ## 6. Modelo de datos inicial
 
@@ -153,9 +149,15 @@ Los nombres siguientes son contratos conceptuales, no rutas ya implementadas. La
 
 ## 10. Pruebas y evidencia esperada por capa
 
-Las pruebas son parte de los criterios de salida de una etapa, pero **no se deben ejecutar ni añadir ahora** porque el trabajo solicitado en este turno es documentación y la instrucción previa prohíbe implementar antes de aprobar. Tras aprobación, Codex debe primero inspeccionar las pruebas y herramientas existentes y proponer una matriz apropiada al stack.
+El ensayo se hace por etapas, no solo al final:
 
-Matriz futura mínima a cubrir durante implementación: autorización por rol y aislamiento tenant; reglas de agenda/concurrencia/zona horaria; transición de estados; idempotencia de webhooks y trabajos; cálculo reproducible e inmutabilidad de liquidaciones; límites de uso y estados de suscripción; integración degradada/reintentos; herramientas de IA autorizadas; restauración de respaldo. Cada criterio debe apuntar a evidencia reproducible y no contener secretos ni datos reales innecesarios.
+1. **Local:** interfaz y lógica con datos ficticios; se corrigen errores evidentes de flujo.
+2. **Staging:** proyecto Firebase separado, cuentas de prueba y datos simulados; nunca copiar la base de producción.
+3. **QA funcional:** probar cada rol en móvil y escritorio, acceso entre tenants, reservas simultáneas, cambio/cancelación, fechas y totales financieros.
+4. **Revisión del piloto:** el dueño de Araan recorre el flujo en staging con clientes ficticios y da sus observaciones.
+5. **Piloto real limitado:** solo después de cerrar errores críticos, contar con autorización del dueño y definir consentimiento, privacidad, respaldo y soporte.
+
+Las pruebas automatizadas se añaden a las capas que verifican reglas críticas; cada criterio debe tener evidencia reproducible. Antes del piloto real se prohíben mensajes o cobros reales desde staging. No se necesitan seguidores sociales, voz ni todos los sectores para validar las reservas iniciales.
 
 ## 11. Riesgos y decisiones pendientes
 

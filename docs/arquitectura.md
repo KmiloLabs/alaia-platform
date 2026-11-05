@@ -129,17 +129,9 @@ No asumir que los planes gratuitos alcanzan para este volumen: Firestore cobra p
 
 ## Capas de trabajo y criterios para aprobar
 
-1. **Capa 0 — Repositorios y seguridad operativa:** mantener Novara intacto; repositorio público de Alaia creado, con documentación y reglas Git.
-2. **Capa 1 — Fundamentos:** prototipo visual iniciado; implementar Auth, membresías, roles y tenant scoping sobre Firebase/Cloud Run. Criterio: cada petición demuestra pertenencia; pruebas de acceso cruzado son denegadas.
-3. **Capa 2 — Administración de plataforma:** alta/estado/plan/límites/consumo, soporte y auditoría. Criterio: el superadministrador actúa en herramientas separadas y todas las mutaciones sensibles quedan auditadas.
-4. **Capa 3 — Núcleo del negocio:** servicios, profesionales, disponibilidad y agenda propia. Criterio: una reserva simultánea no duplica el horario; historial de cancelación/reagendamiento queda completo.
-5. **Capa 4 — Panel y página pública:** plantillas por sector, subdominio, personalización visual y flujo de reserva. Criterio: un dominio no puede servir datos del tenant equivocado.
-6. **Capa 5 — Comunicación:** WhatsApp Cloud API, confirmaciones, recordatorios, atención humana y n8n auxiliar. Criterio: webhook verificado, eventos idempotentes, errores recuperables y sin editor de n8n para clientes.
-7. **Capa 6 — Cobros y afiliados:** cobro manual/automático, proveedores intercambiables, reembolsos/concilación cuando existan, comisiones y pagos de afiliado. Criterio: no se genera comisión por pago fallido/reembolsado sin el ajuste correspondiente.
-8. **Capa 7 — Consumo y IA/audio:** cuotas, costos por tenant, Groq y Fish Audio opcionales, borrado/retención. Criterio: proveedor sustituible y gasto atribuible antes de habilitarlo a todos.
-9. **Capa 8 — Escala y expansión sectorial:** nuevas plantillas, dominios propios, facturación electrónica mediante proveedor autorizado DIAN y voz en tiempo real tras validar demanda.
+El trabajo sigue una ruta incremental: 1) terminar base y diseño; 2) login, membresías y aislamiento tenant; 3) configurar Araan con un solo profesional y datos ficticios; 4) agenda y reserva web; 5) panel e ingresos conectados a operaciones; 6) QA en staging con el dueño; 7) piloto real autorizado; 8) WhatsApp/Google Calendar y pagos; 9) superadmin y expansión; 10) analítica social, IA y voz. Cada paso se prueba antes del siguiente; no se construye todo el sistema para ensayarlo una sola vez al final.
 
-Cada capa debe cerrar con requisitos, modelo de datos, permisos, API/eventos, estrategia de errores, criterios de aceptación, revisión de riesgos y evidencia de verificación antes de abrir la siguiente.
+Para QA: datos ficticios en local, luego proyecto Firebase aislado de staging y cuentas de prueba. Araan revisa flujos en staging antes de compartir datos reales. No se envían mensajes ni cobros reales desde staging; Google Calendar queda opcional y secundario a la agenda de Alaia. Métricas de redes sociales quedan para una etapa posterior y dependen del acceso que permitan las APIs de cada plataforma.
 
 ## Fuentes oficiales consultadas
 
