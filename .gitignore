@@ -7,5 +7,6 @@ ui-debug.log
 dist/
 build/
 coverage/
+work/
 .DS_Store
 Thumbs.db
