@@ -436,6 +436,25 @@
               <form id="schedule-form" aria-describedby="schedule-help">
                 <p class="visually-hidden" id="schedule-help">Horario semanal de atención del negocio.</p>
                 <div class="schedule-days" id="schedule-days"></div>
+                <div class="date-overrides-section" id="date-overrides-section">
+                  <div class="date-overrides-head">
+                    <div><p class="eyebrow">FECHAS ESPECIALES</p><h3>Domingos y festivos puntuales</h3></div>
+                    <label class="services-filter"><input type="checkbox" id="date-overrides-show-past" /> Ver pasadas</label>
+                  </div>
+                  <p class="field-hint">Una excepción manda sobre el horario semanal solo para esa fecha. Se guarda con «Guardar horario».</p>
+                  <div class="date-overrides-list" id="date-overrides-list" aria-live="polite"></div>
+                  <p class="date-overrides-empty" id="date-overrides-empty" hidden>Sin fechas especiales</p>
+                  <div class="date-override-form" id="date-override-form">
+                    <div><label for="date-override-date">Fecha</label><input type="date" id="date-override-date" /></div>
+                    <div><label for="date-override-type">Tipo</label><select id="date-override-type"><option value="open">Abierto</option><option value="closed">Cerrado</option></select></div>
+                    <div class="form-pair date-override-times" id="date-override-times">
+                      <label for="date-override-open">Apertura<input type="time" id="date-override-open" value="10:00" /></label>
+                      <label for="date-override-close">Cierre<input type="time" id="date-override-close" value="14:00" /></label>
+                    </div>
+                    <button class="secondary-button" id="add-date-override" type="button">Agregar fecha</button>
+                  </div>
+                  <p class="form-error" id="date-override-error" role="alert" aria-live="assertive"></p>
+                </div>
                 <div class="schedule-foot">
                   <div class="schedule-step">
                     <label for="schedule-step">Intervalo entre citas</label>

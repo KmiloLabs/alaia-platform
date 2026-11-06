@@ -19,6 +19,134 @@ export const DEFAULT_OPENING_HOURS = Object.freeze(
 
 const TIME_PATTERN = /^(\d{1,2}):(\d{2})$/;
 const pad = (value) => String(value).padStart(2, "0");
+export const MAX_DATE_OVERRIDES = 120;
+
+// Excepciones por fecha guardadas en el negocio. Lee solo las válidas: valores
+// viejos/corruptos se ignoran para no romper la agenda.
+export function resolveDateOverrides(tenant) {
+  const raw = Array.isArray(tenant?.dateOverrides) ? tenant.dateOverrides : [];
+  const seen = new Set();
+  const normalized = [];
+
+  for (const entry of raw.slice(0, MAX_DATE_OVERRIDES)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const date = typeof entry.date === "string" ? entry.date.trim() : "";
+    if (!isValidLocalDate(date) || seen.has(date)) continue;
+
+    if (entry.closed === true) {
+      seen.add(date);
+      normalized.push({ date, closed: true });
+      continue;
+    }
+    if (entry.closed !== undefined && entry.closed !== false) continue;
+
+    const openMinutes = parseTimeToMinutes(entry.open);
+    const closeMinutes = parseTimeToMinutes(entry.close);
+    if (openMinutes === null || closeMinutes === null || openMinutes >= closeMinutes) continue;
+    seen.add(date);
+    normalized.push({
+      date,
+      closed: false,
+      open: minutesToTime(openMinutes),
+      close: minutesToTime(closeMinutes),
+    });
+  }
+
+  return normalized.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Validación del PATCH: reemplaza la lista completa. Acepta el array o {dateOverrides}.
+export function validateDateOverrides(body) {
+  const list = Array.isArray(body) ? body : body?.dateOverrides;
+  if (!Array.isArray(list)) {
+    return invalidDateOverride("invalid_date_overrides", "La lista de fechas especiales no es válida.");
+  }
+  if (list.length > MAX_DATE_OVERRIDES) {
+    return invalidDateOverride("invalid_date_overrides", `Puedes guardar como máximo ${MAX_DATE_OVERRIDES} fechas especiales.`);
+  }
+
+  const seen = new Set();
+  const value = [];
+  for (const entry of list) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return invalidDateOverride("invalid_date_overrides", "Cada fecha especial debe ser un objeto válido.");
+    }
+    const date = typeof entry.date === "string" ? entry.date.trim() : "";
+    if (!isValidLocalDate(date)) {
+      return invalidDateOverride("invalid_override_date", "Cada fecha especial debe ser una fecha AAAA-MM-DD válida.");
+    }
+    if (seen.has(date)) {
+      return invalidDateOverride("duplicate_override_date", "No puedes repetir la misma fecha especial.");
+    }
+    seen.add(date);
+
+    const closed = entry.closed ?? false;
+    if (typeof closed !== "boolean") {
+      return invalidDateOverride("invalid_date_overrides", "El campo closed debe ser true o false.");
+    }
+    if (closed) {
+      value.push({ date, closed: true });
+      continue;
+    }
+
+    const openMinutes = parseTimeToMinutes(entry.open);
+    const closeMinutes = parseTimeToMinutes(entry.close);
+    if (openMinutes === null || closeMinutes === null || openMinutes >= closeMinutes) {
+      return invalidDateOverride("invalid_override_hours", "Las horas de una fecha abierta deben ser válidas y open < close.");
+    }
+    value.push({
+      date,
+      closed: false,
+      open: minutesToTime(openMinutes),
+      close: minutesToTime(closeMinutes),
+    });
+  }
+
+  value.sort((a, b) => a.date.localeCompare(b.date));
+  return { ok: true, value };
+}
+
+// Horario efectivo de una fecha concreta: la excepción manda sobre el semanal.
+export function resolveEffectiveWindows(tenant, dateString) {
+  if (!isValidLocalDate(dateString)) return [];
+
+  const override = resolveDateOverrides(tenant).find((entry) => entry.date === dateString);
+  if (override) {
+    return override.closed ? [] : [{ open: override.open, close: override.close }];
+  }
+
+  const dayNumber = businessDayNumber(dateString);
+  return resolveOpeningHours(tenant)
+    .filter((entry) => entry.day === dayNumber)
+    .sort((a, b) => parseTimeToMinutes(a.open) - parseTimeToMinutes(b.open))
+    .map((entry) => ({ open: entry.open, close: entry.close }));
+}
+
+// ¿La hora pedida cae dentro de alguno de los tramos efectivos de esa fecha?
+export function isWithinEffectiveWindows({ windows, startsAtLocal, durationMinutes }) {
+  if (typeof startsAtLocal !== "string" || startsAtLocal.length < 16) return false;
+  const startMinutes = parseTimeToMinutes(startsAtLocal.slice(11, 16));
+  if (startMinutes === null || !Number.isInteger(durationMinutes) || durationMinutes <= 0) return false;
+  return (Array.isArray(windows) ? windows : []).some((window) => {
+    const openMinutes = parseTimeToMinutes(window?.open);
+    const closeMinutes = parseTimeToMinutes(window?.close);
+    if (openMinutes === null || closeMinutes === null) return false;
+    return startMinutes >= openMinutes && startMinutes + durationMinutes <= closeMinutes;
+  });
+}
+
+// Validación de la reserva del panel (crear/reprogramar) contra el horario efectivo.
+export function validateAppointmentWindow({ tenant, startsAtLocal, durationMinutes }) {
+  const date = typeof startsAtLocal === "string" ? startsAtLocal.slice(0, 10) : "";
+  const windows = resolveEffectiveWindows(tenant, date);
+  if (isWithinEffectiveWindows({ windows, startsAtLocal, durationMinutes })) return { ok: true };
+  return {
+    ok: false,
+    status: 400,
+    code: "outside_business_hours",
+    message: "La hora no está disponible dentro del horario de atención.",
+  };
+}
 
 // Valida y normaliza el horario de atención. Sin valor usa el horario por defecto.
 export function normalizeOpeningHours(value) {
@@ -127,6 +255,7 @@ export function generateAvailabilitySlots({
   to,
   timeZone,
   openingHours = DEFAULT_OPENING_HOURS,
+  dateOverrides = null,
   durationMinutes,
   stepMinutes,
   now = new Date(),
@@ -149,10 +278,12 @@ export function generateAvailabilitySlots({
 
   let currentDate = from;
   while (currentDate <= to) {
-    const dayNumber = businessDayNumber(currentDate);
-    const windows = openingHours
-      .filter((entry) => entry.day === dayNumber)
-      .sort((a, b) => parseTimeToMinutes(a.open) - parseTimeToMinutes(b.open));
+    // La excepción por fecha manda sobre el horario semanal.
+    const windows = dateOverrides !== null
+      ? resolveEffectiveWindows({ openingHours, dateOverrides }, currentDate)
+      : openingHours
+        .filter((entry) => entry.day === businessDayNumber(currentDate))
+        .sort((a, b) => parseTimeToMinutes(a.open) - parseTimeToMinutes(b.open));
 
     for (const window of windows) {
       const openMinutes = parseTimeToMinutes(window.open);
@@ -227,6 +358,10 @@ function parseTimeToMinutes(value) {
 
 function minutesToTime(minutes) {
   return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+}
+
+function invalidDateOverride(code, message) {
+  return { ok: false, status: 400, code, message };
 }
 
 function invalidOpeningHours() {

@@ -387,6 +387,7 @@ async function crearCita(args, context, deps) {
 
   const result = await deps.createAppointment({
     tenantId: context.tenant.id,
+    tenant: context.tenant,
     timeZone: resolveTenantTimeZone(context.tenant),
     actorUid: context.actorUid,
     body: {
@@ -419,6 +420,7 @@ async function reprogramarCita(args, context, deps) {
 
   const result = await deps.rescheduleAppointment({
     tenantId: context.tenant.id,
+    tenant: context.tenant,
     timeZone: resolveTenantTimeZone(context.tenant),
     actorUid: context.actorUid,
     appointmentId,

@@ -55,6 +55,7 @@ appointmentRoutes.post(
   asyncRoute(async (req, res) => {
     const result = await createAppointment({
       tenantId: req.tenant.id,
+      tenant: req.tenant,
       timeZone: resolveTenantTimeZone(req.tenant),
       actorUid: req.user.uid,
       body: req.body,
@@ -103,6 +104,7 @@ appointmentRoutes.post(
   asyncRoute(async (req, res) => {
     const result = await rescheduleAppointment({
       tenantId: req.tenant.id,
+      tenant: req.tenant,
       timeZone: resolveTenantTimeZone(req.tenant),
       actorUid: req.user.uid,
       appointmentId: req.params.appointmentId,

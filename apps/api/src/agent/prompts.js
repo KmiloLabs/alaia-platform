@@ -2,13 +2,14 @@
 // (zona horaria, fecha actual, horario) más las instrucciones y el tono del
 // dueño. Sin datos quemados de otros negocios ni de la clínica dental de n8n.
 
-import { resolveOpeningHours } from "../availability.js";
+import { resolveDateOverrides, resolveOpeningHours } from "../availability.js";
 import { isValidTimeZone, utcToLocalDate, utcToLocalDateTime } from "../timezone.js";
 
 const FALLBACK_TIME_ZONE = "America/Bogota";
 const DAY_NAMES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
 const ALLOWED_ACTIONS = "responder|ofrecer_horarios|reservar|reprogramar|cancelar|derivar";
 const MAX_SERVICES_IN_PROMPT = 15;
+const MAX_OVERRIDES_IN_PROMPT = 5;
 
 export function buildAgentSystemPrompt({ tenant, config, services = [], now = new Date() }) {
   const name = typeof tenant?.name === "string" && tenant.name.trim() !== "" ? tenant.name.trim() : "el negocio";
@@ -26,12 +27,19 @@ export function buildAgentSystemPrompt({ tenant, config, services = [], now = ne
     .map(formatServiceLine)
     .filter(Boolean);
   const contactLines = buildContactLines(tenant);
+  const upcomingOverrides = resolveDateOverrides(tenant)
+    .filter((entry) => entry.date >= currentDate)
+    .slice(0, MAX_OVERRIDES_IN_PROMPT)
+    .map((entry) => (entry.closed ? `${entry.date} cerrado` : `${entry.date} abierto ${entry.open}-${entry.close}`));
 
   return [
     `Eres el asistente de recepción de ${name} y atiendes a clientes por escrito.`,
     `Negocio: ${name}. Zona horaria del negocio: ${timeZone}.`,
     `Fecha y hora actuales en el negocio: ${humanNow} (${currentLocal}; fecha local ${currentDate}).`,
     `Horario de atención: ${formatOpeningHours(openingHours)}.`,
+    ...(upcomingOverrides.length > 0
+      ? [`Fechas especiales próximas (mandan sobre el horario semanal): ${upcomingOverrides.join("; ")}.`]
+      : []),
     `Servicios activos: ${serviceLines.length > 0 ? serviceLines.join("; ") : "(sin servicios configurados)"}.`,
     ...(contactLines.length > 0 ? [`Información del negocio: ${contactLines.join(" ")}`] : []),
     `Tono de atención: ${tone}.`,
@@ -39,6 +47,7 @@ export function buildAgentSystemPrompt({ tenant, config, services = [], now = ne
     "Reglas:",
     "- Responde en español, breve (máximo 3 frases), sin markdown y con un emoji como máximo.",
     "- No inventes precios, horarios, disponibilidad ni historial: usa las herramientas y responde solo con lo que devuelvan.",
+    "- Las excepciones por fecha mandan sobre el horario semanal; no ofrezcas horarios de un día cerrado ni fuera de una fecha especial abierta.",
     "- Usa consultar_servicios para conocer el catálogo y no cotices distinto al catálogo; si el servicio no está, dilo y ofrece transferir a una persona.",
     "- Al reservar un servicio del catálogo, pasa crear_cita con serviceId: el backend fija el nombre, la duración y el precio.",
     "- Para reservar, pide nombre y teléfono si el cliente no los dio; pasa customerName y customerPhone a crear_cita.",

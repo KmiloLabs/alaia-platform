@@ -1169,3 +1169,45 @@ a.customer-info-value { color: var(--teal); }
 .status-inactive { background: #f1e9e2; color: #8a6a4f; }
 [data-theme="dark"] .status-active { background: #1d3a2b; color: #9ad6b0; }
 [data-theme="dark"] .status-inactive { background: #3a2f27; color: #d8b79a; }
+
+/* ---------------------------------------------------------------------------
+   Fechas especiales del horario
+   --------------------------------------------------------------------------- */
+.date-overrides-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.date-overrides-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 5px; }
+.date-overrides-head h3 { margin: 2px 0 0; color: var(--ink); font-size: 15px; letter-spacing: -.3px; }
+.date-overrides-list { display: grid; gap: 6px; margin-top: 9px; }
+.date-override-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: #fbfcfb; }
+.date-override-date { display: grid; gap: 1px; min-width: 0; }
+.date-override-date strong { color: var(--ink); font-size: 11px; text-transform: capitalize; }
+.date-override-date small { color: #8b9895; font-size: 8px; }
+.date-override-badge { padding: 4px 7px; border-radius: 6px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.date-override-badge.is-open { background: #eaf5f1; color: #2f776b; }
+.date-override-badge.is-closed { background: #f6ece8; color: #9a5b4a; }
+.date-overrides-empty { margin: 9px 0; padding: 13px; border: 1px dashed var(--line); border-radius: 9px; color: #8b9895; font-size: 10px; text-align: center; }
+.date-override-form { display: grid; grid-template-columns: minmax(130px, .8fr) minmax(100px, .6fr) minmax(0, 1.4fr) auto; align-items: end; gap: 8px; margin-top: 11px; }
+.date-override-form > div { min-width: 0; }
+.date-override-form label { display: block; margin-bottom: 3px; color: #526460; font-size: 9px; font-weight: 700; }
+.date-override-form input, .date-override-form select { width: 100%; height: 36px; padding: 0 8px; border: 1px solid #dfe7e3; border-radius: 8px; background: #fff; color: var(--ink); font-size: 10px; }
+.date-override-times { display: flex; gap: 6px; }
+.date-override-times label { flex: 1; }
+.date-override-form .secondary-button { min-height: 36px; padding: 0 10px; font-size: 9px; white-space: nowrap; }
+.date-override-form[hidden] { display: none; }
+
+@media (max-width: 760px) {
+  .date-override-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .date-override-row .row-cancel { grid-column: 2; }
+  .date-override-form { grid-template-columns: 1fr 1fr; }
+  .date-override-form .date-override-times { grid-column: 1 / -1; }
+  .date-override-form .secondary-button { grid-column: 1 / -1; min-height: 44px; }
+  .date-overrides-head { flex-direction: column; }
+}
+
+[data-theme="dark"] .date-override-row { background: #14211f; border-color: var(--line); }
+[data-theme="dark"] .date-override-date strong { color: var(--ink); }
+[data-theme="dark"] .date-override-date small { color: #98aca6; }
+[data-theme="dark"] .date-override-badge.is-open { background: #1f3a34; color: #a9ded1; }
+[data-theme="dark"] .date-override-badge.is-closed { background: #3a2825; color: #e8a79c; }
+[data-theme="dark"] .date-overrides-empty { color: #98aca6; border-color: #334743; }
+[data-theme="dark"] .date-override-form label { color: #98aca6; }
+[data-theme="dark"] .date-override-form input, [data-theme="dark"] .date-override-form select { background: #1b2b28; border-color: #334743; color: var(--ink); }

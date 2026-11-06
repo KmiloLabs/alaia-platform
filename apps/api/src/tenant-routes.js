@@ -8,8 +8,10 @@ import {
   MAX_STEP_MINUTES,
   MIN_STEP_MINUTES,
   normalizeOpeningHours,
+  resolveDateOverrides,
   resolveOpeningHours,
   resolveSlotStepMinutes,
+  validateDateOverrides,
   validateTenantScheduleUpdate,
 } from "./availability.js";
 import { createService } from "./service-catalog.js";
@@ -55,6 +57,7 @@ tenantRoutes.get("/me/tenants", asyncRoute(async (req, res) => {
       sector: tenant.sector,
       timeZone: tenant.timeZone,
       openingHours: resolveOpeningHours(tenant),
+      dateOverrides: resolveDateOverrides(tenant),
       slotStepMinutes: resolveSlotStepMinutes(tenant),
       ...resolveBusinessProfile(tenant),
       ...serializeTrial(tenant),
@@ -182,13 +185,17 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
   const profile = validateBusinessProfileInput(body);
   if (!profile.ok) return sendError(res, 400, profile.code, profile.message);
 
-  const hasScheduleFields = body.openingHours !== undefined || body.slotStepMinutes !== undefined;
+  const hasHoursFields = body.openingHours !== undefined || body.slotStepMinutes !== undefined;
+  const hasScheduleFields = hasHoursFields || body.dateOverrides !== undefined;
   if (!hasScheduleFields && !profile.hasAny) {
     return sendError(res, 400, "empty_update", "Indica al menos un campo del negocio para actualizar.");
   }
 
-  const schedule = hasScheduleFields ? validateTenantScheduleUpdate(body) : { ok: true, value: {} };
+  const schedule = hasHoursFields ? validateTenantScheduleUpdate(body) : { ok: true, value: {} };
   if (!schedule.ok) return sendError(res, 400, schedule.code, schedule.message);
+
+  const overrides = body.dateOverrides !== undefined ? validateDateOverrides(body) : { ok: true, value: undefined };
+  if (!overrides.ok) return sendError(res, 400, overrides.code, overrides.message);
 
   const update = {
     updatedAt: FieldValue.serverTimestamp(),
@@ -196,6 +203,7 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
   };
   if (schedule.value.openingHours !== undefined) update.openingHours = schedule.value.openingHours;
   if (schedule.value.slotStepMinutes !== undefined) update.slotStepMinutes = schedule.value.slotStepMinutes;
+  if (overrides.value !== undefined) update.dateOverrides = overrides.value;
   if (profile.value.description !== undefined) update.description = profile.value.description;
   if (profile.value.address !== undefined) update.address = profile.value.address;
   if (profile.value.phone !== undefined) update.phone = profile.value.phone;
@@ -212,6 +220,7 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
     ...req.tenant,
     openingHours: schedule.value.openingHours ?? req.tenant.openingHours,
     slotStepMinutes: schedule.value.slotStepMinutes ?? req.tenant.slotStepMinutes,
+    dateOverrides: overrides.value !== undefined ? overrides.value : resolveDateOverrides(req.tenant),
     description: profile.value.description ?? req.tenant.description,
     address: profile.value.address ?? req.tenant.address,
     phone: profile.value.phone ?? req.tenant.phone,
@@ -226,6 +235,7 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
       sector: req.tenant.sector,
       timeZone: req.tenant.timeZone,
       openingHours: resolveOpeningHours(updatedTenant),
+      dateOverrides: resolveDateOverrides(updatedTenant),
       slotStepMinutes: resolveSlotStepMinutes(updatedTenant),
       ...resolveBusinessProfile(updatedTenant),
     },
@@ -241,6 +251,7 @@ tenantRoutes.get("/tenants/:tenantId/context", requireTenantMembership, (req, re
       sector: req.tenant.sector,
       timeZone: req.tenant.timeZone,
       openingHours: resolveOpeningHours(req.tenant),
+      dateOverrides: resolveDateOverrides(req.tenant),
       slotStepMinutes: resolveSlotStepMinutes(req.tenant),
       ...resolveBusinessProfile(req.tenant),
       status: req.tenant.status,

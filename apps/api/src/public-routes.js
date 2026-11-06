@@ -7,7 +7,7 @@ import { db } from "./firebase.js";
 import { asyncRoute, sendError } from "./http.js";
 import { resolveTenantStatus } from "./platform.js";
 import { resolveBusinessProfile } from "./business-profile.js";
-import { resolveOpeningHours } from "./availability.js";
+import { resolveDateOverrides, resolveOpeningHours } from "./availability.js";
 import {
   createAppointment,
   getAvailability,
@@ -158,6 +158,7 @@ publicRoutes.post("/public/tenants/:slug/appointments", bookingRateLimit, asyncR
     startsAtLocal: input.startsAtLocal,
     durationMinutes: service.durationMinutes,
     openingHours: resolveOpeningHours(tenant),
+    dateOverrides: resolveDateOverrides(tenant),
     timeZone,
     now: new Date(),
   });
@@ -181,6 +182,7 @@ publicRoutes.post("/public/tenants/:slug/appointments", bookingRateLimit, asyncR
 
   const result = await createAppointment({
     tenantId: tenant.id,
+    tenant,
     timeZone,
     actorUid: null,
     source: "public",

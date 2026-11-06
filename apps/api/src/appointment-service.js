@@ -7,8 +7,10 @@ import { db } from "./firebase.js";
 import { isValidTimeZone, localDateRangeToUtc } from "./timezone.js";
 import {
   generateAvailabilitySlots,
+  resolveDateOverrides,
   resolveOpeningHours,
   resolveSlotStepMinutes,
+  validateAppointmentWindow,
   validateAvailabilityQuery,
 } from "./availability.js";
 import {
@@ -105,6 +107,7 @@ export async function getAvailability({ tenant, query, now = new Date(), profess
     to,
     timeZone,
     openingHours,
+    dateOverrides: resolveDateOverrides(tenant),
     durationMinutes,
     stepMinutes,
     now,
@@ -123,7 +126,7 @@ export async function getAvailability({ tenant, query, now = new Date(), profess
   };
 }
 
-export async function createAppointment({ tenantId, timeZone, actorUid, body, source = "panel" }) {
+export async function createAppointment({ tenantId, tenant = null, timeZone, actorUid, body, source = "panel" }) {
   const rawBody = body && typeof body === "object" && !Array.isArray(body) ? body : {};
 
   // customerId opcional: el cliente debe pertenecer al negocio y sus datos
@@ -170,6 +173,18 @@ export async function createAppointment({ tenantId, timeZone, actorUid, body, so
   if (!validation.ok) return { ok: false, status: 400, code: validation.code, message: validation.message };
 
   const input = validation.value;
+
+  // La reserva del panel también respeta el horario efectivo de esa fecha.
+  const scheduleTenant = await getTenantForSchedule(tenant, tenantId);
+  if (scheduleTenant) {
+    const windowCheck = validateAppointmentWindow({
+      tenant: scheduleTenant,
+      startsAtLocal: input.startsAtLocal,
+      durationMinutes: input.durationMinutes,
+    });
+    if (!windowCheck.ok) return windowCheck;
+  }
+
   const appointments = appointmentsRef(tenantId);
   const appointmentRef = input.clientRequestId
     ? appointments.doc(deriveAppointmentId(input.clientRequestId))
@@ -332,13 +347,31 @@ export async function setAppointmentStatus({ tenantId, actorUid, membership, app
   return { ok: true, appointment: serializeAppointment(appointmentId, outcome.data) };
 }
 
-export async function rescheduleAppointment({ tenantId, timeZone, actorUid, appointmentId, body }) {
+export async function rescheduleAppointment({ tenantId, tenant = null, timeZone, actorUid, appointmentId, body }) {
   if (!isValidAppointmentId(appointmentId)) return appointmentNotFound();
 
   const validation = validateRescheduleInput(body, timeZone);
   if (!validation.ok) return { ok: false, status: 400, code: validation.code, message: validation.message };
 
   const { startsAtLocal, startsAtUtc, durationMinutes: requestedDuration } = validation.value;
+
+  // Reprogramar también valida el horario efectivo de la nueva fecha.
+  const scheduleTenant = await getTenantForSchedule(tenant, tenantId);
+  if (scheduleTenant) {
+    let durationForWindow = requestedDuration;
+    if (durationForWindow === null) {
+      const currentSnapshot = await appointmentsRef(tenantId).doc(appointmentId).get();
+      durationForWindow = currentSnapshot.exists && Number.isInteger(currentSnapshot.data().durationMinutes)
+        ? currentSnapshot.data().durationMinutes
+        : 45;
+    }
+    const windowCheck = validateAppointmentWindow({
+      tenant: scheduleTenant,
+      startsAtLocal,
+      durationMinutes: durationForWindow,
+    });
+    if (!windowCheck.ok) return windowCheck;
+  }
 
   // professionalId en reschedule: ausente conserva, null desasigna, id reasigna
   // (validando siempre el hueco del profesional/cupo compartido resultante).
@@ -464,6 +497,13 @@ export async function rescheduleAppointment({ tenantId, timeZone, actorUid, appo
 
 function appointmentsRef(tenantId) {
   return db.collection("tenants").doc(tenantId).collection("appointments");
+}
+
+// Las rutas y herramientas ya traen el tenant; si no, se lee para validar horario.
+async function getTenantForSchedule(tenant, tenantId) {
+  if (tenant && typeof tenant === "object") return tenant;
+  const snapshot = await db.collection("tenants").doc(tenantId).get();
+  return snapshot.exists ? { id: tenantId, ...snapshot.data() } : null;
 }
 
 function appointmentNotFound() {

@@ -2,7 +2,7 @@
 // fechas, duración del servicio, horario/futuro de la cita y saneado de datos
 // públicos (nunca exponer correo del dueño, comisiones, teléfonos, clientes…).
 
-import { businessDayNumber } from "./availability.js";
+import { businessDayNumber, resolveEffectiveWindows } from "./availability.js";
 import {
   addDays,
   formatLocalDateTime,
@@ -89,17 +89,25 @@ export function validatePublicBookingInput(body) {
   };
 }
 
-// La cita debe caer dentro del horario de atención del día y en el futuro.
-export function validatePublicStart({ startsAtLocal, durationMinutes, openingHours, timeZone, now = new Date() }) {
+// La cita debe caer dentro del horario efectivo del día (sin excepción manda el
+// semanal; con excepción manda la fecha) y en el futuro.
+export function validatePublicStart({
+  startsAtLocal,
+  durationMinutes,
+  openingHours,
+  dateOverrides = null,
+  timeZone,
+  now = new Date(),
+}) {
   const parts = parseLocalDateTime(startsAtLocal);
   if (!parts) return outsideBusinessHours();
 
   const startMinutes = parts.hour * 60 + parts.minute;
-  const dayNumber = businessDayNumber(
-    `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`,
-  );
-  const dayWindows = (Array.isArray(openingHours) ? openingHours : []).filter((entry) => entry.day === dayNumber);
-  const fits = dayWindows.some((entry) => {
+  const dateString = `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+  const windows = dateOverrides === null
+    ? (Array.isArray(openingHours) ? openingHours : []).filter((entry) => entry.day === businessDayNumber(dateString))
+    : resolveEffectiveWindows({ openingHours, dateOverrides }, dateString);
+  const fits = windows.some((entry) => {
     const open = parseTimeToMinutes(entry.open);
     const close = parseTimeToMinutes(entry.close);
     if (open === null || close === null) return false;

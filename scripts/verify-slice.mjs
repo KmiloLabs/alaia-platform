@@ -822,6 +822,80 @@ async function main() {
   });
   check("Un estado activo inválido responde 400", badActive.status === 400 && badActive.json?.error?.code === "invalid_active", `HTTP ${badActive.status} ${badActive.json?.error?.code ?? ""}`);
 
+  section("25. Fechas especiales del horario");
+  const isoFor = (offset) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(Date.now() + offset * 86400000));
+  const weekdayName = (iso) => new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short" }).format(new Date(`${iso}T12:00:00Z`));
+  const findDate = (target) => {
+    for (let offset = 3; offset < 20; offset += 1) {
+      const iso = isoFor(offset);
+      if (weekdayName(iso) === target) return iso;
+    }
+    return "";
+  };
+  const specialSunday = findDate("Sun");
+  const closedWeekday = findDate("Tue");
+
+  const overridesSaved = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken,
+    body: { dateOverrides: [
+      { date: specialSunday, closed: false, open: "10:00", close: "14:00" },
+      { date: closedWeekday, closed: true },
+    ] },
+  });
+  const savedOverrides = overridesSaved.json?.tenant?.dateOverrides ?? [];
+  check("El dueño guarda fechas especiales", overridesSaved.status === 200 && savedOverrides.length === 2, `${savedOverrides.length} fecha(s)`);
+
+  const contextOverrides = await api(`/api/v1/tenants/${tenantA.tenantId}/context`, { token: userA.idToken });
+  check("Las fechas especiales viajan en el contexto", (contextOverrides.json?.tenant?.dateOverrides ?? []).length === 2, "en /context");
+
+  const sundaySlotsSpecial = await api(`/api/v1/tenants/${tenantA.tenantId}/availability?from=${specialSunday}&to=${specialSunday}&durationMinutes=30`, { token: userA.idToken });
+  const sundayTimes = (sundaySlotsSpecial.json?.slots ?? []).map((slot) => slot.startsAtLocal.split("T")[1]);
+  check("El domingo especial abre solo 10:00-14:00", sundayTimes.length > 0 && sundayTimes.every((time) => time >= "10:00" && time <= "13:30"), `${sundayTimes[0] ?? ""}..${sundayTimes.at(-1) ?? ""}`);
+
+  let otherSunday = "";
+  for (let offset = 3; offset < 25; offset += 1) {
+    const iso = isoFor(offset);
+    if (weekdayName(iso) === "Sun" && iso !== specialSunday) {
+      otherSunday = iso;
+      break;
+    }
+  }
+  const otherSundaySlots = await api(`/api/v1/tenants/${tenantA.tenantId}/availability?from=${otherSunday}&to=${otherSunday}&durationMinutes=30`, { token: userA.idToken });
+  check("Los demás domingos siguen cerrados", (otherSundaySlots.json?.slots ?? []).length === 0, `${otherSunday}`);
+
+  const closedDaySlots = await api(`/api/v1/tenants/${tenantA.tenantId}/availability?from=${closedWeekday}&to=${closedWeekday}&durationMinutes=30`, { token: userA.idToken });
+  check("Un laborable cerrado por excepción no ofrece horarios", (closedDaySlots.json?.slots ?? []).length === 0, `${closedWeekday}`);
+
+  const specialBooking = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Domingo", serviceName: "Corte de cabello", startsAt: `${specialSunday}T10:00`, durationMinutes: 30, priceCOP: 45000 },
+  });
+  check("Se puede reservar el domingo especial", specialBooking.status === 201, `HTTP ${specialBooking.status}`);
+
+  const lateBooking = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Domingo", serviceName: "Corte de cabello", startsAt: `${specialSunday}T16:00`, durationMinutes: 30, priceCOP: 45000 },
+  });
+  check("Fuera del horario especial responde 400", lateBooking.status === 400 && lateBooking.json?.error?.code === "outside_business_hours", `HTTP ${lateBooking.status}`);
+
+  const closedBooking = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Cerrado", serviceName: "Corte de cabello", startsAt: `${closedWeekday}T10:00`, durationMinutes: 30, priceCOP: 45000 },
+  });
+  check("Reservar en un día cerrado responde 400", closedBooking.status === 400 && closedBooking.json?.error?.code === "outside_business_hours", `HTTP ${closedBooking.status}`);
+
+  const duplicateOverride = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken,
+    body: { dateOverrides: [{ date: specialSunday, closed: true }, { date: specialSunday, closed: true }] },
+  });
+  check("Una fecha repetida responde 400", duplicateOverride.status === 400 && duplicateOverride.json?.error?.code === "duplicate_override_date", `HTTP ${duplicateOverride.status}`);
+
+  const badOverrideHours = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken,
+    body: { dateOverrides: [{ date: specialSunday, closed: false, open: "14:00", close: "10:00" }] },
+  });
+  check("Horas de excepción inválidas responden 400", badOverrideHours.status === 400 && badOverrideHours.json?.error?.code === "invalid_override_hours", `HTTP ${badOverrideHours.status}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {

@@ -395,6 +395,16 @@ const appointmentProfessionalHint = $("#appointment-professional-hint");
 const scheduleForm = $("#schedule-form");
 const scheduleDays = $("#schedule-days");
 const scheduleStep = $("#schedule-step");
+const dateOverridesList = $("#date-overrides-list");
+const dateOverridesEmpty = $("#date-overrides-empty");
+const dateOverridesShowPast = $("#date-overrides-show-past");
+const dateOverrideDate = $("#date-override-date");
+const dateOverrideType = $("#date-override-type");
+const dateOverrideTimes = $("#date-override-times");
+const dateOverrideOpen = $("#date-override-open");
+const dateOverrideClose = $("#date-override-close");
+const addDateOverride = $("#add-date-override");
+const dateOverrideError = $("#date-override-error");
 const scheduleStatus = $("#schedule-status");
 const scheduleMessage = $("#schedule-message");
 const scheduleSaveButton = $("#schedule-save");
@@ -634,6 +644,9 @@ const state = {
   serviceTargetId: null,
   scheduleSeq: 0,
   scheduleSaving: false,
+  dateOverrides: [],
+  dateOverridesDirty: false,
+  showPastDateOverrides: false,
   serviceCatalogAvailable: false,
   customers: [],
   customersTenantId: null,
@@ -2596,7 +2609,10 @@ async function loadSchedule(seq = state.sessionSeq) {
     const context = await getTenantContext(tenantId);
     if (seq !== state.sessionSeq || loadSeq !== state.scheduleSeq || state.tenant?.tenantId !== tenantId) return;
     state.context = context;
+    state.dateOverrides = normalizeDateOverrides(context?.tenant?.dateOverrides);
+    state.dateOverridesDirty = false;
     renderSchedule();
+    renderDateOverrides();
     renderProfile();
     setScheduleStatus("Horario listo", "ready");
   } catch (error) {
@@ -2655,6 +2671,7 @@ function renderSchedule() {
 
   scheduleDays.replaceChildren(...rows);
   renderScheduleStep();
+  renderDateOverrides();
   clearScheduleMessage();
 }
 
@@ -2743,6 +2760,158 @@ function collectSchedule() {
   return { openingHours, invalidRow };
 }
 
+function normalizeDateOverrides(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const result = [];
+  for (const item of raw.slice(0, 120)) {
+    const date = typeof item?.date === "string" ? item.date : "";
+    if (!isDateValue(date) || seen.has(date)) continue;
+    if (item.closed === true) {
+      seen.add(date);
+      result.push({ date, closed: true });
+      continue;
+    }
+    const open = normalizeTimeValue(item?.open);
+    const close = normalizeTimeValue(item?.close);
+    if (!open || !close || open >= close) continue;
+    seen.add(date);
+    result.push({ date, closed: false, open, close });
+  }
+  return result.sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function formatDateOverrideLabel(dateValue) {
+  const formatted = new Intl.DateTimeFormat("es-CO", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(`${dateValue}T12:00:00Z`));
+  return formatted.replace(/,/g, "").replace(/\s+/g, " ");
+}
+
+function showDateOverrideError(message) {
+  dateOverrideError.textContent = message;
+}
+
+function setDateOverrideDirty() {
+  state.dateOverridesDirty = true;
+  if (scheduleStatus.classList.contains("is-ready") || scheduleStatus.classList.contains("is-warning")) {
+    setScheduleStatus("Cambios sin guardar", "warning");
+  }
+}
+
+function renderDateOverrides() {
+  if (!dateOverridesList) return;
+  const today = todayValue();
+  if (dateOverrideDate && !dateOverrideDate.value) dateOverrideDate.value = today;
+  if (dateOverrideDate) dateOverrideDate.min = today;
+  const all = [...state.dateOverrides].sort((left, right) => left.date.localeCompare(right.date));
+  const visible = state.showPastDateOverrides ? all : all.filter((item) => item.date >= today);
+  dateOverridesEmpty.hidden = visible.length > 0;
+  dateOverridesEmpty.textContent = all.length
+    ? "No hay fechas especiales próximas"
+    : "Sin fechas especiales";
+  dateOverridesList.replaceChildren(...visible.map((override) => {
+    const row = document.createElement("article");
+    row.className = "date-override-row";
+    const date = document.createElement("div");
+    date.className = "date-override-date";
+    const day = document.createElement("strong");
+    day.textContent = formatDateOverrideLabel(override.date);
+    const raw = document.createElement("small");
+    raw.textContent = override.date;
+    date.append(day, raw);
+    const badge = document.createElement("span");
+    badge.className = `date-override-badge ${override.closed ? "is-closed" : "is-open"}`;
+    badge.textContent = override.closed ? "Cerrado" : `Abierto ${override.open}–${override.close}`;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "row-cancel";
+    remove.dataset.removeDateOverride = override.date;
+    remove.textContent = "Eliminar";
+    remove.setAttribute("aria-label", `Eliminar la fecha especial del ${formatDateOverrideLabel(override.date)}`);
+    row.append(date, badge, remove);
+    return row;
+  }));
+  const timesHidden = dateOverrideType.value === "closed";
+  dateOverrideTimes.hidden = timesHidden;
+}
+
+function toggleDateOverrideTimes() {
+  const closed = dateOverrideType.value === "closed";
+  dateOverrideTimes.hidden = closed;
+  dateOverrideOpen.disabled = closed;
+  dateOverrideClose.disabled = closed;
+}
+
+function addDateOverrideEntry() {
+  showDateOverrideError("");
+  const date = dateOverrideDate.value;
+  if (!isDateValue(date)) {
+    showDateOverrideError("Elige una fecha válida.");
+    dateOverrideDate.focus();
+    return;
+  }
+  if (date < todayValue()) {
+    showDateOverrideError("La fecha no puede estar en el pasado.");
+    dateOverrideDate.focus();
+    return;
+  }
+  if (state.dateOverrides.some((item) => item.date === date)) {
+    showDateOverrideError("Ya existe una fecha especial para ese día.");
+    dateOverrideDate.focus();
+    return;
+  }
+  if (state.dateOverrides.length >= 120) {
+    showDateOverrideError("Puedes guardar como máximo 120 fechas especiales.");
+    return;
+  }
+  const closed = dateOverrideType.value === "closed";
+  if (closed) {
+    state.dateOverrides.push({ date, closed: true });
+  } else {
+    const open = normalizeTimeValue(dateOverrideOpen.value);
+    const close = normalizeTimeValue(dateOverrideClose.value);
+    if (!open || !close || open >= close) {
+      showDateOverrideError("La hora de cierre debe ser posterior a la de apertura.");
+      dateOverrideClose.focus();
+      return;
+    }
+    state.dateOverrides.push({ date, closed: false, open, close });
+  }
+  setDateOverrideDirty();
+  renderDateOverrides();
+  clearScheduleMessage();
+  dateOverrideDate.value = "";
+}
+
+function removeDateOverride(dateValue) {
+  const override = state.dateOverrides.find((item) => item.date === dateValue);
+  if (!override) return;
+  if (!window.confirm(`¿Eliminar la fecha especial del ${formatDateOverrideLabel(override.date)}?`)) return;
+  state.dateOverrides = state.dateOverrides.filter((item) => item.date !== dateValue);
+  setDateOverrideDirty();
+  showDateOverrideError("");
+  renderDateOverrides();
+  clearScheduleMessage();
+}
+
+addDateOverride.addEventListener("click", addDateOverrideEntry);
+dateOverrideType.addEventListener("change", toggleDateOverrideTimes);
+dateOverridesShowPast.addEventListener("change", () => {
+  state.showPastDateOverrides = dateOverridesShowPast.checked;
+  renderDateOverrides();
+});
+dateOverridesList.addEventListener("click", (event) => {
+  const remove = event.target.closest("[data-remove-date-override]");
+  if (remove) removeDateOverride(remove.dataset.removeDateOverride);
+});
+dateOverrideDate.addEventListener("change", () => {
+  showDateOverrideError("");
+});
+
 async function saveSchedule() {
   if (!state.tenant || state.scheduleSaving) return;
   clearScheduleMessage();
@@ -2772,12 +2941,15 @@ async function saveSchedule() {
   setScheduleStatus("Guardando…", "loading");
 
   try {
-    await updateTenant(tenantId, { openingHours, slotStepMinutes });
+    await updateTenant(tenantId, { openingHours, slotStepMinutes, dateOverrides: state.dateOverrides });
     const context = await getTenantContext(tenantId);
     if (state.tenant?.tenantId !== tenantId) return;
     state.context = context;
     state.availabilityCache.clear();
+    state.dateOverrides = normalizeDateOverrides(context?.tenant?.dateOverrides);
+    state.dateOverridesDirty = false;
     renderSchedule();
+    renderDateOverrides();
     setScheduleStatus("Guardado", "ready");
     showScheduleMessage("Horario guardado. La agenda ya usa estos horarios.", "ok");
     showToast("Horario de atención guardado.");
@@ -2801,6 +2973,12 @@ async function saveSchedule() {
 function setScheduleBusy(busy) {
   for (const field of scheduleDays.querySelectorAll("input")) field.disabled = busy;
   scheduleStep.disabled = busy;
+  if (dateOverrideDate) dateOverrideDate.disabled = busy;
+  if (dateOverrideType) dateOverrideType.disabled = busy;
+  if (dateOverrideOpen) dateOverrideOpen.disabled = busy;
+  if (dateOverrideClose) dateOverrideClose.disabled = busy;
+  if (addDateOverride) addDateOverride.disabled = busy;
+  for (const button of dateOverridesList?.querySelectorAll("button") ?? []) button.disabled = busy;
   scheduleSaveButton.disabled = busy;
   scheduleSaveButton.textContent = busy ? "Guardando…" : "Guardar horario";
   if (!busy) {
