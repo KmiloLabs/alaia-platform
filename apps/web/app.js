@@ -24,6 +24,7 @@ import {
   deactivateProfessional,
   deactivateService,
   deletePlatformProvider,
+  activateService,
   deleteServicePermanently,
   disconnectWhatsappNumber,
   getAgentConfig,
@@ -2867,6 +2868,12 @@ servicesList.addEventListener("click", async (event) => {
   if (deleteButton && !deleteButton.disabled) {
     const service = state.services.find((item) => item.id === deleteButton.dataset.deleteServiceId);
     if (service) await deleteServiceItem(service, deleteButton);
+    return;
+  }
+  const reactivateButton = event.target.closest("[data-reactivate-service-id]");
+  if (reactivateButton && !reactivateButton.disabled) {
+    const service = state.services.find((item) => item.id === reactivateButton.dataset.reactivateServiceId);
+    if (service) await reactivateServiceItem(service, reactivateButton);
   }
 });
 
@@ -2963,12 +2970,14 @@ function serviceRowHtml(service) {
   if (description) detailParts.push(description);
   const editLabel = `Editar el servicio ${name || "sin nombre"}`;
   const deactivateLabel = `Desactivar el servicio ${name || "sin nombre"}`;
+  const reactivateLabel = `Reactivar el servicio ${name || "sin nombre"}`;
   const deleteLabel = `Eliminar definitivamente el servicio ${name || "sin nombre"}`;
   const editButton = `<button class="row-shift" type="button" data-edit-service-id="${escapeHtml(service.id)}" aria-label="${escapeHtml(editLabel)}">Editar</button>`;
   const deleteButton = `<button class="row-cancel" type="button" data-delete-service-id="${escapeHtml(service.id)}" aria-label="${escapeHtml(deleteLabel)}">Eliminar</button>`;
+  const reactivateButton = `<button class="row-shift" type="button" data-reactivate-service-id="${escapeHtml(service.id)}" aria-label="${escapeHtml(reactivateLabel)}">Reactivar</button>`;
 
   const actions = inactive
-    ? `<div class="row-actions">${editButton}${deleteButton}</div>`
+    ? `<div class="row-actions">${editButton}${reactivateButton}${deleteButton}</div>`
     : `<div class="row-actions">${editButton}<button class="row-shift" type="button" data-deactivate-service-id="${escapeHtml(service.id)}" aria-label="${escapeHtml(deactivateLabel)}">Desactivar</button>${deleteButton}</div>`;
 
   return `
@@ -3082,6 +3091,32 @@ serviceForm.addEventListener("submit", async (event) => {
     setServiceBusy(false);
   }
 });
+
+async function reactivateServiceItem(service, button) {
+  const tenantId = state.tenant?.tenantId;
+  if (!tenantId) return;
+  button.disabled = true;
+  button.textContent = "Activando…";
+  try {
+    await activateService(tenantId, service.id);
+    state.servicesLoaded = false;
+    showToast(`Servicio «${service.name}» activado.`);
+    await loadServices({ force: true });
+    if (state.view === "servicios") setServicesStatus("Servicio activado.", "ok");
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    showToast(messageForError(error));
+    button.disabled = false;
+    button.textContent = "Reactivar";
+  }
+}
 
 async function deleteServiceItem(service, button) {
   const tenantId = state.tenant?.tenantId;

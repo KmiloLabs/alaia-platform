@@ -42,6 +42,13 @@ export function validateServiceInput(body, { partial = false } = {}) {
     value.name = name;
   }
 
+  if (input.active !== undefined) {
+    if (typeof input.active !== "boolean") {
+      return invalid("invalid_active", "El estado activo debe ser true o false.");
+    }
+    value.active = input.active;
+  }
+
   if (input.description !== undefined) {
     if (typeof input.description !== "string") {
       return invalid("invalid_service_description", "La descripción debe ser texto.");

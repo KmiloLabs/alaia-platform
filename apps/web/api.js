@@ -403,6 +403,13 @@ export function deactivateService(tenantId, serviceId) {
   );
 }
 
+export function activateService(tenantId, serviceId) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/services/${encodeURIComponent(serviceId)}`, {
+    method: "PATCH",
+    body: { active: true },
+  });
+}
+
 export function deleteServicePermanently(tenantId, serviceId) {
   return request(
     `/api/v1/tenants/${encodeURIComponent(tenantId)}/services/${encodeURIComponent(serviceId)}?hard=1`,

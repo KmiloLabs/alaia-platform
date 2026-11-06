@@ -803,6 +803,25 @@ async function main() {
   const deleteAgain = await api(`/api/v1/tenants/${tenantA.tenantId}/services/${toDeleteId}?hard=1`, { method: "DELETE", token: userA.idToken });
   check("Eliminar dos veces responde 404", deleteAgain.status === 404 && deleteAgain.json?.error?.code === "service_not_found", `HTTP ${deleteAgain.status}`);
 
+  section("24. Reactivar servicio");
+  const reactivateService = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, {
+    method: "POST", token: userA.idToken, body: { name: "Servicio Reactivable", durationMinutes: 25, priceCOP: 15000 },
+  });
+  const reactivateId = reactivateService.json?.service?.serviceId ?? reactivateService.json?.service?.id;
+  await api(`/api/v1/tenants/${tenantA.tenantId}/services/${reactivateId}`, { method: "DELETE", token: userA.idToken });
+  const reactivatedService = await api(`/api/v1/tenants/${tenantA.tenantId}/services/${reactivateId}`, {
+    method: "PATCH", token: userA.idToken, body: { active: true },
+  });
+  check("Un servicio desactivado se puede reactivar", reactivatedService.status === 200 && reactivatedService.json?.service?.active === true, `HTTP ${reactivatedService.status}`);
+
+  const reactivatedList = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, { token: userA.idToken });
+  check("El servicio reactivado vuelve al catálogo", (reactivatedList.json?.services ?? []).some((item) => item.name === "Servicio Reactivable"), "en el catálogo activo");
+
+  const badActive = await api(`/api/v1/tenants/${tenantA.tenantId}/services/${reactivateId}`, {
+    method: "PATCH", token: userA.idToken, body: { active: "si" },
+  });
+  check("Un estado activo inválido responde 400", badActive.status === 400 && badActive.json?.error?.code === "invalid_active", `HTTP ${badActive.status} ${badActive.json?.error?.code ?? ""}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {

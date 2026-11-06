@@ -249,3 +249,12 @@ test("normaliza nombres e ids", () => {
   assert.equal(isValidServiceId("id con espacios"), false);
   assert.equal(isValidServiceId(""), false);
 });
+
+test("PATCH accepta active booleano y rechaza otros valores", () => {
+  const ok = validateServiceInput({ active: true }, { partial: true });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.value.active, true);
+  const bad = validateServiceInput({ active: "si" }, { partial: true });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.code, "invalid_active");
+});
