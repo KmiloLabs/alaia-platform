@@ -763,6 +763,46 @@ async function main() {
   const workingTrial = await api(`/api/v1/tenants/${tenantA.tenantId}/context`, { token: userA.idToken });
   check("Al renovar la prueba el negocio vuelve a operar", renewedTrial.status === 200 && workingTrial.status === 200, `HTTP ${workingTrial.status}`);
 
+  section("22. Canal de WhatsApp (modo prueba)");
+  const waPhoneId = `999${Date.now()}`;
+  const waConnect = await api(`/api/v1/platform/tenants/${tenantA.tenantId}/whatsapp`, {
+    method: "PUT", token: admin.idToken, body: { phoneNumberId: waPhoneId, displayPhone: "+57 300 111 2222" },
+  });
+  check("Plataforma conecta el número de WhatsApp", waConnect.status === 200, `HTTP ${waConnect.status}`);
+
+  const waDetail = await api(`/api/v1/platform/tenants/${tenantA.tenantId}`, { token: admin.idToken });
+  check("El detalle de plataforma muestra el número conectado", waDetail.json?.tenant?.whatsapp?.connected === true && waDetail.json?.tenant?.whatsapp?.phoneNumberId === waPhoneId, `connected=${waDetail.json?.tenant?.whatsapp?.connected}`);
+
+  const waChannel = await api(`/api/v1/tenants/${tenantA.tenantId}/channel/whatsapp`, { token: userA.idToken });
+  check("El negocio ve su canal en modo prueba", waChannel.status === 200 && waChannel.json?.mode === "sandbox" && waChannel.json?.connected === true, `mode=${waChannel.json?.mode}`);
+
+  const waTest = await api(`/api/v1/tenants/${tenantA.tenantId}/channel/whatsapp/test`, { method: "POST", token: userA.idToken, body: { text: "Hola, ¿tienen cita mañana?" } });
+  check("El chat de prueba responde con el agente", waTest.status === 200 && typeof waTest.json?.reply === "string" && waTest.json.reply.length > 0, `action=${waTest.json?.action ?? ""}`);
+
+  const waChallenge = await http(`${API_BASE}/api/v1/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=${encodeURIComponent(process.env.WHATSAPP_VERIFY_TOKEN ?? "alaia-verify-token")}&hub.challenge=challenge-123`);
+  check("El webhook valida el challenge de Meta", waChallenge.status === 200 && waChallenge.text === "challenge-123", `HTTP ${waChallenge.status}`);
+
+  const waBadToken = await http(`${API_BASE}/api/v1/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=incorrecto&hub.challenge=x`);
+  check("Un verify token incorrecto responde 403", waBadToken.status === 403, `HTTP ${waBadToken.status}`);
+
+  const waDisconnect = await api(`/api/v1/platform/tenants/${tenantA.tenantId}/whatsapp`, { method: "DELETE", token: admin.idToken });
+  const waAfter = await api(`/api/v1/tenants/${tenantA.tenantId}/channel/whatsapp`, { token: userA.idToken });
+  check("Desconectar el número deja el canal libre", waDisconnect.status === 200 && waAfter.json?.connected === false, `connected=${waAfter.json?.connected}`);
+
+  section("23. Eliminar servicio definitivamente");
+  const toDelete = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, {
+    method: "POST", token: userA.idToken, body: { name: "Servicio Temporal", durationMinutes: 20, priceCOP: 10000 },
+  });
+  const toDeleteId = toDelete.json?.service?.serviceId ?? toDelete.json?.service?.id;
+  const hardDelete = await api(`/api/v1/tenants/${tenantA.tenantId}/services/${toDeleteId}?hard=1`, { method: "DELETE", token: userA.idToken });
+  check("Un servicio sin uso se puede eliminar", hardDelete.status === 200 && hardDelete.json?.deleted === true, `HTTP ${hardDelete.status}`);
+
+  const afterHardDelete = await api(`/api/v1/tenants/${tenantA.tenantId}/services?includeInactive=1`, { token: userA.idToken });
+  check("El servicio eliminado no aparece ni como inactivo", !(afterHardDelete.json?.services ?? []).some((item) => item.name === "Servicio Temporal"), `servicios=${(afterHardDelete.json?.services ?? []).length}`);
+
+  const deleteAgain = await api(`/api/v1/tenants/${tenantA.tenantId}/services/${toDeleteId}?hard=1`, { method: "DELETE", token: userA.idToken });
+  check("Eliminar dos veces responde 404", deleteAgain.status === 404 && deleteAgain.json?.error?.code === "service_not_found", `HTTP ${deleteAgain.status}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {

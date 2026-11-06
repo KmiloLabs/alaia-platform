@@ -17,6 +17,7 @@ import {
 } from "./platform.js";
 import { trialEndsAtFromNow } from "./trial.js";
 import { serializeTrial } from "./trial.js";
+import { whatsappNumberRepository } from "./whatsapp-repository.js";
 
 const TENANT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_RECENT_ACTIVITY = 10;
@@ -141,8 +142,23 @@ export async function getPlatformTenantDetail({ tenantId }) {
       ...serializeTenantBase(tenant),
       members,
       recentActivity,
+      whatsapp: await resolveTenantWhatsapp(tenantId),
     },
   };
+}
+
+async function resolveTenantWhatsapp(tenantId) {
+  try {
+    const number = await whatsappNumberRepository.findActiveByTenant(tenantId);
+    if (!number) return { connected: false, phoneNumberId: null, displayPhone: null };
+    return {
+      connected: true,
+      phoneNumberId: number.phoneNumberId ?? null,
+      displayPhone: number.displayPhone ?? null,
+    };
+  } catch {
+    return { connected: false, phoneNumberId: null, displayPhone: null };
+  }
 }
 
 export async function updatePlatformTenant({ tenantId, body, actorUid = null }) {

@@ -32,6 +32,10 @@ export const serviceRepository = {
     return { serviceId: ref.id, data: snapshot.data() };
   },
 
+  async delete(tenantId, serviceId) {
+    await db.collection("tenants").doc(tenantId).collection("services").doc(serviceId).delete();
+  },
+
   async update(tenantId, serviceId, data) {
     const ref = servicesCollection(tenantId).doc(serviceId);
     await ref.set({ ...data, updatedAt: FieldValue.serverTimestamp() }, { merge: true });

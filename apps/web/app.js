@@ -24,11 +24,14 @@ import {
   deactivateProfessional,
   deactivateService,
   deletePlatformProvider,
+  deleteServicePermanently,
+  disconnectWhatsappNumber,
   getAgentConfig,
   getCustomer,
   getDashboard,
   getInvitation,
   getMe,
+  getWhatsappChannel,
   getPlatformSummary,
   getPlatformTenant,
   getPublicAvailability,
@@ -51,7 +54,9 @@ getTenantContext,
   saveAgentConfig,
   sendAgentMessage,
   testPlatformProvider,
+  testWhatsappMessage,
   updateAppointmentStatus,
+  connectWhatsappNumber,
   updateCustomer,
   updatePlatformProvider,
   updateProfessional,
@@ -475,7 +480,7 @@ const profilePhoneInput = $("#profile-phone");
 const profileInstagramInput = $("#social-instagram");
 const profileFacebookInput = $("#social-facebook");
 const profileTikTokInput = $("#social-tiktok");
-const profileWhatsAppInput = $("#social-whatsapp");
+
 const profileWebsiteInput = $("#social-website");
 const profileError = $("#profile-error");
 const profileMessage = $("#profile-message");
@@ -913,7 +918,7 @@ function publicSocialEntries(socialLinks) {
     if (!value || !/^https:\/\//i.test(value)) continue;
     entries.push({ label, href: value });
   }
-  const whatsapp = typeof links.whatsapp === "string" ? links.whatsapp.replace(/\D+/g, "") : "";
+  const whatsapp = normalizeWhatsAppDigits(links.whatsapp);
   if (whatsapp) entries.push({ label: "WhatsApp", href: `https://wa.me/${whatsapp}` });
   return entries;
 }
@@ -1408,8 +1413,28 @@ async function sendWhatsappTestMessage() {
 // Plataforma: conectar número de WhatsApp
 // ---------------------------------------------------------------------------
 
+const PLATFORM_WHATSAPP_CACHE_KEY = "alaia.platformWhatsappCache";
+
+function readPlatformWhatsappCache() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PLATFORM_WHATSAPP_CACHE_KEY) ?? "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePlatformWhatsappCache(cache) {
+  try {
+    localStorage.setItem(PLATFORM_WHATSAPP_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Sin persistencia si el navegador bloquea localStorage.
+  }
+}
+
 function platformWhatsappDetails(tenant) {
-  const raw = tenant?.whatsapp ?? tenant?.whatsappNumber ?? tenant?.channel?.whatsapp ?? null;
+  const raw = tenant?.whatsapp ?? tenant?.whatsappNumber ?? tenant?.channel?.whatsapp
+    ?? readPlatformWhatsappCache()[tenant?.tenantId] ?? null;
   if (!raw) return null;
   return {
     phoneNumberId: String(raw.phoneNumberId ?? raw.id ?? ""),
@@ -1458,6 +1483,9 @@ async function connectPlatformWhatsapp() {
     });
     const channel = data?.whatsapp ?? data?.channel ?? data;
     if (state.platformDetailData) state.platformDetailData.whatsapp = channel;
+    const cache = readPlatformWhatsappCache();
+    cache[tenantId] = { phoneNumberId: channel?.phoneNumberId ?? phoneNumberId, displayPhone: channel?.displayPhone ?? platformWhatsappDisplay.value.trim() };
+    writePlatformWhatsappCache(cache);
     renderPlatformWhatsapp(state.platformDetailData);
     platformWhatsappMessage.textContent = "Número conectado.";
     platformWhatsappMessage.className = "form-status is-ok";
@@ -1480,6 +1508,9 @@ async function disconnectPlatformWhatsapp() {
   try {
     await disconnectWhatsappNumber(tenantId);
     if (state.platformDetailData) delete state.platformDetailData.whatsapp;
+    const cache = readPlatformWhatsappCache();
+    delete cache[tenantId];
+    writePlatformWhatsappCache(cache);
     renderPlatformWhatsapp(state.platformDetailData);
     platformWhatsappMessage.textContent = "Número desconectado.";
     platformWhatsappMessage.className = "form-status is-ok";
@@ -2830,6 +2861,12 @@ servicesList.addEventListener("click", async (event) => {
   if (deactivateButton && !deactivateButton.disabled) {
     const service = state.services.find((item) => item.id === deactivateButton.dataset.deactivateServiceId);
     if (service) await deactivateServiceItem(service, deactivateButton);
+    return;
+  }
+  const deleteButton = event.target.closest("[data-delete-service-id]");
+  if (deleteButton && !deleteButton.disabled) {
+    const service = state.services.find((item) => item.id === deleteButton.dataset.deleteServiceId);
+    if (service) await deleteServiceItem(service, deleteButton);
   }
 });
 
@@ -2926,10 +2963,13 @@ function serviceRowHtml(service) {
   if (description) detailParts.push(description);
   const editLabel = `Editar el servicio ${name || "sin nombre"}`;
   const deactivateLabel = `Desactivar el servicio ${name || "sin nombre"}`;
+  const deleteLabel = `Eliminar definitivamente el servicio ${name || "sin nombre"}`;
+  const editButton = `<button class="row-shift" type="button" data-edit-service-id="${escapeHtml(service.id)}" aria-label="${escapeHtml(editLabel)}">Editar</button>`;
+  const deleteButton = `<button class="row-cancel" type="button" data-delete-service-id="${escapeHtml(service.id)}" aria-label="${escapeHtml(deleteLabel)}">Eliminar</button>`;
 
   const actions = inactive
-    ? `<div class="row-actions"></div>`
-    : `<div class="row-actions"><button class="row-shift" type="button" data-edit-service-id="${escapeHtml(service.id)}" aria-label="${escapeHtml(editLabel)}">Editar</button><button class="row-cancel" type="button" data-deactivate-service-id="${escapeHtml(service.id)}" aria-label="${escapeHtml(deactivateLabel)}">Desactivar</button></div>`;
+    ? `<div class="row-actions">${editButton}${deleteButton}</div>`
+    : `<div class="row-actions">${editButton}<button class="row-shift" type="button" data-deactivate-service-id="${escapeHtml(service.id)}" aria-label="${escapeHtml(deactivateLabel)}">Desactivar</button>${deleteButton}</div>`;
 
   return `
     <article class="service-row${inactive ? " is-inactive" : ""}">
@@ -3042,6 +3082,37 @@ serviceForm.addEventListener("submit", async (event) => {
     setServiceBusy(false);
   }
 });
+
+async function deleteServiceItem(service, button) {
+  const tenantId = state.tenant?.tenantId;
+  if (!tenantId) return;
+  const confirmed = window.confirm(
+    `¿Eliminar definitivamente «${service.name}»? No se puede deshacer. Las citas anteriores conservan el nombre del servicio.`,
+  );
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = "Eliminando…";
+  try {
+    await deleteServicePermanently(tenantId, service.id);
+    state.servicesLoaded = false;
+    showToast(`Servicio «${service.name}» eliminado.`);
+    await loadServices({ force: true });
+    if (state.view === "servicios") setServicesStatus("Servicio eliminado definitivamente.", "ok");
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    showToast(messageForError(error));
+    button.disabled = false;
+    button.textContent = "Eliminar";
+  }
+}
 
 async function deactivateServiceItem(service, button) {
   const tenantId = state.tenant?.tenantId;
@@ -3988,7 +4059,7 @@ profileForm.addEventListener("submit", async (event) => {
   await saveProfile();
 });
 
-for (const field of [profileDescriptionInput, profileAddressInput, profilePhoneInput, profileInstagramInput, profileFacebookInput, profileTikTokInput, profileWhatsAppInput, profileWebsiteInput]) {
+for (const field of [profileDescriptionInput, profileAddressInput, profilePhoneInput, profileInstagramInput, profileFacebookInput, profileTikTokInput, profileWebsiteInput]) {
   field.addEventListener("input", () => {
     state.profileDirty = true;
     if (field === profileDescriptionInput) updateProfileDescriptionCount();
@@ -4002,6 +4073,17 @@ function updateProfileDescriptionCount() {
   if (profileDescriptionCount) profileDescriptionCount.textContent = String(profileDescriptionInput.value.length);
 }
 
+function normalizeWhatsAppDigits(value) {
+  const digits = String(value ?? "").replace(/\D+/g, "");
+  if (digits.length < 7) return "";
+  if (digits.length === 10) return `57${digits}`;
+  return digits;
+}
+
+function profileWhatsappValue() {
+  return normalizeWhatsAppDigits(profilePhoneInput?.value ?? "");
+}
+
 function renderProfile(force = false) {
   const tenant = state.context?.tenant;
   if (!tenant) return;
@@ -4012,11 +4094,12 @@ function renderProfile(force = false) {
   const social = tenant.socialLinks ?? {};
   profileDescriptionInput.value = typeof tenant.description === "string" ? tenant.description : "";
   profileAddressInput.value = typeof tenant.address === "string" ? tenant.address : "";
-  profilePhoneInput.value = typeof tenant.phone === "string" ? tenant.phone : "";
+  const legacyWhatsapp = typeof social.whatsapp === "string" ? social.whatsapp : "";
+  profilePhoneInput.value = typeof tenant.phone === "string" && tenant.phone ? tenant.phone : legacyWhatsapp;
   profileInstagramInput.value = typeof social.instagram === "string" ? social.instagram : "";
   profileFacebookInput.value = typeof social.facebook === "string" ? social.facebook : "";
   profileTikTokInput.value = typeof social.tiktok === "string" ? social.tiktok : "";
-  profileWhatsAppInput.value = typeof social.whatsapp === "string" ? social.whatsapp : "";
+
   profileWebsiteInput.value = typeof social.website === "string" ? social.website : "";
   state.profileDirty = false;
   updateProfileDescriptionCount();
@@ -4034,7 +4117,7 @@ function socialLinkItems() {
     { key: "instagram", label: "Instagram", value: profileInstagramInput.value.trim() },
     { key: "facebook", label: "Facebook", value: profileFacebookInput.value.trim() },
     { key: "tiktok", label: "TikTok", value: profileTikTokInput.value.trim() },
-    { key: "whatsapp", label: "WhatsApp", value: profileWhatsAppInput.value.trim() },
+    { key: "whatsapp", label: "WhatsApp", value: profileWhatsappValue() },
     { key: "website", label: "Sitio web", value: profileWebsiteInput.value.trim() },
   ].filter((item) => item.value);
 }
@@ -4101,7 +4184,7 @@ async function saveProfile() {
     instagram: profileInstagramInput.value.trim(),
     facebook: profileFacebookInput.value.trim(),
     tiktok: profileTikTokInput.value.trim(),
-    whatsapp: profileWhatsAppInput.value.trim(),
+    whatsapp: profileWhatsappValue(),
     website: profileWebsiteInput.value.trim(),
   };
 
@@ -4180,7 +4263,7 @@ async function saveProfile() {
 }
 
 function setProfileBusy(busy) {
-  for (const field of [profileDescriptionInput, profileAddressInput, profilePhoneInput, profileInstagramInput, profileFacebookInput, profileTikTokInput, profileWhatsAppInput, profileWebsiteInput]) {
+  for (const field of [profileDescriptionInput, profileAddressInput, profilePhoneInput, profileInstagramInput, profileFacebookInput, profileTikTokInput, profileWebsiteInput]) {
     field.disabled = busy;
   }
   profileSaveButton.disabled = busy;

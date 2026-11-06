@@ -403,6 +403,13 @@ export function deactivateService(tenantId, serviceId) {
   );
 }
 
+export function deleteServicePermanently(tenantId, serviceId) {
+  return request(
+    `/api/v1/tenants/${encodeURIComponent(tenantId)}/services/${encodeURIComponent(serviceId)}?hard=1`,
+    { method: "DELETE" },
+  );
+}
+
 export function listAppointments(tenantId, { from, to }) {
   const params = new URLSearchParams({ from, to });
   return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments?${params.toString()}`);

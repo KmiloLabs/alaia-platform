@@ -61,6 +61,15 @@ serviceRoutes.delete(
   requireTenantMembership,
   requireOwner,
   asyncRoute(async (req, res) => {
+    const hard = req.query.hard === "1" || req.query.hard === "true";
+    if (hard) {
+      const existing = await serviceRepository.get(req.tenant.id, req.params.serviceId);
+      if (!existing) {
+        return sendError(res, 404, "service_not_found", "No encontramos ese servicio.");
+      }
+      await serviceRepository.delete(req.tenant.id, req.params.serviceId);
+      return res.json({ deleted: true, serviceId: req.params.serviceId });
+    }
     const result = await deactivateService({
       tenantId: req.tenant.id,
       serviceId: req.params.serviceId,
