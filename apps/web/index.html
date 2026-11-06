@@ -150,7 +150,7 @@
             <button class="session-button" id="change-tenant" type="button"><span class="nav-icon" aria-hidden="true">⇄</span><span>Cambiar negocio</span></button>
             <button class="session-button" id="sign-out" type="button"><span class="nav-icon" aria-hidden="true">⏻</span><span>Cerrar sesión</span></button>
           </div>
-          <button class="nav-item settings-item" data-view="configuracion" data-future="Configuración"><span class="nav-icon" aria-hidden="true">⚙</span><span>Configuración</span></button>
+          <button class="nav-item settings-item" data-view="configuracion"><span class="nav-icon" aria-hidden="true">⚙</span><span>Configuración</span></button>
           <div class="profile-row">
             <span class="profile-avatar" id="profile-avatar" aria-hidden="true">A</span>
             <span class="profile-copy"><strong id="profile-name">Cuenta</strong><small id="profile-role">Propietario</small></span>
@@ -245,6 +245,81 @@
                 <button class="tip-link" data-toast="La página de reservas estará disponible en una próxima etapa.">Descubrir reservas online <span aria-hidden="true">→</span></button>
               </article>
             </aside>
+          </section>
+
+          <section class="config-view" id="config-view" aria-labelledby="agent-config-title" hidden>
+            <div class="config-grid">
+              <article class="panel agent-config-panel">
+                <div class="panel-heading">
+                  <div><p class="eyebrow">ASISTENTE IA</p><h2 id="agent-config-title">Cómo trabaja tu agente</h2></div>
+                  <span class="config-status" id="agent-config-status">Cargando…</span>
+                </div>
+                <p class="config-intro">Elige el proveedor y el modelo que atienden a tus clientes. Solo aparecen los proveedores que tienen una clave configurada en el servidor.</p>
+
+                <div class="config-banner" id="agent-unavailable" role="status" aria-live="polite" hidden>
+                  <p id="agent-unavailable-text"></p>
+                  <button class="secondary-button" id="agent-retry" type="button">Reintentar</button>
+                </div>
+
+                <form class="agent-form" id="agent-form" aria-describedby="agent-form-help">
+                  <p class="visually-hidden" id="agent-form-help">Configuración del asistente de IA del negocio activo.</p>
+                  <div class="form-pair">
+                    <div>
+                      <label for="agent-provider">Proveedor</label>
+                      <select id="agent-provider" name="provider" required></select>
+                    </div>
+                    <div>
+                      <label for="agent-model">Modelo</label>
+                      <select id="agent-model" name="model" required></select>
+                    </div>
+                  </div>
+                  <div>
+                    <label for="agent-tone">Tono de las respuestas</label>
+                    <select id="agent-tone" name="tone" required>
+                      <option value="cercano">Cercano</option>
+                      <option value="formal">Formal</option>
+                      <option value="directo">Directo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="agent-instructions">Instrucciones para el agente</label>
+                    <textarea id="agent-instructions" name="instructions" rows="4" maxlength="500" placeholder="Ej. No agendamos los domingos. Confirma la dirección antes de crear una cita."></textarea>
+                    <div class="config-counter"><span id="agent-instructions-count">0</span>/500 caracteres</div>
+                  </div>
+                  <ul class="config-providers" id="agent-providers-note" hidden></ul>
+                  <p class="form-status" id="agent-save-status" role="status" aria-live="polite"></p>
+                  <div class="dialog-actions config-actions">
+                    <button class="primary-button" id="agent-save" type="submit">Guardar configuración</button>
+                  </div>
+                </form>
+              </article>
+
+              <article class="panel agent-test-panel">
+                <div class="panel-heading compact-heading"><div><p class="eyebrow">PROBAR</p><h2>Conversación de prueba</h2></div></div>
+                <p class="config-intro">Envía un mensaje de prueba con la configuración guardada y revisa la respuesta, la acción y el modelo usado.</p>
+                <form class="agent-test-form" id="agent-test-form">
+                  <div>
+                    <label for="agent-test-message">Mensaje de prueba</label>
+                    <textarea id="agent-test-message" rows="3" maxlength="300">Hola, ¿tienen disponibilidad esta semana?</textarea>
+                  </div>
+                  <p class="form-status" id="agent-test-status" role="status" aria-live="polite"></p>
+                  <div class="dialog-actions config-actions">
+                    <button class="primary-button" id="agent-test-button" type="submit">Probar agente</button>
+                  </div>
+                </form>
+
+                <div class="agent-result" id="agent-result" aria-live="polite" hidden>
+                  <div class="agent-result-head"><p class="eyebrow">RESPUESTA DEL AGENTE</p><span class="agent-action" id="agent-result-action">—</span></div>
+                  <p class="agent-reply" id="agent-result-reply"></p>
+                  <dl class="agent-meta">
+                    <div><dt>Modelo</dt><dd id="agent-result-model">—</dd></div>
+                    <div><dt>Derivó a una persona</dt><dd id="agent-result-handoff">—</dd></div>
+                    <div><dt>Herramientas</dt><dd id="agent-result-tools">—</dd></div>
+                  </dl>
+                </div>
+                <p class="config-foot">Las pruebas se guardan como conversaciones del canal «panel» dentro de tu negocio.</p>
+              </article>
+            </div>
           </section>
 
           <footer class="page-footer"><span>Hecho para que tu negocio fluya.</span><span class="footer-brand">alaia<span class="brand-dot">.</span></span></footer>

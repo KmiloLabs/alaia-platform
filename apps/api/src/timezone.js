@@ -119,6 +119,11 @@ export function utcToLocalDateTime(date, timeZone) {
   return formatLocalDateTime(zonedParts(date, timeZone));
 }
 
+export function utcToLocalDate(date, timeZone) {
+  const parts = zonedParts(date, timeZone);
+  return `${String(parts.year).padStart(4, "0")}-${pad(parts.month)}-${pad(parts.day)}`;
+}
+
 export function localDayStartUtc(dateString, timeZone) {
   if (!isValidLocalDate(dateString)) throw new RangeError("invalid_local_date");
   return localToUtc(`${dateString}T00:00`, timeZone);

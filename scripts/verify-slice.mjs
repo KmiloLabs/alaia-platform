@@ -239,6 +239,57 @@ async function main() {
   const afterMove = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments?from=${DATE}&to=${DATE}`, { token: userA.idToken });
   check("La cita quedó en el nuevo horario", (afterMove.json?.appointments ?? []).some((item) => item.appointmentId === moveTarget && item.startsAtLocal === `${DATE}T14:00`), "persistida a las 14:00");
 
+  section("11. Agente configurable");
+  const agentConfig = await api(`/api/v1/tenants/${tenantA.tenantId}/agent/config`, { token: userA.idToken });
+  check("La configuración del agente responde", agentConfig.status === 200 && Boolean(agentConfig.json?.config?.provider), `HTTP ${agentConfig.status}`);
+  const mockProvider = (agentConfig.json?.available ?? []).find((item) => item.provider === "mock");
+  check("El proveedor mock está disponible en local", mockProvider?.configured === true, `mock configured=${mockProvider?.configured}`);
+  const foreignUnconfigured = (agentConfig.json?.available ?? []).find((item) => item.provider !== "mock" && item.configured === false);
+  check("Los proveedores sin clave aparecen deshabilitados", Boolean(foreignUnconfigured), `ejemplo=${foreignUnconfigured?.provider ?? "ninguno"}`);
+
+  const saved = await api(`/api/v1/tenants/${tenantA.tenantId}/agent/config`, {
+    method: "PUT", token: userA.idToken,
+    body: { provider: "mock", model: "mock-agent", tone: "formal", instructions: "No agendamos domingos." },
+  });
+  check("A elige proveedor y modelo", saved.status === 200 && saved.json?.config?.provider === "mock" && saved.json?.config?.model === "mock-agent", `HTTP ${saved.status}`);
+
+  const reread = await api(`/api/v1/tenants/${tenantA.tenantId}/agent/config`, { token: userA.idToken });
+  check("La elección queda guardada en el negocio", reread.json?.config?.tone === "formal" && reread.json?.config?.instructions === "No agendamos domingos.", `tone=${reread.json?.config?.tone}`);
+
+  const badProvider = await api(`/api/v1/tenants/${tenantA.tenantId}/agent/config`, {
+    method: "PUT", token: userA.idToken, body: { provider: "proveedor-inexistente", model: "x" },
+  });
+  check("Proveedor desconocido o sin clave responde 400", badProvider.status === 400, `HTTP ${badProvider.status} ${badProvider.json?.error?.code ?? ""}`);
+
+  const badModel = await api(`/api/v1/tenants/${tenantA.tenantId}/agent/config`, {
+    method: "PUT", token: userA.idToken, body: { provider: "mock", model: "modelo-inexistente" },
+  });
+  check("Modelo fuera del proveedor responde 400", badModel.status === 400, `HTTP ${badModel.status} ${badModel.json?.error?.code ?? ""}`);
+
+  const chat = await api(`/api/v1/tenants/${tenantA.tenantId}/agent/messages`, {
+    method: "POST", token: userA.idToken, body: { message: "Hola, ¿tienen hueco el viernes?" },
+  });
+  const chatTool = chat.json?.toolCalls?.[0]?.name;
+  check("El agente responde y usa la disponibilidad real", chat.status === 200 && chat.json?.action === "ofrecer_horarios" && chatTool === "consultar_disponibilidad", `HTTP ${chat.status} action=${chat.json?.action} tool=${chatTool}`);
+  check("La respuesta declara el modelo elegido", chat.json?.model?.provider === "mock" && chat.json?.model?.model === "mock-agent", `${chat.json?.model?.provider}/${chat.json?.model?.model}`);
+  check("La conversación queda identificada", Boolean(chat.json?.conversationId), chat.json?.conversationId);
+
+  const booking = await api(`/api/v1/tenants/${tenantA.tenantId}/agent/messages`, {
+    method: "POST", token: userA.idToken, body: { message: "reserva para 2030-04-10T10:00 por favor" },
+  });
+  check("El agente crea la cita con la herramienta del backend", booking.status === 200 && booking.json?.action === "reservar", `HTTP ${booking.status} action=${booking.json?.action}`);
+  const agentAppointments = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments?from=2030-04-10&to=2030-04-10`, { token: userA.idToken });
+  const agentAppointment = (agentAppointments.json?.appointments ?? [])[0];
+  check("La cita creada por el agente existe en la agenda", agentAppointment?.startsAtLocal === "2030-04-10T10:00", `cita=${agentAppointment?.startsAtLocal ?? "ninguna"}`);
+
+  const crossAgent = await api(`/api/v1/tenants/${tenantA.tenantId}/agent/config`, { token: userB.idToken });
+  check("B no puede ver la configuración del agente de A", [403, 404].includes(crossAgent.status), `HTTP ${crossAgent.status}`);
+
+  const noMessage = await api(`/api/v1/tenants/${tenantA.tenantId}/agent/messages`, {
+    method: "POST", token: userA.idToken, body: { message: "" },
+  });
+  check("Un mensaje vacío responde 400", noMessage.status === 400, `HTTP ${noMessage.status}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {

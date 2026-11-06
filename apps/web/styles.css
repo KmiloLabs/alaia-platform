@@ -316,3 +316,61 @@ h2 { margin-bottom: 0; color: var(--ink); font-size: 17px; font-weight: 700; let
   .appointment-row .status { display: none; }
 }
 
+/* ---------------------------------------------------------------------------
+   Configuración del agente (Asistente IA)
+   --------------------------------------------------------------------------- */
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+.config-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); align-items: start; gap: 16px; }
+.agent-config-panel, .agent-test-panel { padding: 20px 19px 18px; }
+.config-intro { margin: 10px 0 16px; color: var(--ink-soft); font-size: 11px; line-height: 1.55; }
+.config-status { padding: 5px 9px; border-radius: 20px; background: #f2f6f4; color: #72817d; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.config-status.is-loading { background: #f5f4ef; color: #968451; }
+.config-status.is-ready { background: #e9f4ec; color: #4b8a65; }
+.config-status.is-warning { background: #fdf6e7; color: #a0843f; }
+.config-status.is-error { background: #fbf0ee; color: #a96158; }
+
+.config-banner { display: grid; justify-items: start; gap: 10px; margin: 0 0 16px; padding: 13px 14px; border: 1px solid #efe3c7; border-radius: 10px; background: #fdf9ef; color: #7b6a43; font-size: 11px; line-height: 1.55; }
+.config-banner p { margin: 0; }
+.config-banner .secondary-button { min-height: 34px; }
+
+.agent-form, .agent-test-form { display: grid; gap: 13px; }
+.agent-form label, .agent-test-form label { display: block; margin-bottom: 6px; color: #526460; font-size: 10px; font-weight: 700; }
+.agent-form select, .agent-form textarea, .agent-test-form textarea { width: 100%; padding: 0 10px; border: 1px solid #dfe7e3; border-radius: 8px; background: #fff; color: var(--ink); font-size: 11px; }
+.agent-form select { height: 39px; padding: 0 8px; }
+.agent-form textarea, .agent-test-form textarea { padding: 9px 10px; line-height: 1.5; resize: vertical; min-height: 88px; }
+.agent-test-form textarea { min-height: 74px; }
+.agent-form select:disabled, .agent-form textarea:disabled, .agent-test-form textarea:disabled { background: #f7f9f8; color: #8b9895; cursor: not-allowed; }
+.agent-form .form-pair { align-items: start; }
+.config-counter { margin-top: 5px; color: #9aa7a3; font-size: 9px; text-align: right; }
+.config-providers { display: grid; gap: 6px; margin: 0; padding: 10px 12px; border-radius: 9px; background: #f7f9f8; color: #7c8b87; font-size: 9px; line-height: 1.5; list-style: none; }
+
+.form-status { margin: 0; font-size: 10px; line-height: 1.5; }
+.form-status.is-ok { color: #3f7d5c; }
+.form-status.is-error { color: #b4534a; }
+.form-status:empty { min-height: 0; }
+.config-actions { margin-top: 2px; }
+.primary-button:disabled { background: #a8c9c3; box-shadow: none; cursor: not-allowed; transform: none; }
+.secondary-button:disabled { color: #a9b3b0; cursor: not-allowed; }
+
+.agent-result { margin-top: 16px; padding: 14px; border: 1px solid var(--line); border-radius: 11px; background: #fbfcfb; }
+.agent-result-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.agent-result-head .eyebrow { margin: 0; }
+.agent-action { padding: 4px 8px; border-radius: 6px; background: var(--mint); color: #2f776b; font-size: 8px; font-weight: 700; white-space: nowrap; }
+.agent-reply { margin: 9px 0 12px; color: #334846; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-meta { display: grid; gap: 7px; margin: 0; padding-top: 10px; border-top: 1px solid #eef2f0; }
+.agent-meta div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.agent-meta dt { color: #8d9a97; font-size: 9px; }
+.agent-meta dd { margin: 0; color: #455b59; font-size: 10px; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.config-foot { margin: 14px 0 0; color: #a2adaa; font-size: 9px; line-height: 1.5; }
+
+@media (max-width: 1100px) {
+  .config-grid { grid-template-columns: minmax(0, 1.45fr) minmax(250px, 1fr); }
+}
+@media (max-width: 900px) {
+  .config-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .config-grid .form-pair { grid-template-columns: 1fr; }
+}
+

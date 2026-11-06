@@ -10,12 +10,15 @@ import {
   createAppointment as createAppointmentRequest,
   createClientRequestId,
   createTenant,
+  getAgentConfig,
   getTenantContext,
   isTenantAccessError,
   isUnauthorized,
   listAppointments,
   listTenants,
   messageForError,
+  saveAgentConfig,
+  sendAgentMessage,
 } from "./api.js";
 
 const DEFAULT_TIME_ZONE = "America/Bogota";
@@ -34,6 +37,22 @@ const ROLE_LABELS = {
 };
 const AVATAR_STYLES = ["avatar-mint", "avatar-lilac", "avatar-peach", "avatar-sky"];
 const RAIL_STYLES = ["rail-green", "rail-blue", "rail-amber", "rail-gray"];
+const AGENT_ENV_VARS = {
+  deepseek: "DEEPSEEK_API_KEY",
+  openai: "OPENAI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+  gemini: "GEMINI_API_KEY",
+  mock: "AGENT_ENABLE_MOCK=true",
+};
+const AGENT_ACTION_LABELS = {
+  responder: "Responder",
+  ofrecer_horarios: "Ofrecer horarios",
+  reservar: "Reservar",
+  reprogramar: "Reprogramar",
+  cancelar: "Cancelar",
+  derivar: "Derivar a una persona",
+};
+const AGENT_TONES = ["cercano", "formal", "directo"];
 const AUTH_MODE_COPY = {
   signin: {
     title: "Bienvenido de nuevo",
@@ -168,6 +187,31 @@ const closeDialogButton = $("#close-dialog");
 const cancelDialogButton = $("#cancel-dialog");
 const saveAppointmentButton = $("#save-appointment");
 
+const configView = $("#config-view");
+const agentConfigStatus = $("#agent-config-status");
+const agentUnavailable = $("#agent-unavailable");
+const agentUnavailableText = $("#agent-unavailable-text");
+const agentRetry = $("#agent-retry");
+const agentForm = $("#agent-form");
+const agentProvider = $("#agent-provider");
+const agentModel = $("#agent-model");
+const agentTone = $("#agent-tone");
+const agentInstructions = $("#agent-instructions");
+const agentInstructionsCount = $("#agent-instructions-count");
+const agentProvidersNote = $("#agent-providers-note");
+const agentSaveButton = $("#agent-save");
+const agentSaveStatus = $("#agent-save-status");
+const agentTestForm = $("#agent-test-form");
+const agentTestMessage = $("#agent-test-message");
+const agentTestStatus = $("#agent-test-status");
+const agentTestButton = $("#agent-test-button");
+const agentResult = $("#agent-result");
+const agentResultAction = $("#agent-result-action");
+const agentResultReply = $("#agent-result-reply");
+const agentResultModel = $("#agent-result-model");
+const agentResultHandoff = $("#agent-result-handoff");
+const agentResultTools = $("#agent-result-tools");
+
 const toast = $("#toast");
 
 const state = {
@@ -182,6 +226,12 @@ const state = {
   sessionSeq: 0,
   daySeq: 0,
   createRequestId: null,
+  agentConfig: null,
+  agentTenantId: null,
+  agentLoadSeq: 0,
+  agentLoading: false,
+  agentSaving: false,
+  agentTesting: false,
 };
 
 let authMode = "signin";
@@ -248,6 +298,9 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
     state.tenant = summary;
     state.context = context;
     state.cache.clear();
+    state.agentConfig = null;
+    state.agentTenantId = null;
+    state.agentLoadSeq += 1;
     writeRememberedTenant(tenantId);
     state.selectedDate = state.selectedDate ?? todayValue();
     renderTenantUi();
@@ -282,6 +335,9 @@ function handleSignedOut() {
   state.selectedDate = null;
   state.view = "resumen";
   state.createRequestId = null;
+  state.agentConfig = null;
+  state.agentTenantId = null;
+  state.agentLoadSeq += 1;
   authForm.reset();
   clearAuthError();
   setAuthBusy(false);
@@ -905,24 +961,43 @@ agendaToggle.addEventListener("click", () => {
 });
 
 function setView(view) {
-  state.view = view === "agenda" ? "agenda" : "resumen";
+  state.view = ["agenda", "configuracion"].includes(view) ? view : "resumen";
   document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     const isActive = item.dataset.view === state.view;
     item.classList.toggle("is-active", isActive);
     if (isActive) item.setAttribute("aria-current", "page");
     else item.removeAttribute("aria-current");
   });
-  currentSection.textContent = state.view === "agenda" ? "Agenda" : "Resumen";
+
+  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración" };
+  currentSection.textContent = sectionLabels[state.view];
+
   const metricGrid = document.querySelector(".metric-grid");
+  const contentGrid = document.querySelector(".content-grid");
   const tipCard = document.querySelector(".tip-card");
-  if (metricGrid) metricGrid.hidden = state.view === "agenda";
-  if (tipCard) tipCard.hidden = state.view === "agenda";
-  agendaToggle.textContent = state.view === "agenda" ? "Ver resumen →" : "Ver agenda →";
+  const isAgenda = state.view === "agenda";
+  const isConfig = state.view === "configuracion";
+
+  if (metricGrid) metricGrid.hidden = isAgenda || isConfig;
+  if (contentGrid) contentGrid.hidden = isConfig;
+  if (tipCard) tipCard.hidden = isAgenda;
+  if (configView) configView.hidden = !isConfig;
+  newAppointmentButton.hidden = isConfig;
+  agendaToggle.textContent = isAgenda ? "Ver resumen →" : "Ver agenda →";
+
   renderHeader();
+  if (isConfig) loadAgentConfig();
 }
 
 function renderHeader() {
+  if (state.view === "configuracion") {
+    todayLabel.textContent = "AJUSTES DEL NEGOCIO";
+    setPageTitle("Configuración");
+    pageSubtitle.textContent = "Elige con qué proveedor y modelo trabaja tu asistente, y pruébalo antes de publicarlo.";
+    return;
+  }
   if (!state.selectedDate) return;
+  todayLabel.textContent = formatLongDate(state.selectedDate).toLocaleUpperCase("es-CO");
   const isToday = isSelectedToday();
   const dayPhrase = isToday ? "hoy" : `el ${formatLongDate(state.selectedDate)}`;
   setPageTitle(state.view === "agenda" ? "Tu agenda del día" : "Tu día, en orden");
@@ -968,6 +1043,346 @@ nextDay.addEventListener("click", () => {
 goToday.addEventListener("click", () => {
   loadDay(todayValue());
 });
+
+// ---------------------------------------------------------------------------
+// Configuración del agente (Asistente IA)
+// ---------------------------------------------------------------------------
+
+agentRetry.addEventListener("click", () => {
+  loadAgentConfig();
+});
+
+agentProvider.addEventListener("change", () => {
+  if (!hasConfiguredProvider(state.agentConfig)) return;
+  renderAgentModels(agentProvider.value, null);
+  clearAgentSaveStatus();
+});
+
+agentInstructions.addEventListener("input", updateInstructionsCounter);
+
+async function loadAgentConfig(seq = state.sessionSeq) {
+  if (!state.tenant) return;
+  const tenantId = state.tenant.tenantId;
+  const loadSeq = ++state.agentLoadSeq;
+  state.agentLoading = true;
+  setAgentStatus("Cargando…", "loading");
+  agentUnavailable.hidden = true;
+  resetAgentResult();
+  clearAgentSaveStatus();
+  clearAgentTestStatus();
+  applyAgentBusyState();
+
+  try {
+    const data = await getAgentConfig(tenantId);
+    if (seq !== state.sessionSeq || loadSeq !== state.agentLoadSeq || state.tenant?.tenantId !== tenantId) return;
+    state.agentConfig = data;
+    state.agentTenantId = tenantId;
+    state.agentLoading = false;
+    renderAgentConfig();
+    setAgentStatus(
+      hasConfiguredProvider(data) ? "Agente configurado" : "Sin proveedor configurado",
+      hasConfiguredProvider(data) ? "ready" : "warning",
+    );
+  } catch (error) {
+    if (seq !== state.sessionSeq || loadSeq !== state.agentLoadSeq || state.tenant?.tenantId !== tenantId) return;
+    state.agentLoading = false;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    state.agentConfig = null;
+    state.agentTenantId = null;
+    renderAgentError(error);
+    setAgentStatus("Error al cargar", "error");
+  }
+}
+
+function renderAgentConfig() {
+  const data = state.agentConfig ?? {};
+  const providers = Array.isArray(data.available) ? data.available : [];
+  const config = data.config ?? {};
+  const defaults = data.defaults ?? {};
+  const configuredProviders = providers.filter((provider) => provider.configured);
+
+  const providerOptions = providers.map((provider) => {
+    const option = document.createElement("option");
+    const label = provider.label ?? providerLabel(provider.provider);
+    option.value = provider.provider;
+    option.textContent = provider.configured ? label : `${label} — sin configurar`;
+    option.disabled = !provider.configured;
+    if (!provider.configured) {
+      const envVar = providerEnvVar(provider);
+      option.title = envVar ? `Falta ${envVar} en el servidor` : "Proveedor sin clave configurada";
+    }
+    return option;
+  });
+  agentProvider.replaceChildren(...providerOptions);
+
+  const preferred = providers.find((provider) => provider.configured && provider.provider === config.provider)
+    ?? providers.find((provider) => provider.configured && provider.provider === defaults.provider)
+    ?? configuredProviders[0]
+    ?? providers.find((provider) => provider.provider === config.provider)
+    ?? providers[0];
+
+  if (preferred) {
+    agentProvider.value = preferred.provider;
+  }
+  renderAgentModels(preferred?.provider, config.model ?? defaults.model);
+
+  agentTone.value = AGENT_TONES.includes(config.tone) ? config.tone : "cercano";
+  agentInstructions.value = typeof config.instructions === "string" ? config.instructions : "";
+  updateInstructionsCounter();
+
+  const notes = providers
+    .filter((provider) => !provider.configured)
+    .map((provider) => {
+      const label = provider.label ?? providerLabel(provider.provider);
+      const envVar = providerEnvVar(provider);
+      return envVar ? `${label}: falta ${envVar} en el servidor.` : `${label}: sin clave configurada en el servidor.`;
+    });
+  agentProvidersNote.replaceChildren(...notes.map((text) => {
+    const item = document.createElement("li");
+    item.textContent = text;
+    return item;
+  }));
+  agentProvidersNote.hidden = notes.length === 0;
+
+  if (configuredProviders.length) {
+    agentUnavailable.hidden = true;
+    agentRetry.hidden = true;
+    applyAgentBusyState();
+    return;
+  }
+
+  const storedProvider = providers.find((provider) => provider.provider === config.provider);
+  const missingEnvVar = storedProvider ? providerEnvVar(storedProvider) : "";
+  agentUnavailableText.textContent = `Ningún proveedor de IA está configurado en el servidor, así que el agente todavía no puede responder. ${storedProvider ? `Tu agente está guardado con ${storedProvider.label ?? storedProvider.provider}. ` : ""}Para activarlo, añade ${missingEnvVar || "la clave del proveedor"} o activa AGENT_ENABLE_MOCK=true en el .env del servidor y reinicia la API. Las claves nunca se muestran en el panel.`;
+  agentUnavailable.hidden = false;
+  agentRetry.hidden = false;
+  applyAgentBusyState();
+}
+
+function renderAgentModels(providerId, preferredModel) {
+  const data = state.agentConfig ?? {};
+  const providers = Array.isArray(data.available) ? data.available : [];
+  const provider = providers.find((item) => item.provider === providerId);
+  const models = Array.isArray(provider?.models) ? provider.models : [];
+  const normalized = models.map((model) => ({
+    id: typeof model === "string" ? model : String(model?.id ?? ""),
+    label: typeof model === "string" ? model : String(model?.label ?? model?.id ?? ""),
+  })).filter((model) => model.id);
+
+  if (!normalized.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Sin modelos disponibles";
+    agentModel.replaceChildren(option);
+    return;
+  }
+
+  agentModel.replaceChildren(...normalized.map((model) => {
+    const option = document.createElement("option");
+    option.value = model.id;
+    option.textContent = model.label;
+    return option;
+  }));
+
+  const preferred = normalized.some((model) => model.id === preferredModel) ? preferredModel : normalized[0].id;
+  agentModel.value = preferred;
+}
+
+function applyAgentBusyState() {
+  const available = hasConfiguredProvider(state.agentConfig) && !state.agentLoading;
+  const busy = available && !state.agentSaving && !state.agentTesting;
+  const disabled = !busy;
+
+  agentProvider.disabled = disabled;
+  agentModel.disabled = disabled;
+  agentTone.disabled = disabled;
+  agentInstructions.disabled = disabled;
+  agentSaveButton.disabled = disabled;
+  agentSaveButton.textContent = state.agentSaving ? "Guardando…" : "Guardar configuración";
+  agentTestButton.disabled = disabled;
+  agentTestButton.textContent = state.agentTesting ? "Probando…" : "Probar agente";
+  agentTestMessage.disabled = disabled;
+}
+
+function updateInstructionsCounter() {
+  agentInstructionsCount.textContent = String(agentInstructions.value.length);
+}
+
+function setAgentStatus(text, tone) {
+  agentConfigStatus.textContent = text;
+  agentConfigStatus.className = `config-status is-${tone}`;
+}
+
+function clearAgentSaveStatus() {
+  agentSaveStatus.textContent = "";
+  agentSaveStatus.className = "form-status";
+}
+
+function showAgentSaveStatus(message, tone) {
+  agentSaveStatus.textContent = message;
+  agentSaveStatus.className = `form-status is-${tone}`;
+}
+
+function clearAgentTestStatus() {
+  agentTestStatus.textContent = "";
+  agentTestStatus.className = "form-status";
+}
+
+function showAgentTestStatus(message, tone) {
+  agentTestStatus.textContent = message;
+  agentTestStatus.className = `form-status is-${tone}`;
+}
+
+function resetAgentResult() {
+  agentResult.hidden = true;
+  agentResultAction.textContent = "—";
+  agentResultReply.textContent = "";
+  agentResultModel.textContent = "—";
+  agentResultHandoff.textContent = "—";
+  agentResultTools.textContent = "—";
+}
+
+function renderAgentError(error) {
+  agentUnavailableText.textContent = messageForError(error);
+  agentUnavailable.hidden = false;
+  agentRetry.hidden = false;
+  agentProvidersNote.hidden = true;
+  agentProvider.replaceChildren();
+  agentModel.replaceChildren();
+  applyAgentBusyState();
+}
+
+async function handleAgentError(error, target) {
+  if (isUnauthorized(error)) {
+    await forceSignOut(messageForError(error));
+    return;
+  }
+  if (isTenantAccessError(error)) {
+    await handleTenantUnavailable(error);
+    return;
+  }
+  const message = messageForError(error);
+  if (target === "test") {
+    showAgentTestStatus(message, "error");
+    if (error.code === "agent_not_configured") {
+      agentUnavailableText.textContent = message;
+      agentUnavailable.hidden = false;
+      agentRetry.hidden = false;
+    }
+    return;
+  }
+  showAgentSaveStatus(message, "error");
+}
+
+agentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.tenant || state.agentSaving || !hasConfiguredProvider(state.agentConfig)) return;
+  clearAgentSaveStatus();
+
+  const provider = agentProvider.value;
+  const model = agentModel.value;
+  const instructions = agentInstructions.value.slice(0, 500);
+  if (!provider || !model) {
+    showAgentSaveStatus("Elige un proveedor y un modelo antes de guardar.", "error");
+    return;
+  }
+
+  const tenantId = state.tenant.tenantId;
+  state.agentSaving = true;
+  applyAgentBusyState();
+
+  try {
+    const data = await saveAgentConfig(tenantId, {
+      provider,
+      model,
+      tone: agentTone.value,
+      instructions,
+    });
+    if (state.tenant?.tenantId !== tenantId) return;
+    state.agentConfig = data;
+    state.agentTenantId = tenantId;
+    renderAgentConfig();
+    setAgentStatus("Guardado", "ready");
+    showAgentSaveStatus("Configuración guardada. El agente usará este proveedor y modelo.", "ok");
+    showToast("Configuración del agente guardada.");
+  } catch (error) {
+    await handleAgentError(error, "save");
+  } finally {
+    state.agentSaving = false;
+    applyAgentBusyState();
+  }
+});
+
+agentTestForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!state.tenant || state.agentTesting || !hasConfiguredProvider(state.agentConfig)) return;
+  clearAgentTestStatus();
+
+  const message = agentTestMessage.value.trim();
+  if (!message) {
+    showAgentTestStatus("Escribe un mensaje de prueba antes de enviarlo.", "error");
+    return;
+  }
+
+  const tenantId = state.tenant.tenantId;
+  state.agentTesting = true;
+  applyAgentBusyState();
+
+  try {
+    const data = await sendAgentMessage(tenantId, { message });
+    if (state.tenant?.tenantId !== tenantId) return;
+    renderAgentResult(data);
+    showAgentTestStatus("Prueba completada.", "ok");
+  } catch (error) {
+    await handleAgentError(error, "test");
+  } finally {
+    state.agentTesting = false;
+    applyAgentBusyState();
+  }
+});
+
+function renderAgentResult(data) {
+  const action = String(data?.action ?? "");
+  agentResultAction.textContent = AGENT_ACTION_LABELS[action] ?? (action || "Sin acción");
+  agentResultAction.title = action;
+  agentResultReply.textContent = String(data?.reply ?? "El agente no devolvió texto.");
+  const model = data?.model ?? {};
+  agentResultModel.textContent = model.provider || model.model
+    ? `${model.provider ?? "—"} · ${model.model ?? "—"}`
+    : "—";
+  agentResultHandoff.textContent = data?.handoff ? "Sí, pasó a una persona" : "No, respondió el agente";
+  const toolCalls = Array.isArray(data?.toolCalls) ? data.toolCalls : [];
+  agentResultTools.textContent = toolCalls.length
+    ? toolCalls.map((call) => {
+      const name = call?.name ?? "herramienta";
+      return call?.ok === false ? `${name} (falló)` : name;
+    }).join(", ")
+    : "Ninguna";
+  agentResult.hidden = false;
+}
+
+function hasConfiguredProvider(data) {
+  return Boolean(data && Array.isArray(data.available) && data.available.some((provider) => provider.configured));
+}
+
+function providerEnvVar(providerOrId) {
+  const providerId = typeof providerOrId === "string" ? providerOrId : providerOrId?.provider;
+  if (providerId === "mock") return "AGENT_ENABLE_MOCK=true";
+  const fromApi = typeof providerOrId === "object" && providerOrId ? providerOrId.envVar : "";
+  return fromApi || AGENT_ENV_VARS[providerId] || "";
+}
+
+function providerLabel(providerId) {
+  const text = String(providerId ?? "").trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : "Proveedor";
+}
 
 // ---------------------------------------------------------------------------
 // Crear cita

@@ -19,6 +19,13 @@ const ERROR_MESSAGES = {
   invalid_timezone: "La zona horaria no es válida.",
   appointment_conflict: "Ese horario se cruza con otra cita del negocio. Elige otra hora.",
   appointment_not_found: "No encontramos esa cita en este negocio. Recarga la agenda.",
+  invalid_provider: "Ese proveedor no está disponible. Elige uno de los que ya están configurados.",
+  invalid_model: "Ese modelo no pertenece al proveedor elegido.",
+  invalid_instructions: "Las instrucciones deben tener 500 caracteres como máximo.",
+  invalid_tone: "Elige un tono válido: cercano, formal o directo.",
+  invalid_message: "Escribe un mensaje de prueba antes de enviarlo.",
+  agent_not_configured: "El agente no tiene proveedor configurado en el servidor. Añade la clave del proveedor en el archivo .env o activa AGENT_ENABLE_MOCK=true para probar.",
+  agent_provider_error: "El proveedor de IA no respondió correctamente. Intenta de nuevo en unos minutos.",
   tenant_lookup_failed: "No pudimos comprobar el acceso al negocio. Intenta de nuevo.",
   internal_error: "Ocurrió un error en el servidor. Intenta de nuevo.",
   network_error: `No pudimos conectar con la API (${API_BASE}). Revisa que el servidor esté activo.`,
@@ -155,4 +162,29 @@ export function cancelAppointment(tenantId, appointmentId) {
     `/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments/${encodeURIComponent(appointmentId)}/cancel`,
     { method: "POST" },
   );
+}
+
+export function getAgentConfig(tenantId) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/agent/config`);
+}
+
+export function saveAgentConfig(tenantId, config) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/agent/config`, {
+    method: "PUT",
+    body: {
+      provider: config.provider,
+      model: config.model,
+      tone: config.tone,
+      instructions: config.instructions ?? "",
+    },
+  });
+}
+
+export function sendAgentMessage(tenantId, { message, conversationId }) {
+  const body = { message };
+  if (conversationId) body.conversationId = conversationId;
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/agent/messages`, {
+    method: "POST",
+    body,
+  });
 }

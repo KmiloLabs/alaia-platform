@@ -10,7 +10,8 @@ Estado por capas del [plano técnico](docs/plano-y-reglas-codex.md):
 
 - **Capa 1 (identidad y tenant):** API y pantalla de acceso funcionando contra emuladores. Pendiente: invitaciones, verificación de correo, consola de plataforma.
 - **Capa 5 (agenda y reservas):** citas, disponibilidad y reprogramación listas en backend; el panel crea, lista y cancela. Pendiente: reprogramar desde el panel, página pública de reservas y reglas de asignación.
-- **Resto de capas:** documentadas, no implementadas. WhatsApp, IA, pagos e inventario siguen fuera de este corte.
+- **Agente (parte IA de la Capa 7):** agente conversacional con herramientas reales de agenda (consultar disponibilidad, crear, reprogramar y cancelar citas). El dueño elige **proveedor y modelo** desde Configuración → Asistente IA y puede probarlo antes de publicarlo. Pendiente: entrada por WhatsApp, audio y recordatorios.
+- **Resto de capas:** pagos, inventario, consola de plataforma y página pública siguen documentadas, no implementadas.
 - **n8n:** la plantilla de recepción multiempresa existe en `infra/n8n/` como arnés de contrato; sigue inactiva y no es el agente final. El workflow real `Recepcionista epresarial IA` ya está analizado en [docs/agente-recepcion-n8n.md](docs/agente-recepcion-n8n.md).
 
 Todo se prueba con datos ficticios en emuladores locales. No hay despliegue ni datos reales de clientes.
@@ -38,15 +39,18 @@ La configuración de ejemplo apunta al proyecto ficticio `demo-alaia`. **No camb
 ## Pruebas
 
 ```bash
-npm --workspace @alaia/api run test   # pruebas puras de zona horaria y validación (28)
-npm run verify                        # end-to-end contra emuladores + API (26 comprobaciones)
+npm --workspace @alaia/api run test   # pruebas puras de API y agente (84)
+npm run verify                        # end-to-end contra emuladores + API (53 comprobaciones)
 ```
 
-`npm run verify` crea dos cuentas y dos negocios ficticios y comprueba, entre otras cosas: aislamiento entre negocios (lectura y escritura cruzadas), no doble reserva, idempotencia, cancelación y validaciones. Requiere emuladores y API en marcha.
+`npm run verify` crea dos cuentas y dos negocios ficticios y comprueba, entre otras cosas: aislamiento entre negocios (lectura y escritura cruzadas), no doble reserva, idempotencia, cancelación, disponibilidad, reprogramación y el agente configurable con el proveedor `mock`. Requiere emuladores y API en marcha.
+
+El proveedor `mock` (solo desarrollo) se habilita con `AGENT_ENABLE_MOCK=true` y permite probar el agente sin claves ni gasto. Para usar un proveedor real, añade su clave en `.env` (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` o `GEMINI_API_KEY`), reinicia la API y el proveedor aparecerá habilitado en el panel.
 
 ## Documentos
 
-- `docs/corte-agenda-panel-real.md`: contrato del corte actual (rutas, reglas, criterios de aceptación).
+- `docs/corte-agenda-panel-real.md`: contrato del corte de agenda (rutas, reglas, criterios de aceptación).
+- `docs/corte-agente-configurable.md`: contrato del agente (proveedores, configuración por negocio, herramientas).
 - `docs/agente-recepcion-n8n.md`: qué se reutiliza del recepcionista IA de n8n y cómo se conecta a Alaia.
 - `docs/arquitectura.md`: arquitectura, seguridad, costos y escalabilidad.
 - `docs/plano-y-reglas-codex.md`: roadmap por capas e instrucciones para agentes de código.
