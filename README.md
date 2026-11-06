@@ -4,14 +4,14 @@ Plataforma SaaS multiempresa para negocios de servicios. Su agente atiende las c
 
 ## Estado
 
-Corte actual (**panel real con citas guardadas**, 5 de noviembre de 2026): el panel ya no es una demostración. Tiene acceso con correo y contraseña (Firebase Auth), creación y selección de negocio, y una agenda que crea, lista y cancela citas **persistidas** en Firestore con aislamiento por `tenantId`, zona horaria del negocio, prevención de doble reserva e idempotencia.
+Corte actual (**panel real con citas guardadas**, 5 de noviembre de 2026): el panel ya no es una demostración. Tiene acceso con correo y contraseña (Firebase Auth), creación y selección de negocio, y una agenda que crea, lista y cancela citas **persistidas** en Firestore con aislamiento por `tenantId`, zona horaria del negocio, prevención de doble reserva e idempotencia. La API también calcula **disponibilidad real** según el horario del negocio y permite **reprogramar** citas: es la base para que el agente consulte horarios en vez de inventarlos.
 
 Estado por capas del [plano técnico](docs/plano-y-reglas-codex.md):
 
 - **Capa 1 (identidad y tenant):** API y pantalla de acceso funcionando contra emuladores. Pendiente: invitaciones, verificación de correo, consola de plataforma.
-- **Capa 5 (agenda y reservas):** primera parte lista en backend y panel. Pendiente: disponibilidad por horario, reprogramación, página pública de reservas.
+- **Capa 5 (agenda y reservas):** citas, disponibilidad y reprogramación listas en backend; el panel crea, lista y cancela. Pendiente: reprogramar desde el panel, página pública de reservas y reglas de asignación.
 - **Resto de capas:** documentadas, no implementadas. WhatsApp, IA, pagos e inventario siguen fuera de este corte.
-- **n8n:** la plantilla de recepción multiempresa existe en `infra/n8n/` como arnés de contrato; sigue inactiva y no es el agente final.
+- **n8n:** la plantilla de recepción multiempresa existe en `infra/n8n/` como arnés de contrato; sigue inactiva y no es el agente final. El workflow real `Recepcionista epresarial IA` ya está analizado en [docs/agente-recepcion-n8n.md](docs/agente-recepcion-n8n.md).
 
 Todo se prueba con datos ficticios en emuladores locales. No hay despliegue ni datos reales de clientes.
 
@@ -47,6 +47,7 @@ npm run verify                        # end-to-end contra emuladores + API (26 c
 ## Documentos
 
 - `docs/corte-agenda-panel-real.md`: contrato del corte actual (rutas, reglas, criterios de aceptación).
+- `docs/agente-recepcion-n8n.md`: qué se reutiliza del recepcionista IA de n8n y cómo se conecta a Alaia.
 - `docs/arquitectura.md`: arquitectura, seguridad, costos y escalabilidad.
 - `docs/plano-y-reglas-codex.md`: roadmap por capas e instrucciones para agentes de código.
 - `apps/web/`: panel real (acceso, negocio activo, agenda, ingresos).

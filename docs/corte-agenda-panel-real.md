@@ -68,6 +68,31 @@ Rango por fecha local del negocio. Responde ordenado por inicio ascendente:
 - `404 appointment_not_found` si no existe o no pertenece al negocio.
 - Cancelar dos veces responde `200` con la cita ya cancelada (idempotente).
 
+### `GET /availability?from=YYYY-MM-DD&to=YYYY-MM-DD&durationMinutes=45&stepMinutes=30`
+
+Devuelve los horarios libres del negocio dentro de su horario de atención: nunca en el pasado, nunca solapando citas activas, rango máximo de 31 días y hasta 300 horarios en orden ascendente.
+
+```json
+{ "timeZone": "America/Bogota", "durationMinutes": 45, "stepMinutes": 30,
+  "slots": [ { "startsAt": "2026-11-06T14:00:00.000Z", "startsAtLocal": "2026-11-06T09:00" } ] }
+```
+
+El horario vive en `openingHours` (`[{ "day": 1..7, "open": "09:00", "close": "18:00" }]`, 1 = lunes; un día ausente está cerrado) y `slotStepMinutes`. Por defecto: lunes a sábado 09:00–18:00, paso 30. `POST /tenants` acepta valores personalizados y `GET /context` los devuelve (con los valores por defecto si el negocio es anterior a este corte).
+
+Errores: `invalid_range`, `invalid_duration`, `invalid_step`.
+
+### `POST /appointments/:appointmentId/reschedule`
+
+```json
+{ "startsAt": "2026-11-06T15:00", "durationMinutes": 60 }
+```
+
+- Mueve la cita; si no se envía `durationMinutes` conserva la actual.
+- `409 appointment_conflict` si el nuevo horario se cruza con otra cita activa.
+- `409 appointment_cancelled` si la cita ya estaba cancelada.
+- `404 appointment_not_found` si no existe en el negocio.
+- Registra un evento `rescheduled` con el valor anterior y el nuevo.
+
 ## Reglas de datos
 
 - Ruta: `tenants/{tenantId}/appointments/{appointmentId}`.
@@ -97,3 +122,5 @@ WhatsApp, IA, pagos, inventario, página pública de reservas, invitaciones y co
 3. Dos citas solapadas en el mismo negocio: la segunda se rechaza y el panel explica por qué.
 4. Un usuario del negocio A no puede leer ni escribir citas del negocio B manipulando el `tenantId` (404/403) — comprobado por script.
 5. Repetir la creación con el mismo `clientRequestId` no duplica la cita.
+6. La disponibilidad solo ofrece horas dentro del horario del negocio, nunca pasadas ni ocupadas, y respeta la zona horaria del negocio.
+7. Reprogramar a un horario ocupado falla con 409 y no deja la agenda inconsistente.

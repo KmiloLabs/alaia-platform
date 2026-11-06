@@ -89,6 +89,37 @@ export function validateAppointmentRange(query, timeZone) {
   return { ok: true, value: { from, to, start, end } };
 }
 
+// Reprogramación: `startsAt` es obligatorio (hora local del negocio);
+// `durationMinutes` es opcional y, si falta, la ruta conserva la duración actual.
+export function validateRescheduleInput(body, timeZone) {
+  const input = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+
+  const startsAtParts = parseLocalDateTime(input.startsAt);
+  if (!startsAtParts) {
+    return invalid("invalid_start", "La nueva hora debe venir como hora local del negocio (AAAA-MM-DDTHH:mm).");
+  }
+  const startsAtLocal = formatLocalDateTime(startsAtParts);
+  let startsAtUtc;
+  try {
+    startsAtUtc = localToUtc(startsAtLocal, timeZone);
+  } catch {
+    return invalid("invalid_start", "La nueva hora no es válida para la zona horaria del negocio.");
+  }
+
+  let durationMinutes = null;
+  if (input.durationMinutes !== undefined) {
+    if (!Number.isInteger(input.durationMinutes)
+      || input.durationMinutes < DURATION_MIN_MINUTES
+      || input.durationMinutes > DURATION_MAX_MINUTES) {
+      return invalid("invalid_duration", "La duración debe ser un entero entre 5 y 480 minutos.");
+    }
+    durationMinutes = input.durationMinutes;
+  }
+
+  return { ok: true, value: { startsAtLocal, startsAtUtc, durationMinutes } };
+}
+
+
 // ID determinista por negocio a partir de clientRequestId: la idempotencia no
 // necesita índice extra ni permite duplicados aunque lleguen dos peticiones a la vez.
 export function deriveAppointmentId(clientRequestId) {

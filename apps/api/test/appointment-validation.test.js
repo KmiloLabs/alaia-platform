@@ -4,6 +4,7 @@ import {
   deriveAppointmentId,
   validateAppointmentInput,
   validateAppointmentRange,
+  validateRescheduleInput,
 } from "../src/appointment-validation.js";
 
 const TIME_ZONE = "America/Bogota";
@@ -156,4 +157,33 @@ test("no muta el cuerpo recibido", () => {
   const snapshot = JSON.stringify(body);
   validateAppointmentInput(body, TIME_ZONE);
   assert.equal(JSON.stringify(body), snapshot);
+});
+
+test("acepta reprogramación con y sin duración", () => {
+  const withDuration = validateRescheduleInput({ startsAt: "2026-11-07T15:30", durationMinutes: 60 }, TIME_ZONE);
+  assert.equal(withDuration.ok, true);
+  assert.equal(withDuration.value.startsAtLocal, "2026-11-07T15:30");
+  assert.equal(withDuration.value.startsAtUtc.toISOString(), "2026-11-07T20:30:00.000Z");
+  assert.equal(withDuration.value.durationMinutes, 60);
+
+  const withoutDuration = validateRescheduleInput({ startsAt: "2026-11-07T15:30" }, TIME_ZONE);
+  assert.equal(withoutDuration.ok, true);
+  assert.equal(withoutDuration.value.durationMinutes, null);
+
+  const withSeconds = validateRescheduleInput({ startsAt: "2026-11-07T15:30:45" }, TIME_ZONE);
+  assert.equal(withSeconds.ok, true);
+  assert.equal(withSeconds.value.startsAtLocal, "2026-11-07T15:30");
+});
+
+test("rechaza reprogramación con hora o duración inválidas", () => {
+  for (const startsAt of [undefined, "", "2026-11-07", "2026-11-07T24:00", "2026-13-01T10:00", "2026-11-07T10:00Z"]) {
+    const result = validateRescheduleInput({ startsAt }, TIME_ZONE);
+    assert.equal(result.ok, false, String(startsAt));
+    assert.equal(result.code, "invalid_start");
+  }
+  for (const durationMinutes of [4, 481, 45.5, "45", null]) {
+    const result = validateRescheduleInput({ startsAt: "2026-11-07T15:30", durationMinutes }, TIME_ZONE);
+    assert.equal(result.ok, false, String(durationMinutes));
+    assert.equal(result.code, "invalid_duration");
+  }
 });

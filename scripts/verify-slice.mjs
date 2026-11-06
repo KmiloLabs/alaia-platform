@@ -193,6 +193,52 @@ async function main() {
   check("Las citas siguen ahí tras varias llamadas", finalItems.length === 3, `${finalItems.length} cita(s)`);
   check("Se ve el estado cancelado", finalItems.some((item) => item.status === "cancelled"), "al menos una cancelada");
 
+  section("9. Disponibilidad");
+  const availability = await api(`/api/v1/tenants/${tenantA.tenantId}/availability?from=${DATE}&to=${DATE}&durationMinutes=45`, { token: userA.idToken });
+  const slots = availability.json?.slots ?? [];
+  const slotLabels = slots.map((slot) => slot.startsAtLocal);
+  check("Devuelve horarios libres", availability.status === 200 && slots.length > 0, `HTTP ${availability.status}, ${slots.length} horario(s)`);
+  check("Los horarios respetan el horario del negocio", slotLabels.every((label) => label.startsWith(DATE) && label.slice(11) >= "09:00" && label.slice(11) < "18:00"), "09:00-18:00");
+  check("No ofrece horarios ya ocupados", !slotLabels.includes(`${DATE}T10:30`) && !slotLabels.includes(`${DATE}T12:00`), "10:30 y 12:00 ocupados");
+  check("El primer horario del día está libre", slotLabels.includes(`${DATE}T09:00`), "09:00 disponible");
+  const sunday = await api(`/api/v1/tenants/${tenantA.tenantId}/availability?from=2030-03-17&to=2030-03-17&durationMinutes=45`, { token: userA.idToken });
+  check("Domingo cerrado no ofrece horarios", sunday.status === 200 && (sunday.json?.slots ?? []).length === 0, `HTTP ${sunday.status}`);
+  const badDuration = await api(`/api/v1/tenants/${tenantA.tenantId}/availability?from=${DATE}&to=${DATE}&durationMinutes=0`, { token: userA.idToken });
+  check("Duración inválida responde 400", badDuration.status === 400, `HTTP ${badDuration.status}`);
+  const tenantBAvailability = await api(`/api/v1/tenants/${tenantB.tenantId}/availability?from=${DATE}&to=${DATE}&durationMinutes=45`, { token: userB.idToken });
+  const bSlotLabels = (tenantBAvailability.json?.slots ?? []).map((slot) => slot.startsAtLocal);
+  check("La disponibilidad de B no se contamina con A", tenantBAvailability.status === 200 && bSlotLabels.includes(`${DATE}T12:00`), `HTTP ${tenantBAvailability.status}`);
+
+  section("10. Reprogramación");
+  const moveTarget = beforeCancel.json?.appointment?.appointmentId;
+  const moved = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments/${moveTarget}/reschedule`, {
+    method: "POST", token: userA.idToken, body: { startsAt: `${DATE}T14:00` },
+  });
+  check("A reprograma una cita a un horario libre", moved.status === 200 && moved.json?.appointment?.startsAtLocal === `${DATE}T14:00`, `HTTP ${moved.status}`);
+
+  const moveConflict = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments/${moveTarget}/reschedule`, {
+    method: "POST", token: userA.idToken, body: { startsAt: `${DATE}T10:30` },
+  });
+  check("Reprogramar sobre otra cita da 409", moveConflict.status === 409 && moveConflict.json?.error?.code === "appointment_conflict", `HTTP ${moveConflict.status} ${moveConflict.json?.error?.code ?? ""}`);
+
+  const moveCancelled = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments/${appointment.appointmentId}/reschedule`, {
+    method: "POST", token: userA.idToken, body: { startsAt: `${DATE}T16:00` },
+  });
+  check("Una cita cancelada no se reprograma", moveCancelled.status === 409 && moveCancelled.json?.error?.code === "appointment_cancelled", `HTTP ${moveCancelled.status} ${moveCancelled.json?.error?.code ?? ""}`);
+
+  const moveMissing = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments/appt_noexiste/reschedule`, {
+    method: "POST", token: userA.idToken, body: { startsAt: `${DATE}T16:00` },
+  });
+  check("Reprogramar una cita inexistente da 404", moveMissing.status === 404, `HTTP ${moveMissing.status}`);
+
+  const moveCross = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments/${moveTarget}/reschedule`, {
+    method: "POST", token: userB.idToken, body: { startsAt: `${DATE}T17:00` },
+  });
+  check("B no puede reprogramar citas de A", [403, 404].includes(moveCross.status), `HTTP ${moveCross.status}`);
+
+  const afterMove = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments?from=${DATE}&to=${DATE}`, { token: userA.idToken });
+  check("La cita quedó en el nuevo horario", (afterMove.json?.appointments ?? []).some((item) => item.appointmentId === moveTarget && item.startsAtLocal === `${DATE}T14:00`), "persistida a las 14:00");
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {

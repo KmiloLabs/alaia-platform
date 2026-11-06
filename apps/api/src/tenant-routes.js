@@ -3,6 +3,14 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db } from "./firebase.js";
 import { requireTenantMembership, requireUser } from "./auth-middleware.js";
 import { asyncRoute, sendError } from "./http.js";
+import {
+  DEFAULT_SLOT_STEP_MINUTES,
+  MAX_STEP_MINUTES,
+  MIN_STEP_MINUTES,
+  normalizeOpeningHours,
+  resolveOpeningHours,
+  resolveSlotStepMinutes,
+} from "./availability.js";
 
 export const tenantRoutes = Router();
 tenantRoutes.use(requireUser);
@@ -50,6 +58,18 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
     return sendError(res, 400, "invalid_timezone", "La zona horaria no es válida.");
   }
 
+  const openingHoursResult = normalizeOpeningHours(req.body?.openingHours);
+  if (!openingHoursResult.ok) {
+    return sendError(res, 400, openingHoursResult.code, openingHoursResult.message);
+  }
+  const rawSlotStepMinutes = req.body?.slotStepMinutes;
+  const slotStepMinutes = rawSlotStepMinutes === undefined || rawSlotStepMinutes === null
+    ? DEFAULT_SLOT_STEP_MINUTES
+    : rawSlotStepMinutes;
+  if (!Number.isInteger(slotStepMinutes) || slotStepMinutes < MIN_STEP_MINUTES || slotStepMinutes > MAX_STEP_MINUTES) {
+    return sendError(res, 400, "invalid_step", "El paso de horarios debe ser un entero entre 5 y 240 minutos.");
+  }
+
   const slug = makeSlug(name);
   const tenantRef = db.collection("tenants").doc();
   const slugRef = db.collection("tenantSlugs").doc(slug);
@@ -59,6 +79,8 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
     slug,
     sector,
     timeZone,
+    openingHours: openingHoursResult.value,
+    slotStepMinutes,
     status: "active",
     createdAt: FieldValue.serverTimestamp(),
     createdBy: req.user.uid,
@@ -99,6 +121,8 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
       slug,
       sector,
       timeZone,
+      openingHours: openingHoursResult.value,
+      slotStepMinutes,
       status: "active",
       role: "owner",
     },
@@ -113,6 +137,8 @@ tenantRoutes.get("/tenants/:tenantId/context", requireTenantMembership, (req, re
       slug: req.tenant.slug,
       sector: req.tenant.sector,
       timeZone: req.tenant.timeZone,
+      openingHours: resolveOpeningHours(req.tenant),
+      slotStepMinutes: resolveSlotStepMinutes(req.tenant),
       status: req.tenant.status,
     },
     membership: req.membership,
