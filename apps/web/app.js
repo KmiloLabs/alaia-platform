@@ -14,6 +14,7 @@ import {
   createTenant,
   deactivateCustomer,
   deactivateService,
+  deletePlatformProvider,
   getAgentConfig,
   getCustomer,
   getDashboard,
@@ -26,6 +27,7 @@ import {
   listAppointments,
   listAvailability,
   listCustomers,
+  listPlatformProviders,
   listPlatformTenants,
   listServices,
   listTenants,
@@ -33,7 +35,9 @@ import {
   rescheduleAppointment as rescheduleAppointmentRequest,
   saveAgentConfig,
   sendAgentMessage,
+  testPlatformProvider,
   updateCustomer,
+  updatePlatformProvider,
   updatePlatformTenant,
   updateService,
   updateTenant,
@@ -318,6 +322,10 @@ const platformStatus = $("#platform-status");
 const platformTenantsBody = $("#platform-tenants-body");
 const platformTenantsCount = $("#platform-tenants-count");
 const platformEmpty = $("#platform-empty");
+const platformProvidersSection = $("#platform-providers");
+const platformProvidersList = $("#platform-providers-list");
+const platformProvidersStatus = $("#platform-providers-status");
+const platformProvidersCount = $("#platform-providers-count");
 const platformDetailDialog = $("#platform-detail-dialog");
 const platformDetailTitle = $("#platform-detail-title");
 const platformDetailStatus = $("#platform-detail-status");
@@ -457,6 +465,9 @@ const state = {
   platformSaving: false,
   platformSummarySeq: 0,
   platformTenants: [],
+  platformProviders: [],
+  platformProvidersSeq: 0,
+  platformProvidersLoading: false,
   dashboard: null,
   dashboardSeq: 0,
   dashboardLoading: false,
@@ -3163,7 +3174,7 @@ function setPlatformLoading() {
   platformTenantsBody.replaceChildren();
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 9;
+  cell.colSpan = 10;
   cell.className = "platform-message";
   cell.textContent = "Cargando negocios…";
   row.append(cell);
@@ -3191,7 +3202,7 @@ async function loadPlatformTenants() {
 
 async function loadPlatformDashboard() {
   if (!state.isPlatformAdmin) return;
-  await Promise.all([loadPlatformSummary(), loadPlatformTenants()]);
+  await Promise.all([loadPlatformSummary(), loadPlatformTenants(), loadPlatformProviders()]);
 }
 
 function renderPlatformError(message) {
@@ -3199,7 +3210,7 @@ function renderPlatformError(message) {
   platformTenantsBody.replaceChildren();
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 9;
+  cell.colSpan = 10;
   cell.className = "platform-message is-error";
   cell.textContent = message;
   const retry = document.createElement("button");
@@ -3246,6 +3257,14 @@ function platformPlanLabel(plan) {
   return "Trial";
 }
 
+function platformTrialInfo(tenant) {
+  const left = tenant?.trialDaysLeft;
+  if (left === null || left === undefined) return { label: "Sin fecha de prueba", tone: "neutral" };
+  const days = Number(left);
+  if (!Number.isFinite(days) || days <= 0) return { label: "Prueba vencida", tone: "expired" };
+  return { label: `Prueba: ${days} ${days === 1 ? "día" : "días"}`, tone: "active" };
+}
+
 function renderPlatformTenants() {
   const tenants = state.platformTenants;
   platformTenantsBody.innerHTML = tenants.map((tenant) => {
@@ -3258,6 +3277,7 @@ function renderPlatformTenants() {
       <td>${escapeHtml(SECTOR_LABELS[tenant.sector] ?? tenant.sector ?? "—")}</td>
       <td class="platform-owner">${escapeHtml(tenant.ownerEmail ?? "—")}</td>
       <td><span class="platform-chip">${escapeHtml(platformPlanLabel(tenant.plan))}</span></td>
+      <td><span class="platform-trial is-${platformTrialInfo(tenant).tone}">${escapeHtml(platformTrialInfo(tenant).label)}</span></td>
       <td><span class="status ${suspended ? "status-cancelled" : "status-upcoming"}">${suspended ? "Suspendido" : "Activo"}</span></td>
       <td>${numberOrZero(counts.appointments)}</td>
       <td>${numberOrZero(counts.customers)}</td>
@@ -3269,6 +3289,392 @@ function renderPlatformTenants() {
   platformTenantsCount.textContent = `${tenants.length} ${tenants.length === 1 ? "negocio" : "negocios"}`;
   setPlatformStatus("", "idle");
 }
+
+// ---------------------------------------------------------------------------
+// Proveedores de IA (solo plataforma)
+// ---------------------------------------------------------------------------
+
+function setPlatformProvidersStatus(message, tone = "idle") {
+  if (!platformProvidersStatus) return;
+  platformProvidersStatus.textContent = message;
+  platformProvidersStatus.className = `form-status is-${tone}`;
+}
+
+function providerStatusInfo(provider) {
+  if (provider.source === "platform") return { label: "Configurado por ti", tone: "platform" };
+  if (provider.source === "env") return { label: "Configurado por variable de entorno", tone: "env" };
+  return { label: "Sin configurar", tone: "none" };
+}
+
+function providerModels(provider) {
+  return Array.isArray(provider.models) ? provider.models.filter((model) => typeof model === "string" && model) : [];
+}
+
+function providerMaskedKey(provider) {
+  return typeof provider.maskedKey === "string" && provider.maskedKey ? provider.maskedKey : "Sin clave";
+}
+
+function parseProviderModels(value) {
+  return String(value ?? "").split(",").map((model) => model.trim()).filter(Boolean);
+}
+
+function findPlatformProvider(providerId) {
+  return state.platformProviders.find((provider) => provider.provider === providerId) ?? null;
+}
+
+function setProviderMessage(card, message, tone = "") {
+  const element = card?.querySelector("[data-provider-message]");
+  if (!element) return;
+  element.textContent = message;
+  element.className = `provider-message${tone ? ` is-${tone}` : ""}`;
+}
+
+function setProviderCardBusy(card, busy) {
+  if (!card) return;
+  card.classList.toggle("is-busy", busy);
+  for (const node of card.querySelectorAll("button, input, select")) node.disabled = busy;
+}
+
+function setPlatformProvidersLoading() {
+  if (!platformProvidersList) return;
+  platformProvidersList.setAttribute("aria-busy", "true");
+  platformProvidersList.replaceChildren(textBlock("Cargando proveedores…", "platform-message"));
+  if (platformProvidersCount) platformProvidersCount.textContent = "";
+  setPlatformProvidersStatus("Cargando proveedores…", "loading");
+}
+
+function renderPlatformProvidersError(message) {
+  if (!platformProvidersList) return;
+  platformProvidersList.setAttribute("aria-busy", "false");
+  const wrap = document.createElement("div");
+  wrap.className = "provider-error";
+  const text = document.createElement("span");
+  text.textContent = message;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "secondary-button";
+  retry.dataset.providerRetry = "1";
+  retry.textContent = "Reintentar";
+  wrap.append(text, retry);
+  platformProvidersList.replaceChildren(wrap);
+  if (platformProvidersCount) platformProvidersCount.textContent = "";
+  setPlatformProvidersStatus(message, "error");
+}
+
+function renderPlatformProviders() {
+  if (!platformProvidersList) return;
+  platformProvidersList.setAttribute("aria-busy", "false");
+  const providers = state.platformProviders;
+  if (!providers.length) {
+    platformProvidersList.replaceChildren(textBlock("No hay proveedores para configurar.", "platform-message"));
+    if (platformProvidersCount) platformProvidersCount.textContent = "";
+    return;
+  }
+  platformProvidersList.replaceChildren(...providers.map((provider) => createProviderCard(provider)));
+  if (platformProvidersCount) platformProvidersCount.textContent = `${providers.length} ${providers.length === 1 ? "proveedor" : "proveedores"}`;
+  setPlatformProvidersStatus("", "idle");
+}
+
+function createProviderCard(provider) {
+  const card = document.createElement("article");
+  card.className = "provider-card";
+  card.dataset.provider = String(provider.provider ?? "");
+
+  const head = document.createElement("div");
+  head.className = "provider-head";
+  const title = document.createElement("div");
+  title.className = "provider-title";
+  const name = document.createElement("strong");
+  name.textContent = String(provider.label ?? provider.provider ?? "Proveedor");
+  const id = document.createElement("span");
+  id.className = "platform-slug";
+  id.textContent = String(provider.provider ?? "");
+  title.append(name, id);
+  const statusInfo = providerStatusInfo(provider);
+  const status = document.createElement("span");
+  status.className = `provider-status is-${statusInfo.tone}`;
+  status.textContent = statusInfo.label;
+  head.append(title, status);
+
+  const facts = document.createElement("div");
+  facts.className = "provider-facts";
+  const key = document.createElement("span");
+  key.textContent = `Clave: ${providerMaskedKey(provider)}`;
+  const models = document.createElement("span");
+  const modelList = providerModels(provider);
+  models.textContent = `Modelos: ${modelList.length ? modelList.join(", ") : "—"}`;
+  const defaultModel = document.createElement("span");
+  defaultModel.textContent = `Por defecto: ${provider.defaultModel || "—"}`;
+  facts.append(key, models, defaultModel);
+
+  const actions = document.createElement("div");
+  actions.className = "provider-actions";
+  const enabledLabel = document.createElement("label");
+  enabledLabel.className = "provider-toggle";
+  const enabledInput = document.createElement("input");
+  enabledInput.type = "checkbox";
+  enabledInput.checked = Boolean(provider.enabled);
+  enabledInput.dataset.providerEnabled = "1";
+  enabledInput.setAttribute("aria-label", `Activar ${provider.label ?? provider.provider}`);
+  const enabledText = document.createElement("span");
+  enabledText.textContent = "Activo";
+  enabledLabel.append(enabledInput, enabledText);
+  actions.append(enabledLabel);
+
+  const testButton = document.createElement("button");
+  testButton.type = "button";
+  testButton.className = "secondary-button provider-button";
+  testButton.dataset.providerTest = "1";
+  testButton.textContent = "Probar conexión";
+  actions.append(testButton);
+
+  if (provider.source === "platform" || provider.enabled === false) {
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "text-button provider-remove";
+    removeButton.dataset.providerRemove = "1";
+    removeButton.textContent = "Quitar configuración";
+    actions.append(removeButton);
+  }
+
+  const keyForm = document.createElement("form");
+  keyForm.className = "provider-form";
+  keyForm.dataset.providerKeyForm = "1";
+  const keyLabel = document.createElement("label");
+  keyLabel.textContent = "Agregar o cambiar clave";
+  const keyRow = document.createElement("div");
+  keyRow.className = "provider-inline";
+  const keyInput = document.createElement("input");
+  keyInput.type = "password";
+  keyInput.autocomplete = "new-password";
+  keyInput.maxLength = 200;
+  keyInput.placeholder = "Nueva clave (mínimo 8 caracteres)";
+  keyInput.dataset.providerKeyInput = "1";
+  keyInput.setAttribute("aria-label", `Nueva clave para ${provider.label ?? provider.provider}`);
+  const keyButton = document.createElement("button");
+  keyButton.type = "submit";
+  keyButton.className = "secondary-button provider-button";
+  keyButton.textContent = "Guardar clave";
+  keyRow.append(keyInput, keyButton);
+  keyForm.append(keyLabel, keyRow);
+
+  const modelsForm = document.createElement("form");
+  modelsForm.className = "provider-form";
+  modelsForm.dataset.providerModelsForm = "1";
+  const modelsLabel = document.createElement("label");
+  modelsLabel.textContent = "Modelos (separados por comas)";
+  const modelsInput = document.createElement("input");
+  modelsInput.type = "text";
+  modelsInput.maxLength = 800;
+  modelsInput.value = modelList.join(", ");
+  modelsInput.dataset.providerModelsInput = "1";
+  modelsInput.setAttribute("aria-label", `Modelos de ${provider.label ?? provider.provider}`);
+  const modelsRow = document.createElement("div");
+  modelsRow.className = "provider-inline";
+  const defaultLabel = document.createElement("label");
+  defaultLabel.className = "provider-default-label";
+  defaultLabel.textContent = "Por defecto";
+  const defaultSelect = document.createElement("select");
+  defaultSelect.dataset.providerDefaultSelect = "1";
+  defaultSelect.setAttribute("aria-label", `Modelo por defecto de ${provider.label ?? provider.provider}`);
+  const availableModels = modelList.length ? modelList : [provider.defaultModel].filter(Boolean);
+  for (const model of availableModels) {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    if (model === provider.defaultModel) option.selected = true;
+    defaultSelect.append(option);
+  }
+  const modelsButton = document.createElement("button");
+  modelsButton.type = "submit";
+  modelsButton.className = "secondary-button provider-button";
+  modelsButton.textContent = "Guardar modelos";
+  modelsRow.append(defaultLabel, defaultSelect, modelsButton);
+  modelsForm.append(modelsLabel, modelsInput, modelsRow);
+
+  const message = document.createElement("p");
+  message.className = "provider-message";
+  message.dataset.providerMessage = "1";
+  message.setAttribute("role", "status");
+  message.setAttribute("aria-live", "polite");
+
+  card.append(head, facts, actions, keyForm, modelsForm, message);
+  return card;
+}
+
+async function loadPlatformProviders() {
+  if (!state.isPlatformAdmin) return;
+  const seq = ++state.platformProvidersSeq;
+  state.platformProvidersLoading = true;
+  setPlatformProvidersLoading();
+  try {
+    const data = await listPlatformProviders();
+    if (seq !== state.platformProvidersSeq) return;
+    state.platformProviders = Array.isArray(data?.providers) ? data.providers : [];
+    renderPlatformProviders();
+    setSyncStatus("online");
+  } catch (error) {
+    if (seq !== state.platformProvidersSeq) return;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (error.code === "not_platform_admin") {
+      state.isPlatformAdmin = false;
+      updatePlatformVisibility();
+      hidePlatformView();
+      return;
+    }
+    renderPlatformProvidersError(messageForError(error));
+  } finally {
+    if (seq === state.platformProvidersSeq) state.platformProvidersLoading = false;
+  }
+}
+
+platformProvidersList.addEventListener("submit", async (event) => {
+  const keyForm = event.target.closest("[data-provider-key-form]");
+  const modelsForm = event.target.closest("[data-provider-models-form]");
+  if (!keyForm && !modelsForm) return;
+  event.preventDefault();
+  const card = event.target.closest(".provider-card");
+  if (!card) return;
+  const provider = findPlatformProvider(card.dataset.provider);
+  if (!provider) return;
+  setProviderMessage(card, "");
+
+  if (keyForm) {
+    const input = card.querySelector("[data-provider-key-input]");
+    const apiKey = input?.value ?? "";
+    if (apiKey.length < 8 || apiKey.length > 200) {
+      setProviderMessage(card, "La clave debe tener entre 8 y 200 caracteres.", "error");
+      input?.focus();
+      return;
+    }
+    setProviderCardBusy(card, true);
+    setProviderMessage(card, "Guardando clave…");
+    try {
+      await updatePlatformProvider(provider.provider, { apiKey });
+      if (input) input.value = "";
+      await loadPlatformProviders();
+      setPlatformProvidersStatus(`Clave de ${provider.label ?? provider.provider} guardada.`, "ok");
+      showToast(`Clave de ${provider.label ?? provider.provider} guardada.`);
+    } catch (error) {
+      setProviderCardBusy(card, false);
+      setProviderMessage(card, messageForError(error), "error");
+    }
+    return;
+  }
+
+  const modelsInput = card.querySelector("[data-provider-models-input]");
+  const defaultSelect = card.querySelector("[data-provider-default-select]");
+  const models = parseProviderModels(modelsInput?.value ?? "");
+  if (!models.length || models.length > 10 || models.some((model) => model.length > 64)) {
+    setProviderMessage(card, "Escribe entre 1 y 10 modelos; cada uno de máximo 64 caracteres.", "error");
+    modelsInput?.focus();
+    return;
+  }
+  const defaultModel = defaultSelect?.value ?? "";
+  if (!models.includes(defaultModel)) {
+    setProviderMessage(card, "El modelo por defecto debe estar dentro de la lista.", "error");
+    defaultSelect?.focus();
+    return;
+  }
+  setProviderCardBusy(card, true);
+  setProviderMessage(card, "Guardando modelos…");
+  try {
+    await updatePlatformProvider(provider.provider, { models, defaultModel });
+    await loadPlatformProviders();
+    setPlatformProvidersStatus(`Modelos de ${provider.label ?? provider.provider} guardados.`, "ok");
+    showToast(`Modelos de ${provider.label ?? provider.provider} guardados.`);
+  } catch (error) {
+    setProviderCardBusy(card, false);
+    setProviderMessage(card, messageForError(error), "error");
+  }
+});
+
+platformProvidersList.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-provider-models-input]");
+  if (!input) return;
+  const card = input.closest(".provider-card");
+  const select = card?.querySelector("[data-provider-default-select]");
+  if (!select) return;
+  const current = select.value;
+  const models = parseProviderModels(input.value);
+  select.replaceChildren(...models.map((model) => {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    return option;
+  }));
+  if (models.includes(current)) select.value = current;
+  else if (models.length) select.value = models[0];
+});
+
+platformProvidersList.addEventListener("change", async (event) => {
+  const checkbox = event.target.closest("[data-provider-enabled]");
+  if (!checkbox) return;
+  const card = checkbox.closest(".provider-card");
+  const provider = findPlatformProvider(card.dataset.provider);
+  if (!provider) return;
+  const desired = checkbox.checked;
+  setProviderCardBusy(card, true);
+  setProviderMessage(card, "Actualizando estado…");
+  try {
+    await updatePlatformProvider(provider.provider, { enabled: desired });
+    await loadPlatformProviders();
+    setPlatformProvidersStatus(`${provider.label ?? provider.provider} ${desired ? "activado" : "desactivado"}.`, "ok");
+    showToast(`${provider.label ?? provider.provider} ${desired ? "activado" : "desactivado"}.`);
+  } catch (error) {
+    checkbox.checked = !desired;
+    setProviderCardBusy(card, false);
+    setProviderMessage(card, messageForError(error), "error");
+  }
+});
+
+platformProvidersList.addEventListener("click", async (event) => {
+  const retry = event.target.closest("[data-provider-retry]");
+  if (retry) {
+    loadPlatformProviders();
+    return;
+  }
+  const test = event.target.closest("[data-provider-test]");
+  if (test) {
+    const card = test.closest(".provider-card");
+    const provider = findPlatformProvider(card.dataset.provider);
+    if (!provider) return;
+    setProviderCardBusy(card, true);
+    setProviderMessage(card, "Probando conexión…");
+    try {
+      const result = await testPlatformProvider(provider.provider);
+      const latency = numberOrZero(result?.latencyMs);
+      setProviderMessage(card, `Conexión OK · ${latency} ms · ${result?.model ?? provider.defaultModel ?? "modelo"}`, "ok");
+    } catch (error) {
+      setProviderMessage(card, messageForError(error), "error");
+    } finally {
+      if (card.isConnected) setProviderCardBusy(card, false);
+    }
+    return;
+  }
+  const remove = event.target.closest("[data-provider-remove]");
+  if (remove) {
+    const card = remove.closest(".provider-card");
+    const provider = findPlatformProvider(card.dataset.provider);
+    if (!provider) return;
+    const label = provider.label ?? provider.provider;
+    if (!window.confirm(`¿Quitar la configuración de ${label}? Volverá a usar la clave de entorno si existe.`)) return;
+    setProviderCardBusy(card, true);
+    setProviderMessage(card, "Quitando configuración…");
+    try {
+      await deletePlatformProvider(provider.provider);
+      await loadPlatformProviders();
+      setPlatformProvidersStatus(`Configuración de ${label} eliminada.`, "ok");
+      showToast(`Configuración de ${label} eliminada.`);
+    } catch (error) {
+      setProviderCardBusy(card, false);
+      setProviderMessage(card, messageForError(error), "error");
+    }
+  }
+});
 
 platformSearchInput.addEventListener("input", () => {
   clearTimeout(state.platformSearchTimer);
@@ -3362,6 +3768,7 @@ function renderPlatformDetail(tenant) {
   info.append(
     platformInfoLine("Dueño", tenant.ownerEmail ?? "—"),
     platformInfoLine("Plan", platformPlanLabel(tenant.plan)),
+    platformInfoLine("Prueba", platformTrialInfo(tenant).label),
     platformInfoLine("Creado", formatMediumDateFromValue(tenant.createdAt) || "—"),
     platformInfoLine("Citas", String(numberOrZero(tenant.counts?.appointments))),
     platformInfoLine("Clientes", String(numberOrZero(tenant.counts?.customers))),

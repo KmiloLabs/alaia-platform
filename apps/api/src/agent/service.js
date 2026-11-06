@@ -10,10 +10,14 @@ import { serviceRepository } from "../service-repository.js";
 import {
   chat,
   getDefaultAgentConfig,
-  getProviderRegistry,
   resolveAgentConfig,
   validateAgentConfigInput,
 } from "./providers.js";
+import { buildAgentAvailableProviders } from "../platform-providers.js";
+import {
+  getProviderResolutions,
+  resolvePlatformProvider,
+} from "../platform-providers-service.js";
 import { buildAgentSystemPrompt } from "./prompts.js";
 import { parseAgentOutput } from "./parse.js";
 import { normalizeAgentAction } from "./actions.js";
@@ -25,16 +29,21 @@ const MAX_TOOL_ROUNDS = 4;
 const CONVERSATION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const FALLBACK_REPLY = "No pude completar la respuesta. ¿Quieres que te comunique con una persona del negocio?";
 
-export function getAgentConfigForTenant(tenant, env = process.env) {
+// La disponibilidad de proveedores combina claves de plataforma (cifradas) y
+// claves de entorno; por eso la lectura es asíncrona.
+export async function getAgentConfigForTenant(tenant, env = process.env) {
+  const resolutions = await getProviderResolutions({ env });
   return {
     config: resolveAgentConfig(tenant, env),
-    available: getProviderRegistry(env),
+    available: buildAgentAvailableProviders(resolutions),
     defaults: getDefaultAgentConfig(env),
   };
 }
 
 export async function saveAgentConfig({ tenantId, actorUid, body, env = process.env }) {
-  const validation = validateAgentConfigInput(body, env);
+  const resolutions = await getProviderResolutions({ env });
+  const available = buildAgentAvailableProviders(resolutions);
+  const validation = validateAgentConfigInput(body, env, { available });
   if (!validation.ok) return validation;
 
   await db.collection("tenants").doc(tenantId).set({
@@ -53,10 +62,13 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
   if (!input.ok) return input;
 
   const config = resolveAgentConfig(tenant, env);
-  const providerEntry = getProviderRegistry(env).find((entry) => entry.provider === config.provider);
-  if (!providerEntry || !providerEntry.configured) {
+  const providerResolution = await resolvePlatformProvider(config.provider, { env });
+  if (!providerResolution?.configured) {
     return error(503, "agent_not_configured", "El asistente no está configurado. Elige un proveedor disponible.");
   }
+  const providerApiKey = providerResolution.apiKey;
+  const providerModels = providerResolution.models;
+  const modelToUse = providerModels.includes(config.model) ? config.model : providerResolution.defaultModel ?? config.model;
 
   const conversationsRef = db.collection("tenants").doc(tenant.id).collection("agentConversations");
   let conversationRef;
@@ -73,7 +85,7 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
       startedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       handoff: false,
-      model: { provider: config.provider, model: config.model },
+      model: { provider: config.provider, model: modelToUse },
     });
   }
 
@@ -104,11 +116,12 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const response = await chat({
         provider: config.provider,
-        model: config.model,
+        model: modelToUse,
         messages: pending,
         tools: AGENT_TOOLS,
         temperature: 0.4,
         env,
+        apiKey: providerApiKey,
       });
       accumulateUsage(usageTotals, response.usage);
 
@@ -152,11 +165,12 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
       // Cuarta vuelta agotada: pedimos un cierre sin herramientas.
       const closing = await chat({
         provider: config.provider,
-        model: config.model,
+        model: modelToUse,
         messages: pending,
         tools: [],
         temperature: 0.4,
         env,
+        apiKey: providerApiKey,
       });
       accumulateUsage(usageTotals, closing.usage);
       finalText = closing.text ?? "";
@@ -190,7 +204,7 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
     updatedAt: FieldValue.serverTimestamp(),
     handoff,
     lastAction: action,
-    model: { provider: config.provider, model: config.model },
+    model: { provider: config.provider, model: modelToUse },
   }, { merge: true });
   await trimHistory(conversationRef);
   await recordAgentUsage({ tenant, usageTotals });
@@ -202,7 +216,7 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
     action,
     handoff,
     toolCalls,
-    model: { provider: config.provider, model: config.model },
+    model: { provider: config.provider, model: modelToUse },
   };
 }
 

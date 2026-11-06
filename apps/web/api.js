@@ -40,6 +40,13 @@ const ERROR_MESSAGES = {
   invalid_address: "La dirección no puede superar los 200 caracteres.",
   invalid_phone: "El teléfono del negocio no es válido.",
   invalid_social_link: "Revisa las redes: usa https:// o un número de WhatsApp válido.",
+  provider_not_found: "No encontramos ese proveedor de IA.",
+  invalid_api_key: "La clave debe tener entre 8 y 200 caracteres.",
+  invalid_models: "Escribe entre 1 y 10 modelos, separados por comas (máx. 64 caracteres cada uno).",
+  invalid_model: "El modelo por defecto debe estar dentro de la lista.",
+  invalid_enabled: "El estado del proveedor no es válido.",
+  provider_test_failed: "No se pudo conectar con el proveedor. Revisa la clave y los modelos.",
+  platform_secret_missing: "Falta PLATFORM_SECRET en el servidor para cifrar claves.",
   invalid_sector: "Selecciona un tipo de negocio válido.",
   invalid_timezone: "La zona horaria no es válida.",
   appointment_conflict: "Ese horario se cruza con otra cita del negocio. Elige otra hora.",
@@ -176,6 +183,29 @@ export function updatePlatformTenant(tenantId, changes) {
   return request(`/api/v1/platform/tenants/${encodeURIComponent(tenantId)}`, {
     method: "PATCH",
     body: changes,
+  });
+}
+
+export function listPlatformProviders() {
+  return request("/api/v1/platform/providers");
+}
+
+export function updatePlatformProvider(provider, changes) {
+  return request(`/api/v1/platform/providers/${encodeURIComponent(provider)}`, {
+    method: "PUT",
+    body: changes,
+  });
+}
+
+export function deletePlatformProvider(provider) {
+  return request(`/api/v1/platform/providers/${encodeURIComponent(provider)}`, {
+    method: "DELETE",
+  });
+}
+
+export function testPlatformProvider(provider) {
+  return request(`/api/v1/platform/providers/${encodeURIComponent(provider)}/test`, {
+    method: "POST",
   });
 }
 

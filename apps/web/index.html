@@ -545,7 +545,7 @@
               <div class="platform-table-wrap">
                 <table class="platform-table">
                   <thead>
-                    <tr><th>Negocio</th><th>Sector</th><th>Dueño</th><th>Plan</th><th>Estado</th><th>Citas</th><th>Clientes</th><th>Mensajes IA</th><th><span class="visually-hidden">Acciones</span></th></tr>
+                    <tr><th>Negocio</th><th>Sector</th><th>Dueño</th><th>Plan</th><th>Prueba</th><th>Estado</th><th>Citas</th><th>Clientes</th><th>Mensajes IA</th><th><span class="visually-hidden">Acciones</span></th></tr>
                   </thead>
                   <tbody id="platform-tenants-body"></tbody>
                 </table>
@@ -554,6 +554,16 @@
                 <strong>No hay negocios que coincidan</strong>
                 <span>Prueba con otro nombre, slug, correo o filtro de estado.</span>
               </div>
+            </article>
+
+            <article class="panel platform-providers" id="platform-providers" aria-labelledby="platform-providers-title">
+              <div class="panel-heading">
+                <div><p class="eyebrow">IA</p><h2 id="platform-providers-title">Proveedores de IA</h2></div>
+                <span class="services-count" id="platform-providers-count"></span>
+              </div>
+              <p class="config-intro">Configura las claves y modelos que usarán los negocios. Las claves se guardan cifradas y no se pueden ver después de guardarlas.</p>
+              <p class="form-status" id="platform-providers-status" role="status" aria-live="polite"></p>
+              <div class="platform-providers-list" id="platform-providers-list" aria-busy="false"></div>
             </article>
           </section>
 

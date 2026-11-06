@@ -9,9 +9,9 @@ import { getAgentConfigForTenant, saveAgentConfig, sendAgentMessage } from "./se
 export const agentRoutes = Router();
 agentRoutes.use(requireUser);
 
-agentRoutes.get("/tenants/:tenantId/agent/config", requireTenantMembership, (req, res) => {
-  return res.json(getAgentConfigForTenant(req.tenant));
-});
+agentRoutes.get("/tenants/:tenantId/agent/config", requireTenantMembership, asyncRoute(async (req, res) => {
+  return res.json(await getAgentConfigForTenant(req.tenant));
+}));
 
 agentRoutes.put("/tenants/:tenantId/agent/config", requireTenantMembership, asyncRoute(async (req, res) => {
   const result = await saveAgentConfig({
@@ -20,7 +20,7 @@ agentRoutes.put("/tenants/:tenantId/agent/config", requireTenantMembership, asyn
     body: req.body,
   });
   if (!result.ok) return sendError(res, result.status, result.code, result.message);
-  return res.json(getAgentConfigForTenant({ ...req.tenant, agent: result.config }));
+  return res.json(await getAgentConfigForTenant({ ...req.tenant, agent: result.config }));
 }));
 
 agentRoutes.post("/tenants/:tenantId/agent/messages", requireTenantMembership, asyncRoute(async (req, res) => {

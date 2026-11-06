@@ -15,6 +15,7 @@ import {
   sumUsageLast30Days,
   validateTenantAdminUpdate,
 } from "./platform.js";
+import { serializeTrial } from "./trial.js";
 
 const TENANT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_RECENT_ACTIVITY = 10;
@@ -179,6 +180,7 @@ function serializeTenantBase(tenant) {
     createdAt: toIsoString(tenant.createdAt),
     status: resolveTenantStatus(tenant),
     plan: resolveTenantPlan(tenant),
+    ...serializeTrial(tenant),
     notes: resolveTenantNotes(tenant),
   };
 }

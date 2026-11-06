@@ -830,3 +830,62 @@ a.customer-info-value { color: var(--teal); }
   .sample-badge { display: none; }
 }
 
+
+/* ---------------------------------------------------------------------------
+   Proveedores de IA y prueba de negocios
+   --------------------------------------------------------------------------- */
+.platform-trial { display: inline-flex; padding: 4px 7px; border-radius: 6px; font-size: 9px; font-weight: 700; line-height: 1.2; white-space: nowrap; }
+.platform-trial.is-active { background: #eaf5f1; color: #2f776b; }
+.platform-trial.is-expired { background: #f8ece8; color: #9f5c4b; }
+.platform-trial.is-neutral { background: #f1f3f2; color: #7e8c89; }
+.platform-providers { padding: 20px 19px; }
+.platform-providers-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+.provider-card { display: grid; gap: 10px; padding: 14px 15px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfb; }
+.provider-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.provider-title { display: grid; gap: 2px; }
+.provider-title strong { color: var(--ink); font-size: 13px; }
+.provider-status { flex: none; padding: 4px 7px; border-radius: 6px; font-size: 8px; font-weight: 700; line-height: 1.2; }
+.provider-status.is-platform { background: #eaf5f1; color: #2f776b; }
+.provider-status.is-env { background: #eef3f8; color: #4a6f8a; }
+.provider-status.is-none { background: #f3eeea; color: #8a6b5d; }
+.provider-facts { display: grid; gap: 3px; padding: 8px 0; border-top: 1px solid #f0f2f1; border-bottom: 1px solid #f0f2f1; }
+.provider-facts span { overflow: hidden; color: #657875; font-size: 9px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.provider-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.provider-toggle { display: flex; align-items: center; gap: 5px; margin-right: auto; color: #526460; font-size: 9px; font-weight: 700; }
+.provider-toggle input { accent-color: var(--teal); }
+.provider-button { min-height: 29px; padding: 0 8px; font-size: 8px; }
+.provider-remove { color: #9a6559; font-size: 8px; }
+.provider-form { display: grid; gap: 5px; }
+.provider-form > label { color: #657875; font-size: 8px; font-weight: 700; }
+.provider-form input, .provider-form select { width: 100%; height: 32px; font-size: 10px; }
+.provider-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.provider-inline > input[type="password"] { flex: 1; min-width: 130px; }
+.provider-inline .provider-default-label { color: #879490; font-size: 8px; }
+.provider-inline select { flex: 1; min-width: 110px; }
+.provider-message { min-height: 0; margin: 0; color: #7f918d; font-size: 9px; line-height: 1.4; }
+.provider-message:empty { display: none; }
+.provider-message.is-ok { color: #2f776b; font-weight: 600; }
+.provider-message.is-error { color: #a3544a; }
+.provider-card.is-busy { opacity: .7; }
+.provider-error { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border: 1px dashed var(--line); border-radius: 9px; color: #8a5a50; font-size: 10px; }
+
+@media (max-width: 980px) {
+  .platform-providers-list { grid-template-columns: 1fr; }
+}
+
+[data-theme="dark"] .platform-trial.is-active { background: #1f3a34; color: #a9ded1; }
+[data-theme="dark"] .platform-trial.is-expired { background: #3a2825; color: #e8a79c; }
+[data-theme="dark"] .platform-trial.is-neutral { background: #1b2b28; color: #a7b8b4; }
+[data-theme="dark"] .provider-card { background: #14211f; border-color: var(--line); }
+[data-theme="dark"] .provider-facts { border-color: #24332f; }
+[data-theme="dark"] .provider-facts span { color: #98aca6; }
+[data-theme="dark"] .provider-toggle { color: #a7b8b4; }
+[data-theme="dark"] .provider-form > label { color: #8fa39d; }
+[data-theme="dark"] .provider-message { color: #8fa39d; }
+[data-theme="dark"] .provider-message.is-ok { color: #8ccfa4; }
+[data-theme="dark"] .provider-message.is-error { color: #e8a79c; }
+[data-theme="dark"] .provider-status.is-platform { background: #1f3a34; color: #a9ded1; }
+[data-theme="dark"] .provider-status.is-env { background: #1e2e38; color: #a3c7d4; }
+[data-theme="dark"] .provider-status.is-none { background: #322722; color: #d8b09f; }
+[data-theme="dark"] .provider-remove { color: #d8a99c; }
+[data-theme="dark"] .provider-error { color: #e2b1a5; }

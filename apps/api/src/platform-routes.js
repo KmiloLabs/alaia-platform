@@ -10,6 +10,12 @@ import {
   listPlatformTenants,
   updatePlatformTenant,
 } from "./platform-service.js";
+import {
+  deletePlatformProvider,
+  listPlatformProviders,
+  savePlatformProvider,
+  testPlatformProvider,
+} from "./platform-providers-service.js";
 
 export const platformRoutes = Router();
 platformRoutes.use(requireUser);
@@ -42,4 +48,32 @@ platformRoutes.patch("/platform/tenants/:tenantId", asyncRoute(async (req, res) 
   });
   if (!result.ok) return sendError(res, result.status, result.code, result.message);
   return res.json({ tenant: result.tenant });
+}));
+
+// --- Proveedores de IA (solo administrador de plataforma) -----------------
+platformRoutes.get("/platform/providers", asyncRoute(async (_req, res) => {
+  const result = await listPlatformProviders();
+  return res.json({ providers: result.providers });
+}));
+
+platformRoutes.put("/platform/providers/:provider", asyncRoute(async (req, res) => {
+  const result = await savePlatformProvider({
+    provider: req.params.provider,
+    body: req.body,
+    actorEmail: req.user.email,
+  });
+  if (!result.ok) return sendError(res, result.status, result.code, result.message);
+  return res.json({ provider: result.provider });
+}));
+
+platformRoutes.delete("/platform/providers/:provider", asyncRoute(async (req, res) => {
+  const result = await deletePlatformProvider({ provider: req.params.provider });
+  if (!result.ok) return sendError(res, result.status, result.code, result.message);
+  return res.json({ provider: result.provider });
+}));
+
+platformRoutes.post("/platform/providers/:provider/test", asyncRoute(async (req, res) => {
+  const result = await testPlatformProvider({ provider: req.params.provider });
+  if (!result.ok) return sendError(res, result.status, result.code, result.message);
+  return res.json({ ok: true, latencyMs: result.latencyMs, model: result.model });
 }));

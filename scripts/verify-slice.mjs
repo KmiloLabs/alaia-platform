@@ -507,6 +507,41 @@ async function main() {
   const foreignDashboard = await api(`/api/v1/tenants/${tenantA.tenantId}/dashboard?date=${dashboardDay}`, { token: userB.idToken });
   check("B no puede ver el resumen de A", [403, 404].includes(foreignDashboard.status), `HTTP ${foreignDashboard.status}`);
 
+  section("16. Proveedores de IA y prueba de negocios");
+  const providersList = await api("/api/v1/platform/providers", { token: admin.idToken });
+  const providerList = providersList.json?.providers ?? [];
+  const mockEntry = providerList.find((item) => item.provider === "mock");
+  check("El administrador ve los proveedores", providersList.status === 200 && providerList.length >= 4, `${providerList.length} proveedor(es)`);
+  check("Las claves se muestran enmascaradas", providerList.every((item) => !item.apiKey && (!item.maskedKey || String(item.maskedKey).startsWith("…"))), `mock=${mockEntry?.maskedKey ?? "sin clave"}`);
+
+  const ownersProviders = await api("/api/v1/platform/providers", { token: userA.idToken });
+  check("Un dueño normal no ve los proveedores", ownersProviders.status === 403 && ownersProviders.json?.error?.code === "not_platform_admin", `HTTP ${ownersProviders.status}`);
+
+  const mockKey = "sk-verify-mock-9999";
+  const providerSaved = await api("/api/v1/platform/providers/mock", {
+    method: "PUT", token: admin.idToken,
+    body: { enabled: true, apiKey: mockKey, models: ["mock-agent"], defaultModel: "mock-agent" },
+  });
+  const providerSavedBody = JSON.stringify(providerSaved.json ?? {});
+  check("El administrador guarda una clave", providerSaved.status === 200 && providerSaved.json?.provider?.source === "platform", `HTTP ${providerSaved.status} source=${providerSaved.json?.provider?.source}`);
+  check("La clave completa no vuelve en la respuesta", !providerSavedBody.includes(mockKey), `masked=${providerSaved.json?.provider?.maskedKey}`);
+
+  const badModels = await api("/api/v1/platform/providers/mock", { method: "PUT", token: admin.idToken, body: { models: [] } });
+  check("Una lista de modelos vacía responde 400", badModels.status === 400 && badModels.json?.error?.code === "invalid_models", `HTTP ${badModels.status}`);
+
+  const badDefaultModel = await api("/api/v1/platform/providers/mock", { method: "PUT", token: admin.idToken, body: { models: ["mock-agent"], defaultModel: "otro-modelo" } });
+  check("Un modelo por defecto fuera de la lista responde 400", badDefaultModel.status === 400 && badDefaultModel.json?.error?.code === "invalid_model", `HTTP ${badDefaultModel.status}`);
+
+  const providerTest = await api("/api/v1/platform/providers/mock/test", { method: "POST", token: admin.idToken, body: {} });
+  check("La prueba de conexión funciona", providerTest.status === 200 && providerTest.json?.ok === true, `latencia=${providerTest.json?.latencyMs}ms`);
+
+  const providerRemoved = await api("/api/v1/platform/providers/mock", { method: "DELETE", token: admin.idToken });
+  check("Quitar la configuración vuelve al entorno", providerRemoved.status === 200 && ["env", "none"].includes(providerRemoved.json?.provider?.source), `source=${providerRemoved.json?.provider?.source}`);
+
+  const meTenants = await api("/api/v1/me/tenants", { token: userA.idToken });
+  const ownTenant = (meTenants.json?.tenants ?? []).find((item) => item.tenantId === tenantA.tenantId);
+  check("El negocio nuevo entra en periodo de prueba", ownTenant?.plan === "trial" && Number.isInteger(ownTenant?.trialDaysLeft) && ownTenant.trialDaysLeft > 0, `plan=${ownTenant?.plan} días=${ownTenant?.trialDaysLeft}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {

@@ -73,6 +73,23 @@ export class AgentProviderError extends Error {
 
 export const PROVIDER_IDS = Object.keys(PROVIDER_DEFINITIONS);
 
+export function getProviderDefinition(providerId) {
+  const definition = PROVIDER_DEFINITIONS[providerId];
+  return definition ? { ...definition, provider: providerId } : null;
+}
+
+export function getProviderDefinitions() {
+  return PROVIDER_DEFINITIONS;
+}
+
+export function getModelLabel(modelId) {
+  return MODEL_LABELS[modelId] ?? modelId;
+}
+
+export function getProviderDefaultModels(providerId, env = process.env) {
+  return readProviderModels(providerId, env).slice();
+}
+
 export function getProviderRegistry(env = process.env) {
   return PROVIDER_IDS.map((provider) => {
     const definition = PROVIDER_DEFINITIONS[provider];
@@ -115,10 +132,11 @@ export function resolveAgentConfig(tenant, env = process.env) {
   return { provider, model, tone, instructions };
 }
 
-// Validación pura de PUT /agent/config.
-export function validateAgentConfigInput(body, env = process.env) {
+// Validación pura de PUT /agent/config. `available` permite pasar el registro
+// ya resuelto con las claves de plataforma (si no, se usa solo el entorno).
+export function validateAgentConfigInput(body, env = process.env, { available = null } = {}) {
   const input = body && typeof body === "object" && !Array.isArray(body) ? body : {};
-  const registry = getProviderRegistry(env);
+  const registry = Array.isArray(available) && available.length > 0 ? available : getProviderRegistry(env);
   const providerId = typeof input.provider === "string" ? input.provider.trim() : "";
   const entry = registry.find((item) => item.provider === providerId);
   if (!entry) return invalid("invalid_provider", "Selecciona un proveedor válido.");
@@ -163,7 +181,9 @@ export function isProviderConfigured(providerId, env = process.env) {
   return typeof key === "string" && key.trim() !== "";
 }
 
-// Punto único de entrada para hablar con el proveedor elegido.
+// Punto único de entrada para hablar con el proveedor elegido. `apiKey` permite
+// usar una clave resuelta (por ejemplo, la guardada y cifrada en plataforma);
+// si no llega, se usa la del entorno como hasta ahora.
 export async function chat({
   provider,
   model,
@@ -172,9 +192,13 @@ export async function chat({
   temperature = 0.4,
   env = process.env,
   fetchImpl = globalThis.fetch,
+  apiKey = null,
+  maxTokens = null,
+  timeoutMs = 30_000,
 }) {
   const definition = PROVIDER_DEFINITIONS[provider];
-  if (!definition || !isProviderConfigured(provider, env)) {
+  const resolvedKey = typeof apiKey === "string" && apiKey.trim() !== "" ? apiKey.trim() : null;
+  if (!definition || !(resolvedKey !== null || isProviderConfigured(provider, env))) {
     const error = new Error("agent_not_configured");
     error.code = "agent_not_configured";
     error.status = 503;
@@ -184,18 +208,22 @@ export async function chat({
   if (definition.api === "mock") {
     return chatMock({ messages });
   }
+
+  const effectiveKey = resolvedKey ?? env[definition.apiKeyEnv];
+  const options = { model, messages, tools, temperature, maxTokens, timeoutMs, fetchImpl };
   if (definition.api === "anthropic") {
-    return chatAnthropic({ definition, apiKey: env[definition.apiKeyEnv], model, messages, tools, temperature, fetchImpl });
+    return chatAnthropic({ definition, apiKey: effectiveKey, ...options });
   }
-  return chatOpenAICompatible({ definition, apiKey: env[definition.apiKeyEnv], model, messages, tools, temperature, fetchImpl });
+  return chatOpenAICompatible({ definition, apiKey: effectiveKey, ...options });
 }
 
-async function chatOpenAICompatible({ definition, apiKey, model, messages, tools, temperature, fetchImpl }) {
+async function chatOpenAICompatible({ definition, apiKey, model, messages, tools, temperature, fetchImpl, maxTokens, timeoutMs }) {
   const body = {
     model,
     messages: toOpenAIMessages(messages),
     temperature,
   };
+  if (Number.isInteger(maxTokens) && maxTokens > 0) body.max_tokens = maxTokens;
   if (tools.length > 0) body.tools = tools.map(toOpenAITool);
 
   const data = await requestJson(fetchImpl, `${definition.baseUrl}/chat/completions`, {
@@ -205,7 +233,7 @@ async function chatOpenAICompatible({ definition, apiKey, model, messages, tools
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
-  });
+  }, timeoutMs);
 
   const message = data?.choices?.[0]?.message ?? {};
   const toolCalls = Array.isArray(message.tool_calls)
@@ -223,11 +251,11 @@ async function chatOpenAICompatible({ definition, apiKey, model, messages, tools
   };
 }
 
-async function chatAnthropic({ definition, apiKey, model, messages, tools, temperature, fetchImpl }) {
+async function chatAnthropic({ definition, apiKey, model, messages, tools, temperature, fetchImpl, maxTokens, timeoutMs }) {
   const { system, messages: anthropicMessages } = toAnthropicMessages(messages);
   const body = {
     model,
-    max_tokens: 1024,
+    max_tokens: Number.isInteger(maxTokens) && maxTokens > 0 ? maxTokens : 1024,
     temperature,
     messages: anthropicMessages,
   };
@@ -248,7 +276,7 @@ async function chatAnthropic({ definition, apiKey, model, messages, tools, tempe
       "anthropic-version": definition.anthropicVersion,
     },
     body: JSON.stringify(body),
-  });
+  }, timeoutMs);
 
   const blocks = Array.isArray(data?.content) ? data.content : [];
   const text = blocks
@@ -357,12 +385,12 @@ function mockClosingOutput(toolResult) {
   return { reply: "Listo.", action: "responder" };
 }
 
-async function requestJson(fetchImpl, url, options) {
+async function requestJson(fetchImpl, url, options, timeoutMs = 30_000) {
   let response;
   try {
     response = await fetchImpl(url, {
       ...options,
-      signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(30_000) : undefined,
+      signal: typeof AbortSignal?.timeout === "function" ? AbortSignal.timeout(timeoutMs) : undefined,
     });
   } catch {
     // Nunca propagamos detalles de red ni cuerpos del proveedor al cliente.

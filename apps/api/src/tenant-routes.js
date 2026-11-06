@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db } from "./firebase.js";
 import { requireOwner, requireTenantMembership, requireUser } from "./auth-middleware.js";
 import { asyncRoute, sendError } from "./http.js";
@@ -17,6 +17,7 @@ import {
   resolveBusinessProfile,
   validateBusinessProfileInput,
 } from "./business-profile.js";
+import { resolveTrialDays, serializeTrial, trialEndsAtFromNow } from "./trial.js";
 
 export const tenantRoutes = Router();
 tenantRoutes.use(requireUser);
@@ -53,6 +54,7 @@ tenantRoutes.get("/me/tenants", asyncRoute(async (req, res) => {
       openingHours: resolveOpeningHours(tenant),
       slotStepMinutes: resolveSlotStepMinutes(tenant),
       ...resolveBusinessProfile(tenant),
+      ...serializeTrial(tenant),
       role: membership.role,
     };
   }));
@@ -91,6 +93,8 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
   }
 
   const slug = makeSlug(name);
+  const trialDays = resolveTrialDays();
+  const trialEndsAt = trialEndsAtFromNow(trialDays);
   const tenantRef = db.collection("tenants").doc();
   const slugRef = db.collection("tenantSlugs").doc(slug);
   const membershipRef = tenantRef.collection("memberships").doc(req.user.uid);
@@ -102,6 +106,7 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
     openingHours: openingHoursResult.value,
     slotStepMinutes,
     plan: "trial",
+    trialEndsAt: Timestamp.fromDate(trialEndsAt),
     notes: "",
     status: "active",
     createdAt: FieldValue.serverTimestamp(),
@@ -146,6 +151,8 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
       openingHours: openingHoursResult.value,
       slotStepMinutes,
       plan: "trial",
+      trialEndsAt: trialEndsAt.toISOString(),
+      trialDaysLeft: trialDays,
       notes: "",
       status: "active",
       role: "owner",
