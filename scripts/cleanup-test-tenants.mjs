@@ -7,7 +7,11 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
 const apply = process.argv.includes("--apply");
-const projectId = process.env.FIREBASE_PROJECT_ID || "demo-alaia";
+const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || "demo-alaia";
+if (projectId === "demo-alaia") {
+  process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
+  process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8081";
+}
 
 initializeApp({ credential: applicationDefault(), projectId });
 const auth = getAuth();
