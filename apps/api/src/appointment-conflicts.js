@@ -4,6 +4,8 @@
 // - una cita asignada y una sin asignar NO se cruzan;
 // - dos citas del mismo profesional sí se cruzan.
 
+import { isActiveAppointmentStatus } from "./appointment-status.js";
+
 export function normalizeProfessionalId(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -31,7 +33,7 @@ export function findAppointmentConflict(docs, {
   for (const doc of Array.isArray(docs) ? docs : []) {
     if (ignoreAppointmentId && doc?.id === ignoreAppointmentId) continue;
     const data = typeof doc?.data === "function" ? doc.data() : doc?.data ?? {};
-    if (data.status !== "scheduled") continue;
+    if (!isActiveAppointmentStatus(data.status)) continue;
 
     const otherStart = toMillis(data.startsAt);
     const otherEnd = toMillis(data.endsAt);
@@ -69,10 +71,10 @@ export function resolveRescheduleAssignment({
 }
 
 // ¿Esta cita bloquea la disponibilidad pedida?
-// - Sin filtro (professionalId null): cualquier cita scheduled ocupa el hueco.
+// - Sin filtro (professionalId null): cualquier cita activa ocupa el hueco.
 // - Con filtro: bloquea la del propio profesional y la que no tiene asignado.
 export function blocksAvailability(appointmentData, professionalId = null) {
-  if (appointmentData?.status !== "scheduled") return false;
+  if (!isActiveAppointmentStatus(appointmentData?.status)) return false;
   const requested = normalizeProfessionalId(professionalId);
   if (requested === null) return true;
   return sameProfessionalSlot(appointmentData?.professionalId, null)

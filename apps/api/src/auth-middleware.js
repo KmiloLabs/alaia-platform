@@ -55,6 +55,7 @@ export async function requireTenantMembership(req, res, next) {
       userId: req.user.uid,
       role: membership.role,
       status: membership.status,
+      professionalId: typeof membership.professionalId === "string" ? membership.professionalId : null,
     };
     return next();
   } catch {
@@ -62,11 +63,11 @@ export async function requireTenantMembership(req, res, next) {
   }
 }
 
-// Escrituras sensibles del negocio (horario, catálogo): solo el dueño.
-// Debe usarse después de requireTenantMembership.
+// Escrituras sensibles del negocio (horario, catálogo, equipo, invitaciones…):
+// dueño o administrador del negocio. Debe usarse después de requireTenantMembership.
 export function requireOwner(req, res, next) {
-  if (req.membership?.role !== "owner") {
-    return sendError(res, 403, "not_owner", "Solo el dueño del negocio puede hacer este cambio.");
+  if (req.membership?.role !== "owner" && req.membership?.role !== "admin") {
+    return sendError(res, 403, "not_owner", "Solo el dueño o un administrador del negocio puede hacer este cambio.");
   }
   return next();
 }

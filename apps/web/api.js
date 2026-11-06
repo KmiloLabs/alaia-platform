@@ -53,6 +53,12 @@ const ERROR_MESSAGES = {
   professional_not_found: "No encontramos ese profesional en tu equipo.",
   invalid_range: "El rango no es válido: revisa las fechas y usa máximo 92 días.",
   invalid_date: "La fecha del rango no es válida.",
+  invalid_invitee: "Indica al menos un correo o un teléfono para enviar la invitación.",
+  invitation_not_found: "Esta invitación no existe o el enlace es inválido.",
+  invitation_expired: "Esta invitación ya venció. Pide una nueva al negocio.",
+  invitation_not_pending: "Esta invitación fue cancelada o ya se usó.",
+  invitation_already_member: "Ya haces parte de este negocio.",
+  invalid_status: "El estado de la cita no es válido.",
   provider_not_found: "No encontramos ese proveedor de IA.",
   invalid_api_key: "La clave debe tener entre 8 y 200 caracteres.",
   invalid_models: "Escribe entre 1 y 10 modelos, separados por comas (máx. 64 caracteres cada uno).",
@@ -225,6 +231,39 @@ export function testPlatformProvider(provider) {
 export function getSettlementPreview(tenantId, from, to) {
   const params = new URLSearchParams({ from, to });
   return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/settlements/preview?${params.toString()}`);
+}
+
+export function createInvitation(tenantId, invitation) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/invitations`, {
+    method: "POST",
+    body: invitation,
+  });
+}
+
+export function listInvitations(tenantId) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/invitations`);
+}
+
+export function cancelInvitation(tenantId, invitationId) {
+  return request(
+    `/api/v1/tenants/${encodeURIComponent(tenantId)}/invitations/${encodeURIComponent(invitationId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function getInvitation(token) {
+  return request(`/api/v1/invitations/${encodeURIComponent(token)}`);
+}
+
+export function acceptInvitation(token) {
+  return request(`/api/v1/invitations/${encodeURIComponent(token)}/accept`, { method: "POST" });
+}
+
+export function updateAppointmentStatus(tenantId, appointmentId, status) {
+  return request(
+    `/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments/${encodeURIComponent(appointmentId)}/status`,
+    { method: "POST", body: { status } },
+  );
 }
 
 export function createTenant({ name, sector, timeZone }) {

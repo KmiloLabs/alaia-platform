@@ -75,8 +75,33 @@
             <p class="form-error" id="auth-error" role="alert" aria-live="assertive"></p>
             <button class="primary-button auth-submit" id="auth-submit" type="submit">Entrar</button>
           </form>
+          <div class="auth-divider" aria-hidden="true"><span>o</span></div>
+          <button class="secondary-button auth-google" id="auth-google" type="button"><span class="google-mark" aria-hidden="true">G</span> Continuar con Google</button>
+          <p class="field-hint auth-google-note">En el emulador funciona con cuentas de prueba. En producción requiere configurar el cliente OAuth de Google.</p>
           <p class="auth-foot">Alaia · entorno local con emulador de Firebase</p>
         </div>
+      </div>
+    </section>
+
+    <section class="screen invite-screen" id="invite-screen" hidden>
+      <div class="invite-shell">
+        <a class="brand" href="/" aria-label="Alaia, inicio">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="brand-name">alaia<span class="brand-dot">.</span></span>
+        </a>
+        <article class="invite-card">
+          <p class="eyebrow">INVITACIÓN DE EQUIPO</p>
+          <h1 id="invite-title">Únete al equipo</h1>
+          <p class="invite-copy" id="invite-copy">Cargando la invitación…</p>
+          <div class="invite-details" id="invite-details"></div>
+          <p class="form-status" id="invite-status" role="status" aria-live="polite"></p>
+          <p class="form-error" id="invite-error" role="alert" aria-live="assertive"></p>
+          <div class="invite-actions">
+            <button class="primary-button" id="invite-google" type="button" hidden><span class="google-mark" aria-hidden="true">G</span> Continuar con Google</button>
+            <button class="primary-button" id="invite-accept" type="button" hidden>Aceptar invitación</button>
+          </div>
+          <a class="text-button invite-back" href="/">Entrar con correo</a>
+        </article>
       </div>
     </section>
 
@@ -153,6 +178,7 @@
           <button class="nav-item is-active" data-view="resumen" aria-current="page">
             <span class="nav-icon" aria-hidden="true">⌂</span><span>Resumen</span>
           </button>
+          <button class="nav-item" data-view="mi-agenda" id="professional-agenda-nav" hidden><span class="nav-icon" aria-hidden="true">▦</span><span>Mi agenda</span></button>
           <button class="nav-item" data-view="agenda"><span class="nav-icon" aria-hidden="true">▦</span><span>Agenda</span><span class="nav-count" id="nav-count">0</span></button>
           <button class="nav-item" data-view="clientes"><span class="nav-icon" aria-hidden="true">♙</span><span>Clientes</span></button>
           <button class="nav-item" data-view="equipo"><span class="nav-icon" aria-hidden="true">♧</span><span>Equipo</span></button>
@@ -545,6 +571,16 @@
               </div>
             </article>
 
+            <article class="panel invitations-panel" id="invitations-panel" aria-labelledby="invitations-title">
+              <div class="panel-heading">
+                <div><p class="eyebrow">ACCESOS</p><h2 id="invitations-title">Invitaciones pendientes</h2></div>
+                <span class="services-count" id="invitations-count"></span>
+              </div>
+              <p class="config-intro">Invita a cada profesional para que entre con Google y vea solo su agenda.</p>
+              <p class="form-status" id="invitations-status" role="status" aria-live="polite"></p>
+              <div class="invitations-list" id="invitations-list" aria-busy="false"></div>
+            </article>
+
             <article class="panel settlement-panel" id="settlement-panel" aria-labelledby="settlement-title">
               <div class="panel-heading">
                 <div><p class="eyebrow">LIQUIDACIÓN</p><h2 id="settlement-title">Liquidación de comisiones</h2></div>
@@ -592,6 +628,22 @@
                 <span>Prueba con otras fechas o crea citas para ver la liquidación.</span>
               </div>
               <p class="settlement-unassigned" id="settlement-unassigned" hidden>Sin asignar: <strong id="settlement-unassigned-services">0 citas</strong> · <strong id="settlement-unassigned-gross">$ 0</strong></p>
+            </article>
+          </section>
+
+          <section class="professional-view" id="professional-agenda-view" aria-labelledby="professional-agenda-title" hidden>
+            <article class="panel professional-agenda-panel">
+              <div class="panel-heading">
+                <div><p class="eyebrow">MI AGENDA</p><h2 id="professional-agenda-title">Tus próximas citas</h2></div>
+                <span class="services-count" id="professional-agenda-count"></span>
+              </div>
+              <p class="config-intro">Aquí ves solo las citas que tienes asignadas. Marca si el cliente llegó o no.</p>
+              <p class="form-status" id="professional-agenda-status" role="status" aria-live="polite"></p>
+              <div class="professional-agenda-list" id="professional-agenda-list" aria-busy="false"></div>
+              <div class="professional-agenda-empty" id="professional-agenda-empty" hidden>
+                <strong>No tienes citas próximas</strong>
+                <span>Cuando te asignen una cita aparecerá aquí.</span>
+              </div>
             </article>
           </section>
 
@@ -859,6 +911,35 @@
         <label for="professional-rent" id="professional-rent-field" hidden>Alquiler (COP)<input id="professional-rent" type="number" min="0" max="10000000" step="1000" value="300000" /></label>
         <p class="form-error" id="professional-error" role="alert" aria-live="assertive"></p>
         <div class="dialog-actions"><button class="secondary-button" id="cancel-professional" type="button">Cancelar</button><button class="primary-button" id="save-professional" type="submit">Guardar profesional</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="appointment-dialog invite-dialog" id="invite-dialog" aria-labelledby="invite-dialog-title">
+      <form id="invite-form">
+        <div class="dialog-heading"><div><p class="eyebrow">EQUIPO</p><h2 id="invite-dialog-title">Invitar profesional</h2></div><button class="dialog-close" id="close-invite-dialog" type="button" aria-label="Cerrar">×</button></div>
+        <p class="dialog-note" id="invite-dialog-note">Genera un enlace para que entre con Google y vea solo su agenda.</p>
+        <div class="form-pair">
+          <label for="invite-email">Correo (opcional)<input id="invite-email" type="email" maxlength="120" placeholder="Ej. andres@correo.com" /></label>
+          <label for="invite-phone">Teléfono (opcional)<input id="invite-phone" type="tel" maxlength="25" placeholder="Ej. 3001234567" /></label>
+        </div>
+        <p class="field-hint">Indica al menos un correo o un teléfono. El enlace se genera una sola vez y vence en 7 días.</p>
+        <p class="form-error" id="invite-form-error" role="alert" aria-live="assertive"></p>
+        <div class="dialog-actions invite-form-actions"><button class="secondary-button" id="cancel-invite" type="button">Cerrar</button><button class="primary-button" id="generate-invite" type="submit">Generar invitación</button></div>
+        <div class="invite-result" id="invite-result" hidden>
+          <p class="invite-warning"><strong>Enlace generado una sola vez.</strong> Vence en 7 días. Compártelo ahora.</p>
+          <label for="invite-link">Enlace de invitación</label>
+          <input id="invite-link" type="text" readonly />
+          <div class="invite-result-actions">
+            <button class="secondary-button" id="copy-invite-link" type="button">Copiar enlace</button>
+            <a class="secondary-button invite-share" id="share-invite-whatsapp" href="#" target="_blank" rel="noreferrer">Compartir por WhatsApp</a>
+            <a class="secondary-button invite-share" id="send-invite-email" href="#">Enviar por correo</a>
+          </div>
+          <div class="invite-qr-wrap">
+            <canvas id="invite-qr" width="220" height="220" role="img" aria-label="Código QR con el enlace de invitación"></canvas>
+            <p class="field-hint" id="invite-qr-note" hidden>No pudimos dibujar el QR. Usa el enlace o el botón Copiar enlace.</p>
+          </div>
+          <p class="form-status" id="invite-result-status" role="status" aria-live="polite"></p>
+        </div>
       </form>
     </dialog>
 

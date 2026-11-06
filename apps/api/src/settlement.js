@@ -1,6 +1,7 @@
 // Liquidación de comisiones (vista previa): cálculo puro a partir de las citas
 // scheduled del rango y la configuración de comisión de cada profesional.
 
+import { isActiveAppointmentStatus } from "./appointment-status.js";
 import { isValidLocalDate, isValidTimeZone, localDateRangeToUtc } from "./timezone.js";
 
 export const MAX_SETTLEMENT_DAYS = 92;
@@ -33,7 +34,8 @@ export function buildSettlementPreview({ from, to, timeZone, appointments = [], 
   const groups = new Map();
 
   for (const appointment of Array.isArray(appointments) ? appointments : []) {
-    if (appointment?.status !== "scheduled") continue;
+    // Cuentan scheduled + completed; cancelled y no_show no.
+    if (!isActiveAppointmentStatus(appointment?.status)) continue;
     const startsAtMs = toMillis(appointment?.startsAt);
     if (startsAtMs === null || startsAtMs < range.start.getTime() || startsAtMs >= range.end.getTime()) continue;
 

@@ -27,6 +27,10 @@ import {
   normalizeProfessionalId,
   resolveRescheduleAssignment,
 } from "./appointment-conflicts.js";
+import {
+  canUpdateAppointmentStatus,
+  validateAppointmentStatusUpdate,
+} from "./appointment-status.js";
 
 const MAX_APPOINTMENT_DURATION_MS = 480 * 60 * 1000;
 const FALLBACK_TIME_ZONE = "America/Bogota";
@@ -41,7 +45,7 @@ export function isValidAppointmentId(appointmentId) {
   return APPOINTMENT_ID_PATTERN.test(appointmentId);
 }
 
-export async function listAppointments({ tenantId, timeZone, query }) {
+export async function listAppointments({ tenantId, timeZone, query, professionalId }) {
   const range = validateAppointmentRange(query, timeZone);
   if (!range.ok) return { ok: false, status: 400, code: range.code, message: range.message };
 
@@ -51,7 +55,12 @@ export async function listAppointments({ tenantId, timeZone, query }) {
     .orderBy("startsAt", "asc")
     .get();
 
-  return { ok: true, appointments: snapshot.docs.map((doc) => serializeAppointment(doc.id, doc.data())) };
+  let appointments = snapshot.docs.map((doc) => serializeAppointment(doc.id, doc.data()));
+  // Rol professional: solo sus citas (por membership.professionalId).
+  if (professionalId !== undefined) {
+    appointments = appointments.filter((appointment) => appointment.professionalId === professionalId);
+  }
+  return { ok: true, appointments };
 }
 
 export async function getAvailability({ tenant, query, now = new Date(), professionalId = null }) {
@@ -269,6 +278,57 @@ export async function cancelAppointment({ tenantId, actorUid, appointmentId }) {
     alreadyCancelled: outcome.kind === "already_cancelled",
     appointment: serializeAppointment(appointmentId, outcome.data),
   };
+}
+
+// Cambio de estado de asistencia: dueño/admin o el profesional asignado.
+export async function setAppointmentStatus({ tenantId, actorUid, membership, appointmentId, body }) {
+  if (!isValidAppointmentId(appointmentId)) return appointmentNotFound();
+
+  const validation = validateAppointmentStatusUpdate(body);
+  if (!validation.ok) return validation;
+
+  const appointmentRef = appointmentsRef(tenantId).doc(appointmentId);
+  const outcome = await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(appointmentRef);
+    if (!snapshot.exists) return { kind: "missing" };
+
+    const data = snapshot.data();
+    if (data.status === "cancelled") return { kind: "cancelled" };
+
+    const allowed = canUpdateAppointmentStatus({
+      role: membership?.role ?? null,
+      professionalId: membership?.professionalId ?? null,
+      appointmentProfessionalId: normalizeProfessionalId(data.professionalId),
+    });
+    if (!allowed) return { kind: "forbidden" };
+
+    transaction.update(appointmentRef, {
+      status: validation.value.status,
+      statusChangedAt: FieldValue.serverTimestamp(),
+      statusChangedBy: actorUid,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return { kind: "updated", data: { ...data, status: validation.value.status } };
+  });
+
+  if (outcome.kind === "missing") return appointmentNotFound();
+  if (outcome.kind === "cancelled") {
+    return {
+      ok: false,
+      status: 409,
+      code: "appointment_cancelled",
+      message: "No se puede cambiar el estado de una cita cancelada.",
+    };
+  }
+  if (outcome.kind === "forbidden") {
+    return {
+      ok: false,
+      status: 403,
+      code: "forbidden",
+      message: "No puedes cambiar el estado de esa cita.",
+    };
+  }
+  return { ok: true, appointment: serializeAppointment(appointmentId, outcome.data) };
 }
 
 export async function rescheduleAppointment({ tenantId, timeZone, actorUid, appointmentId, body }) {

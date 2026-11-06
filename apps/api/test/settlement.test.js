@@ -134,8 +134,29 @@ test("alquiler prorrateado en rango parcial y neto negativo", () => {
   assert.deepEqual(preview.business, { services: 2, gross: 100000 });
 });
 
-test("la zona horaria del negocio decide qué citas entran", () => {
-  // 2026-11-01T05:30Z = 00:30 del 1 de noviembre en Bogotá y 23:30 del 31 de octubre en Ciudad de México.
+test("las citas completed cuentan y las no_show no", () => {
+  const preview = buildSettlementPreview({
+    from: "2026-11-01",
+    to: "2026-11-30",
+    timeZone: BOGOTA,
+    appointments: [
+      appointment("2026-11-03T10:00", { priceCOP: 100000, professionalId: "pro_a", professionalName: "Andrés", status: "scheduled" }),
+      appointment("2026-11-04T10:00", { priceCOP: 50000, professionalId: "pro_a", professionalName: "Andrés", status: "completed" }),
+      appointment("2026-11-05T10:00", { priceCOP: 99999, professionalId: "pro_a", professionalName: "Andrés", status: "no_show" }),
+      appointment("2026-11-06T10:00", { priceCOP: 88888, professionalId: "pro_a", professionalName: "Andrés", status: "cancelled" }),
+    ],
+    professionals: [
+      { professionalId: "pro_a", name: "Andrés", commission: { type: "percentage", percent: 50, amountCOP: 0, rentCOP: 0 } },
+    ],
+  });
+
+  assert.deepEqual(preview.business, { services: 2, gross: 150000 });
+  assert.deepEqual(preview.professionals, [
+    { professionalId: "pro_a", name: "Andrés", services: 2, gross: 150000, commission: 75000, rent: 0, net: 75000 },
+  ]);
+});
+
+test("la zona horaria del negocio decide qué citas entran", () => {  // 2026-11-01T05:30Z = 00:30 del 1 de noviembre en Bogotá y 23:30 del 31 de octubre en Ciudad de México.
   const instant = { startsAt: new Date("2026-11-01T05:30:00.000Z"), priceCOP: 10000, professionalId: "pro_a", professionalName: "Andrés", status: "scheduled" };
   const professionals = [{ professionalId: "pro_a", name: "Andrés", commission: { type: "percentage", percent: 50 } }];
 

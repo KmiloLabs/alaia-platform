@@ -12,6 +12,9 @@ import {
   resolveSlotStepMinutes,
   validateTenantScheduleUpdate,
 } from "./availability.js";
+import { createService } from "./service-catalog.js";
+import { serviceRepository } from "./service-repository.js";
+import { sectorTemplateFor } from "./sector-templates.js";
 import { isPlatformAdminEmail } from "./platform.js";
 import {
   resolveBusinessProfile,
@@ -141,7 +144,19 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
     throw error;
   }
 
+  let seededServices = 0;
+  for (const templateService of sectorTemplateFor(sector)) {
+    try {
+      const created = await createService({ tenantId: tenantRef.id, body: templateService, repository: serviceRepository });
+      if (created.ok) seededServices += 1;
+    } catch (error) {
+      // La plantilla es una ayuda: si un servicio falla, el negocio puede crearlo a mano.
+      console.warn("No se pudo precargar un servicio de la plantilla:", error?.message ?? error);
+    }
+  }
+
   return res.status(201).json({
+    seededServices,
     tenant: {
       tenantId: tenantRef.id,
       name,

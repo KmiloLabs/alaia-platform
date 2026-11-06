@@ -5,14 +5,14 @@
 import { Router } from "express";
 import { Timestamp } from "firebase-admin/firestore";
 import { db } from "./firebase.js";
-import { requireTenantMembership, requireUser } from "./auth-middleware.js";
+import { requireOwner, requireTenantMembership, requireUser } from "./auth-middleware.js";
 import { asyncRoute, sendError } from "./http.js";
 import { buildDashboardSummary, getDashboardRanges, resolveDashboardDate } from "./dashboard.js";
 
 export const dashboardRoutes = Router();
 dashboardRoutes.use(requireUser);
 
-dashboardRoutes.get("/tenants/:tenantId/dashboard", requireTenantMembership, asyncRoute(async (req, res) => {
+dashboardRoutes.get("/tenants/:tenantId/dashboard", requireTenantMembership, requireOwner, asyncRoute(async (req, res) => {
   const result = resolveDashboardDate({
     date: typeof req.query?.date === "string" ? req.query.date : undefined,
     timeZone: req.tenant.timeZone,

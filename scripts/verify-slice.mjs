@@ -291,6 +291,9 @@ async function main() {
   check("Un mensaje vacío responde 400", noMessage.status === 400, `HTTP ${noMessage.status}`);
 
   section("12. Horario del negocio y catálogo de servicios");
+  const templated = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, { token: userA.idToken });
+  const templatedServices = templated.json?.services ?? [];
+  check("La plantilla del sector precarga servicios", templatedServices.length >= 3 && templatedServices.every((item) => item.priceCOP > 0), `${templatedServices.length} servicio(s), ${templatedServices[0]?.name ?? ""}`);
   const contextBefore = await api(`/api/v1/tenants/${tenantA.tenantId}/context`, { token: userA.idToken });
   const hoursBefore = contextBefore.json?.tenant?.openingHours ?? contextBefore.json?.openingHours ?? [];
   check("El contexto trae el horario del negocio", Array.isArray(hoursBefore) && hoursBefore.length === 6, `${hoursBefore.length} día(s) abierto(s)`);

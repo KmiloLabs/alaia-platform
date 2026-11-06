@@ -97,6 +97,25 @@ test("una cita cancelada no suma ingresos ni aparece en topServices", () => {
   assert.deepEqual(summary.topServices, [{ name: "Corte", count: 1, income: 50000 }]);
 });
 
+test("las citas completed suman y las no_show no", () => {
+  const summary = buildDashboardSummary({
+    date: DATE,
+    timeZone: BOGOTA,
+    appointments: [
+      appointment(`${DATE}T09:00`, { priceCOP: 30000, serviceName: "Corte", status: "completed" }),
+      appointment(`${DATE}T10:00`, { priceCOP: 50000, serviceName: "Barba", status: "scheduled" }),
+      appointment(`${DATE}T11:00`, { priceCOP: 99999, serviceName: "Corte", status: "no_show" }),
+      appointment(`${DATE}T12:00`, { priceCOP: 88888, serviceName: "Corte", status: "cancelled" }),
+    ],
+  });
+  assert.deepEqual(summary.appointments, { today: 2, week: 2, month: 2, cancelled: 1 });
+  assert.deepEqual(summary.income, { today: 80000, week: 80000, month: 80000 });
+  assert.deepEqual(summary.topServices, [
+    { name: "Barba", count: 1, income: 50000 },
+    { name: "Corte", count: 1, income: 30000 },
+  ]);
+});
+
 test("la misma semana que cruza de mes suma a la semana pero no al mes", () => {
   const summary = buildDashboardSummary({
     date: "2026-11-01",

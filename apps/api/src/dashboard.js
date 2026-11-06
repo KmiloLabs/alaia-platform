@@ -2,6 +2,7 @@
 // acotados por el servicio. La semana es lunes-domingo en la zona del negocio.
 
 import { businessDayNumber } from "./availability.js";
+import { isActiveAppointmentStatus } from "./appointment-status.js";
 import {
   addDays,
   isValidLocalDate,
@@ -76,7 +77,8 @@ export function buildDashboardSummary({ date, timeZone, appointments = [], custo
       if (inRange(startsAtMs, ranges.month)) cancelledCount += 1;
       continue;
     }
-    if (appointment?.status !== undefined && appointment.status !== "scheduled") continue;
+    // Ingresos y conteos: scheduled + completed. no_show (y otros) no suman.
+    if (!isActiveAppointmentStatus(appointment?.status ?? "scheduled")) continue;
 
     const price = Number.isInteger(appointment?.priceCOP) ? appointment.priceCOP : 0;
     const isToday = inRange(startsAtMs, ranges.today);

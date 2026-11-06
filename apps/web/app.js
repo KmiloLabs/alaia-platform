@@ -1,15 +1,21 @@
 import {
+  GoogleAuthProvider,
   createUserWithEmailAndPassword,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  signInWithRedirect,
   signOut as firebaseSignOut,
 } from "firebase/auth";
 import { auth } from "./firebase.js";
 import {
+  acceptInvitation,
   cancelAppointment as cancelAppointmentRequest,
+  cancelInvitation,
   createAppointment as createAppointmentRequest,
   createClientRequestId,
   createCustomer,
+  createInvitation,
   createProfessional,
   createService,
   createTenant,
@@ -20,6 +26,7 @@ import {
   getAgentConfig,
   getCustomer,
   getDashboard,
+  getInvitation,
   getMe,
   getPlatformSummary,
   getPlatformTenant,
@@ -30,6 +37,7 @@ getTenantContext,
   listAppointments,
   listAvailability,
   listCustomers,
+  listInvitations,
   listPlatformProviders,
   listPlatformTenants,
   listProfessionals,
@@ -40,6 +48,7 @@ getTenantContext,
   saveAgentConfig,
   sendAgentMessage,
   testPlatformProvider,
+  updateAppointmentStatus,
   updateCustomer,
   updatePlatformProvider,
   updateProfessional,
@@ -123,6 +132,7 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const screens = {
   boot: $("#boot-screen"),
   auth: $("#auth-screen"),
+  invite: $("#invite-screen"),
   onboarding: $("#onboarding-screen"),
   panel: $("#panel-screen"),
 };
@@ -142,6 +152,16 @@ const authTabSignup = $("#auth-tab-signup");
 const authFormTitle = $("#auth-form-title");
 const authFormCopy = $("#auth-form-copy");
 const authPasswordHint = $("#auth-password-hint");
+const authGoogle = $("#auth-google");
+
+const inviteScreen = $("#invite-screen");
+const inviteTitle = $("#invite-title");
+const inviteCopy = $("#invite-copy");
+const inviteDetails = $("#invite-details");
+const inviteStatus = $("#invite-status");
+const inviteError = $("#invite-error");
+const inviteGoogle = $("#invite-google");
+const inviteAccept = $("#invite-accept");
 
 const tenantForm = $("#tenant-form");
 const tenantName = $("#tenant-name");
@@ -202,6 +222,33 @@ const nextDay = $("#next-day");
 const goToday = $("#go-today");
 
 const teamView = $("#team-view");
+const professionalAgendaNav = $("#professional-agenda-nav");
+const professionalAgendaView = $("#professional-agenda-view");
+const professionalAgendaList = $("#professional-agenda-list");
+const professionalAgendaStatus = $("#professional-agenda-status");
+const professionalAgendaEmpty = $("#professional-agenda-empty");
+const professionalAgendaCount = $("#professional-agenda-count");
+const invitationsList = $("#invitations-list");
+const invitationsStatus = $("#invitations-status");
+const invitationsCount = $("#invitations-count");
+const inviteDialog = $("#invite-dialog");
+const inviteForm = $("#invite-form");
+const inviteDialogTitle = $("#invite-dialog-title");
+const inviteDialogNote = $("#invite-dialog-note");
+const inviteEmail = $("#invite-email");
+const invitePhone = $("#invite-phone");
+const inviteError = $("#invite-error");
+const inviteResult = $("#invite-result");
+const inviteLinkInput = $("#invite-link");
+const inviteCopyButton = $("#copy-invite-link");
+const inviteShareWhatsApp = $("#share-invite-whatsapp");
+const inviteSendEmail = $("#send-invite-email");
+const inviteQrCanvas = $("#invite-qr");
+const inviteQrNote = $("#invite-qr-note");
+const inviteResultStatus = $("#invite-result-status");
+const inviteSubmit = $("#generate-invite");
+const closeInviteDialog = $("#close-invite-dialog");
+const cancelInvite = $("#cancel-invite");
 const teamPanelList = $("#team-panel-list");
 const teamPanelNew = $("#team-panel-new");
 const teamPanelLink = $("#team-panel-link");
@@ -463,6 +510,13 @@ const agentResultTools = $("#agent-result-tools");
 const toast = $("#toast");
 
 const state = {
+const initialInviteToken = parseInviteToken();
+if (initialInviteToken) {
+  state.inviteMode = true;
+  state.inviteToken = initialInviteToken;
+}
+
+  inviteToken: null,
   user: null,
   tenants: [],
   tenant: null,
@@ -527,6 +581,21 @@ const state = {
   professionalsLoading: false,
   professionalSaving: false,
   professionalTargetId: null,
+  invitations: [],
+  invitationsLoaded: false,
+  invitationsLoadSeq: 0,
+  invitationsLoading: false,
+  inviteProfessional: null,
+  inviteLink: "",
+  inviteSubmitting: false,
+  inviteMode: false,
+  inviteToken: null,
+  inviteData: null,
+  inviteAccepting: false,
+  isProfessional: false,
+  professionalAgenda: [],
+  professionalAgendaSeq: 0,
+  professionalAgendaLoading: false,
   settlementTenantId: null,
   settlementSeq: 0,
   settlementLoading: false,
@@ -562,6 +631,10 @@ let toastTimer;
 // ---------------------------------------------------------------------------
 
 onAuthStateChanged(auth, (user) => {
+  if (state.inviteMode) {
+    handleInviteAuth(user);
+    return;
+  }
   if (!user) {
     handleSignedOut();
     return;
@@ -623,6 +696,8 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
 
     state.tenant = summary;
     state.context = context;
+    state.isProfessional = context?.membership?.role === "professional";
+    state.view = state.isProfessional ? "mi-agenda" : (state.view === "mi-agenda" ? "resumen" : state.view);
     state.tenantSuspended = false;
     hideTenantSuspended();
     state.cache.clear();
@@ -657,8 +732,12 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
     showScreen("panel");
     setView(state.view);
     renderDateUi();
-    await loadDay(state.selectedDate, seq);
-    void loadProfessionals({ silent: true });
+    if (state.isProfessional) {
+      await loadProfessionalAgenda(seq);
+    } else {
+      await loadDay(state.selectedDate, seq);
+      void loadProfessionals({ silent: true });
+    }
   } catch (error) {
     if (seq !== state.sessionSeq) return;
     if (isUnauthorized(error)) {
@@ -717,6 +796,10 @@ function handleSignedOut() {
   state.agentLoadSeq += 1;
   resetAgentConversation();
   state.isPlatformAdmin = false;
+  state.isProfessional = false;
+  state.professionalAgenda = [];
+  state.invitations = [];
+  state.invitationsLoaded = false;
   updatePlatformVisibility();
   hideTenantSuspended();
   state.services = [];
@@ -987,6 +1070,7 @@ function renderTenantUi() {
   renderTenantOptions();
   if (changeTenantButton) changeTenantButton.hidden = false;
   updateNavigationVisibility();
+  if (changeTenantButton) changeTenantButton.hidden = state.isProfessional;
 }
 
 function updatePlatformVisibility() {
@@ -995,16 +1079,23 @@ function updatePlatformVisibility() {
 
 function updateNavigationVisibility() {
   const hasTenant = Boolean(state.tenant);
+  const isProfessional = hasTenant && state.context?.membership?.role === "professional";
+  state.isProfessional = isProfessional;
   for (const item of document.querySelectorAll(".nav-item[data-view]")) {
-    if (["platform-nav", "platform-nav-businesses", "platform-nav-providers"].includes(item.id)) {
-      item.hidden = !state.isPlatformAdmin;
+    if (item.id === "professional-agenda-nav") {
+      item.hidden = !isProfessional;
       continue;
     }
-    item.hidden = !hasTenant;
+    if (["platform-nav", "platform-nav-businesses", "platform-nav-providers"].includes(item.id)) {
+      item.hidden = !state.isPlatformAdmin || isProfessional;
+      continue;
+    }
+    item.hidden = !hasTenant || isProfessional;
   }
-  if (platformNav) platformNav.hidden = !state.isPlatformAdmin;
-  if (platformNavBusinesses) platformNavBusinesses.hidden = !state.isPlatformAdmin;
-  if (platformNavProviders) platformNavProviders.hidden = !state.isPlatformAdmin;
+  if (professionalAgendaNav) professionalAgendaNav.hidden = !isProfessional;
+  if (platformNav) platformNav.hidden = !state.isPlatformAdmin || isProfessional;
+  if (platformNavBusinesses) platformNavBusinesses.hidden = !state.isPlatformAdmin || isProfessional;
+  if (platformNavProviders) platformNavProviders.hidden = !state.isPlatformAdmin || isProfessional;
 }
 
 function renderPlatformWorkspace() {
@@ -1406,7 +1497,7 @@ agendaToggle.addEventListener("click", () => {
 });
 
 function setView(view) {
-  state.view = ["agenda", "configuracion", "servicios", "clientes", "equipo", "plataforma", "plataforma-negocios", "plataforma-proveedores"].includes(view) ? view : "resumen";
+  state.view = ["agenda", "configuracion", "servicios", "clientes", "equipo", "plataforma", "plataforma-negocios", "plataforma-proveedores", "mi-agenda"].includes(view) ? view : "resumen";
   const isPlatformView = state.view.startsWith("plataforma");
   document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     const isActive = item.dataset.view === state.view || (isPlatformView && item.id === "platform-nav");
@@ -1415,7 +1506,7 @@ function setView(view) {
     else item.removeAttribute("aria-current");
   });
 
-  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios", clientes: "Clientes", equipo: "Equipo", plataforma: "Plataforma", "plataforma-negocios": "Plataforma", "plataforma-proveedores": "Plataforma" };
+  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios", clientes: "Clientes", equipo: "Equipo", plataforma: "Plataforma", "plataforma-negocios": "Plataforma", "plataforma-proveedores": "Plataforma", "mi-agenda": "Mi agenda" };
   currentSection.textContent = sectionLabels[state.view];
 
   const metricGrid = document.querySelector(".metric-grid");
@@ -1426,11 +1517,12 @@ function setView(view) {
   const isServices = state.view === "servicios";
   const isCustomers = state.view === "clientes";
   const isTeam = state.view === "equipo";
+  const isProfessionalAgenda = state.view === "mi-agenda";
   const isPlatform = state.view.startsWith("plataforma");
 
   if (metricGrid) metricGrid.hidden = true;
   if (legacyMetrics) legacyMetrics.hidden = true;
-  if (contentGrid) contentGrid.hidden = isConfig || isServices || isCustomers || isTeam || isPlatform;
+  if (contentGrid) contentGrid.hidden = isConfig || isServices || isCustomers || isTeam || isProfessionalAgenda || isPlatform;
   if (dashboardGrid) dashboardGrid.hidden = state.view !== "resumen";
   if (dashboardServices) dashboardServices.hidden = state.view !== "resumen";
   if (dashboardStatus) dashboardStatus.hidden = state.view !== "resumen";
@@ -1448,7 +1540,8 @@ function setView(view) {
     if (platformProvidersPanel) platformProvidersPanel.hidden = platformSection === "negocios";
   }
   if (teamView) teamView.hidden = !isTeam;
-  newAppointmentButton.hidden = isConfig || isServices || isCustomers || isTeam || isPlatform;
+  if (professionalAgendaView) professionalAgendaView.hidden = !isProfessionalAgenda;
+  newAppointmentButton.hidden = isConfig || isServices || isCustomers || isTeam || isProfessionalAgenda || isPlatform;
   agendaToggle.textContent = isAgenda ? "Ver resumen →" : "Ver agenda →";
 
   renderHeader();
@@ -1461,8 +1554,10 @@ function setView(view) {
   if (isCustomers) loadCustomers({ force: true });
   if (isTeam) {
     loadProfessionals();
+    loadInvitations();
     loadSettlementPreview();
   }
+  if (isProfessionalAgenda) loadProfessionalAgenda();
   if (isPlatform) loadPlatformDashboard();
   if (state.view === "resumen") loadDashboard();
 }
@@ -1496,6 +1591,12 @@ function renderHeader() {
     todayLabel.textContent = "TU EQUIPO";
     setPageTitle("Equipo");
     pageSubtitle.textContent = "Quiénes atienden, cómo se les paga y qué citas tienen asignadas.";
+    return;
+  }
+  if (state.view === "mi-agenda") {
+    todayLabel.textContent = "MI AGENDA";
+    setPageTitle("Mi agenda");
+    pageSubtitle.textContent = "Tus citas asignadas, tu día y el estado de cada cliente.";
     return;
   }
   if (!state.selectedDate) return;
@@ -5807,4 +5908,9 @@ if (themeMediaQuery) {
 
 applyTheme(themeChoice, { persist: false });
 
-setAuthMode("signin");
+if (state.inviteMode) {
+  showScreen("invite");
+  initializeInvite(state.inviteToken);
+} else {
+  setAuthMode("signin");
+}

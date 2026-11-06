@@ -6,6 +6,7 @@ import { customerRoutes } from "./customer-routes.js";
 import { dashboardRoutes } from "./dashboard-routes.js";
 import { professionalRoutes } from "./professional-routes.js";
 import { settlementRoutes } from "./settlement-routes.js";
+import { invitationRoutes, publicInvitationRoutes } from "./invitation-routes.js";
 import { agentRoutes } from "./agent/routes.js";
 import { platformRoutes } from "./platform-routes.js";
 import { sendError } from "./http.js";
@@ -43,6 +44,9 @@ app.use("/api/v1", (_req, res, next) => {
 });
 
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "alaia-api" }));
+// Las rutas públicas van antes de los routers autenticados: esos routers aplican
+// requireUser como middleware global del montaje y si no, interceptarían 401.
+app.use("/api/v1", publicInvitationRoutes);
 app.use("/api/v1", tenantRoutes);
 app.use("/api/v1", appointmentRoutes);
 app.use("/api/v1", serviceRoutes);
@@ -50,6 +54,7 @@ app.use("/api/v1", customerRoutes);
 app.use("/api/v1", dashboardRoutes);
 app.use("/api/v1", professionalRoutes);
 app.use("/api/v1", settlementRoutes);
+app.use("/api/v1", invitationRoutes);
 app.use("/api/v1", agentRoutes);
 app.use("/api/v1", platformRoutes);
 app.use((_req, res) => sendError(res, 404, "not_found", "No encontramos esa ruta."));
