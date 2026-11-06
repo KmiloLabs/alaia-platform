@@ -407,6 +407,106 @@ async function main() {
   const inactiveList = await api(`/api/v1/tenants/${tenantA.tenantId}/customers?includeInactive=1`, { token: userA.idToken });
   check("Desactivar un cliente lo saca de la lista", customerDeleted.status === 200 && (customerDeleted.json?.customer?.active === false) && !(activeList.json?.customers ?? []).some((item) => item.name === "Camila Rojas"), `activos=${(activeList.json?.customers ?? []).length} con inactivos=${(inactiveList.json?.customers ?? []).length}`);
 
+  section("14. Panel de plataforma");
+  const adminEmail = "admin@alaia.test";
+  let adminSignIn = await http(
+    `${AUTH_EMULATOR}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key`,
+    { method: "POST", body: { email: adminEmail, password: "Secreta123!", returnSecureToken: true } },
+  );
+  if (adminSignIn.status !== 200 || !adminSignIn.json?.idToken) {
+    adminSignIn = await http(
+      `${AUTH_EMULATOR}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`,
+      { method: "POST", body: { email: adminEmail, password: "Secreta123!", returnSecureToken: true } },
+    );
+  }
+  const admin = { email: adminEmail, idToken: adminSignIn.json?.idToken };
+
+  const adminMe = await api("/api/v1/me", { token: admin.idToken });
+  check("El administrador de plataforma se reconoce", adminMe.status === 200 && (adminMe.json?.user?.isPlatformAdmin === true || adminMe.json?.isPlatformAdmin === true), `HTTP ${adminMe.status}`);
+
+  const forbidden = await api("/api/v1/platform/tenants", { token: userA.idToken });
+  check("Un dueño normal no entra al panel de plataforma", forbidden.status === 403 && forbidden.json?.error?.code === "not_platform_admin", `HTTP ${forbidden.status} ${forbidden.json?.error?.code ?? ""}`);
+
+  const platformSummary = await api("/api/v1/platform/summary", { token: admin.idToken });
+  check("El resumen de la plataforma responde", platformSummary.status === 200 && Number.isFinite(platformSummary.json?.tenants?.total), `negocios=${platformSummary.json?.tenants?.total}`);
+
+  const platformList = await api("/api/v1/platform/tenants", { token: admin.idToken });
+  const listedTenants = platformList.json?.tenants ?? [];
+  const tenantAEntry = listedTenants.find((item) => item.tenantId === tenantA.tenantId);
+  check("El administrador ve los negocios con su consumo", platformList.status === 200 && Boolean(tenantAEntry), `${listedTenants.length} negocio(s)`);
+
+  const badPlan = await api(`/api/v1/platform/tenants/${tenantB.tenantId}`, { method: "PATCH", token: admin.idToken, body: { plan: "platino" } });
+  check("Un plan inválido responde 400", badPlan.status === 400 && badPlan.json?.error?.code === "invalid_plan", `HTTP ${badPlan.status}`);
+
+  const planChanged = await api(`/api/v1/platform/tenants/${tenantB.tenantId}`, { method: "PATCH", token: admin.idToken, body: { plan: "basico" } });
+  check("El administrador cambia el plan", planChanged.status === 200 && (planChanged.json?.tenant?.plan === "basico"), `plan=${planChanged.json?.tenant?.plan}`);
+
+  const suspended = await api(`/api/v1/platform/tenants/${tenantB.tenantId}`, { method: "PATCH", token: admin.idToken, body: { status: "suspended" } });
+  check("El administrador suspende un negocio", suspended.status === 200 && suspended.json?.tenant?.status === "suspended", `estado=${suspended.json?.tenant?.status}`);
+
+  const blocked = await api(`/api/v1/tenants/${tenantB.tenantId}/appointments?from=${DATE}&to=${DATE}`, { token: userB.idToken });
+  check("Un negocio suspendido no puede operar", blocked.status === 403 && blocked.json?.error?.code === "tenant_suspended", `HTTP ${blocked.status} ${blocked.json?.error?.code ?? ""}`);
+
+  const reactivated = await api(`/api/v1/platform/tenants/${tenantB.tenantId}`, { method: "PATCH", token: admin.idToken, body: { status: "active" } });
+  const workingAgain = await api(`/api/v1/tenants/${tenantB.tenantId}/appointments?from=${DATE}&to=${DATE}`, { token: userB.idToken });
+  check("Al reactivar el negocio vuelve a operar", reactivated.status === 200 && workingAgain.status === 200, `HTTP ${workingAgain.status}`);
+
+  section("15. Perfil del negocio y resumen");
+  const profileSaved = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken,
+    body: {
+      description: "Barbería con estilo, en el centro de Bogotá.",
+      address: "Calle 45 #12-30, Bogotá",
+      phone: "+57 601 234 5678",
+      socialLinks: { instagram: "https://instagram.com/barberia", whatsapp: "3001234567" },
+    },
+  });
+  const profileTenant = profileSaved.json?.tenant ?? {};
+  check("El negocio guarda su perfil y redes", profileSaved.status === 200 && profileTenant.socialLinks?.instagram === "https://instagram.com/barberia", `HTTP ${profileSaved.status}`);
+
+  const profileContext = await api(`/api/v1/tenants/${tenantA.tenantId}/context`, { token: userA.idToken });
+  const contextTenant = profileContext.json?.tenant ?? profileContext.json ?? {};
+  check("El perfil viaja en el contexto", contextTenant.description === "Barbería con estilo, en el centro de Bogotá." && Boolean(contextTenant.socialLinks?.whatsapp), `descripción=${Boolean(contextTenant.description)}`);
+
+  const badSocial = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken, body: { socialLinks: { instagram: "instagram.com/sin-https" } },
+  });
+  check("Una red sin https responde 400", badSocial.status === 400 && badSocial.json?.error?.code === "invalid_social_link", `HTTP ${badSocial.status} ${badSocial.json?.error?.code ?? ""}`);
+
+  const longDescription = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken, body: { description: "x".repeat(301) },
+  });
+  check("Una descripción demasiado larga responde 400", longDescription.status === 400 && longDescription.json?.error?.code === "invalid_description", `HTTP ${longDescription.status}`);
+
+  const dashboardDay = "2031-03-10";
+  const dashFirst = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Resumen", serviceName: "Corte clásico", startsAt: `${dashboardDay}T10:00`, durationMinutes: 45, priceCOP: 50000 },
+  });
+  const dashSecond = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Resumen", serviceName: "Arreglo de barba", startsAt: `${dashboardDay}T11:00`, durationMinutes: 30, priceCOP: 30000 },
+  });
+  const dashCancelled = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Resumen", serviceName: "Corte clásico", startsAt: `${dashboardDay}T12:00`, durationMinutes: 30, priceCOP: 90000 },
+  });
+  await api(`/api/v1/tenants/${tenantA.tenantId}/appointments/${dashCancelled.json?.appointment?.appointmentId}/cancel`, { method: "POST", token: userA.idToken, body: {} });
+  await api(`/api/v1/tenants/${tenantA.tenantId}/appointments/${dashSecond.json?.appointment?.appointmentId}/reschedule`, {
+    method: "POST", token: userA.idToken, body: { startsAt: `${dashboardDay}T13:00`, durationMinutes: 30 },
+  }).catch(() => {});
+
+  const dashboard = await api(`/api/v1/tenants/${tenantA.tenantId}/dashboard?date=${dashboardDay}`, { token: userA.idToken });
+  const metrics = dashboard.json ?? {};
+  check("El resumen cuenta citas e ingresos del día", dashboard.status === 200 && metrics.appointments?.today === 2 && metrics.income?.today === 80000, `citas=${metrics.appointments?.today} ingresos=${metrics.income?.today}`);
+  check("La cita cancelada no suma ingresos", metrics.appointments?.cancelled === 1 && metrics.income?.month === 80000, `canceladas=${metrics.appointments?.cancelled} mes=${metrics.income?.month}`);
+  check("El resumen incluye clientes del negocio", Number.isFinite(metrics.customers?.total) && metrics.customers.total >= 0, `total=${metrics.customers?.total}`);
+  const topServices = metrics.topServices ?? [];
+  check("El resumen lista los servicios más pedidos", topServices.length > 0 && topServices[0]?.name === "Corte clásico" && topServices[0]?.income === 50000, `${topServices.length} servicio(s)`);
+
+  const foreignDashboard = await api(`/api/v1/tenants/${tenantA.tenantId}/dashboard?date=${dashboardDay}`, { token: userB.idToken });
+  check("B no puede ver el resumen de A", [403, 404].includes(foreignDashboard.status), `HTTP ${foreignDashboard.status}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {

@@ -12,9 +12,24 @@ import {
   resolveSlotStepMinutes,
   validateTenantScheduleUpdate,
 } from "./availability.js";
+import { isPlatformAdminEmail } from "./platform.js";
+import {
+  resolveBusinessProfile,
+  validateBusinessProfileInput,
+} from "./business-profile.js";
 
 export const tenantRoutes = Router();
 tenantRoutes.use(requireUser);
+
+// Identidad del usuario autenticado: el panel usa isPlatformAdmin para mostrar
+// (u ocultar) la entrada "Plataforma".
+tenantRoutes.get("/me", (req, res) => {
+  const isPlatformAdmin = isPlatformAdminEmail(req.user.email);
+  return res.json({
+    user: { uid: req.user.uid, email: req.user.email, isPlatformAdmin },
+    isPlatformAdmin,
+  });
+});
 
 tenantRoutes.get("/me/tenants", asyncRoute(async (req, res) => {
   const memberships = await db.collectionGroup("memberships")
@@ -37,6 +52,7 @@ tenantRoutes.get("/me/tenants", asyncRoute(async (req, res) => {
       timeZone: tenant.timeZone,
       openingHours: resolveOpeningHours(tenant),
       slotStepMinutes: resolveSlotStepMinutes(tenant),
+      ...resolveBusinessProfile(tenant),
       role: membership.role,
     };
   }));
@@ -85,6 +101,8 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
     timeZone,
     openingHours: openingHoursResult.value,
     slotStepMinutes,
+    plan: "trial",
+    notes: "",
     status: "active",
     createdAt: FieldValue.serverTimestamp(),
     createdBy: req.user.uid,
@@ -127,30 +145,55 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
       timeZone,
       openingHours: openingHoursResult.value,
       slotStepMinutes,
+      plan: "trial",
+      notes: "",
       status: "active",
       role: "owner",
     },
   });
 }));
 
-// Horario de atención del negocio: solo el dueño. Un rango por día en este corte.
+// Horario y perfil del negocio: solo el dueño.
 tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, asyncRoute(async (req, res) => {
-  const validation = validateTenantScheduleUpdate(req.body);
-  if (!validation.ok) return sendError(res, 400, validation.code, validation.message);
+  const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+
+  const profile = validateBusinessProfileInput(body);
+  if (!profile.ok) return sendError(res, 400, profile.code, profile.message);
+
+  const hasScheduleFields = body.openingHours !== undefined || body.slotStepMinutes !== undefined;
+  if (!hasScheduleFields && !profile.hasAny) {
+    return sendError(res, 400, "empty_update", "Indica al menos un campo del negocio para actualizar.");
+  }
+
+  const schedule = hasScheduleFields ? validateTenantScheduleUpdate(body) : { ok: true, value: {} };
+  if (!schedule.ok) return sendError(res, 400, schedule.code, schedule.message);
 
   const update = {
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: req.user.uid,
   };
-  if (validation.value.openingHours !== undefined) update.openingHours = validation.value.openingHours;
-  if (validation.value.slotStepMinutes !== undefined) update.slotStepMinutes = validation.value.slotStepMinutes;
+  if (schedule.value.openingHours !== undefined) update.openingHours = schedule.value.openingHours;
+  if (schedule.value.slotStepMinutes !== undefined) update.slotStepMinutes = schedule.value.slotStepMinutes;
+  if (profile.value.description !== undefined) update.description = profile.value.description;
+  if (profile.value.address !== undefined) update.address = profile.value.address;
+  if (profile.value.phone !== undefined) update.phone = profile.value.phone;
+  if (profile.value.socialLinks !== undefined) {
+    update.socialLinks = {
+      ...resolveBusinessProfile(req.tenant).socialLinks,
+      ...profile.value.socialLinks,
+    };
+  }
 
   await db.collection("tenants").doc(req.tenant.id).set(update, { merge: true });
 
   const updatedTenant = {
     ...req.tenant,
-    openingHours: validation.value.openingHours ?? req.tenant.openingHours,
-    slotStepMinutes: validation.value.slotStepMinutes ?? req.tenant.slotStepMinutes,
+    openingHours: schedule.value.openingHours ?? req.tenant.openingHours,
+    slotStepMinutes: schedule.value.slotStepMinutes ?? req.tenant.slotStepMinutes,
+    description: profile.value.description ?? req.tenant.description,
+    address: profile.value.address ?? req.tenant.address,
+    phone: profile.value.phone ?? req.tenant.phone,
+    socialLinks: profile.value.socialLinks ? update.socialLinks : req.tenant.socialLinks,
   };
   return res.json({
     tenant: {
@@ -162,6 +205,7 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
       timeZone: req.tenant.timeZone,
       openingHours: resolveOpeningHours(updatedTenant),
       slotStepMinutes: resolveSlotStepMinutes(updatedTenant),
+      ...resolveBusinessProfile(updatedTenant),
     },
   });
 }));
@@ -176,9 +220,11 @@ tenantRoutes.get("/tenants/:tenantId/context", requireTenantMembership, (req, re
       timeZone: req.tenant.timeZone,
       openingHours: resolveOpeningHours(req.tenant),
       slotStepMinutes: resolveSlotStepMinutes(req.tenant),
+      ...resolveBusinessProfile(req.tenant),
       status: req.tenant.status,
     },
     membership: req.membership,
+    isPlatformAdmin: isPlatformAdminEmail(req.user.email),
   });
 });
 

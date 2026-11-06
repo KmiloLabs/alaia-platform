@@ -4,6 +4,7 @@
 
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../firebase.js";
+import { isValidTimeZone, utcToLocalDate } from "../timezone.js";
 import { listActiveServices } from "../service-catalog.js";
 import { serviceRepository } from "../service-repository.js";
 import {
@@ -97,6 +98,7 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
   let finalText = "";
   let pending = messages;
   let exhausted = false;
+  const usageTotals = { inputTokens: 0, outputTokens: 0 };
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
@@ -108,6 +110,7 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
         temperature: 0.4,
         env,
       });
+      accumulateUsage(usageTotals, response.usage);
 
       if (!Array.isArray(response.toolCalls) || response.toolCalls.length === 0) {
         finalText = response.text ?? "";
@@ -155,6 +158,7 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
         temperature: 0.4,
         env,
       });
+      accumulateUsage(usageTotals, closing.usage);
       finalText = closing.text ?? "";
     }
   } catch (providerError) {
@@ -189,6 +193,7 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
     model: { provider: config.provider, model: config.model },
   }, { merge: true });
   await trimHistory(conversationRef);
+  await recordAgentUsage({ tenant, usageTotals });
 
   return {
     ok: true,
@@ -242,4 +247,36 @@ async function trimHistory(conversationRef) {
 
 function error(status, code, message) {
   return { ok: false, status, code, message };
+}
+
+function accumulateUsage(totals, usage) {
+  totals.inputTokens += Number.isInteger(usage?.inputTokens) ? usage.inputTokens : 0;
+  totals.outputTokens += Number.isInteger(usage?.outputTokens) ? usage.outputTokens : 0;
+}
+
+// Consumo del negocio: FieldValue.increment (nunca leer-modificar-escribir).
+// Se mantiene el acumulado en `usage` y un desglose diario en `usageDaily` para
+// poder calcular los mensajes de los últimos 30 días en el panel de plataforma.
+async function recordAgentUsage({ tenant, usageTotals }) {
+  const timeZone = isValidTimeZone(tenant?.timeZone) ? tenant.timeZone : "America/Bogota";
+  const usageDate = utcToLocalDate(new Date(), timeZone);
+  try {
+    await db.collection("tenants").doc(tenant.id).set({
+      usage: {
+        agentMessages: FieldValue.increment(1),
+        inputTokens: FieldValue.increment(usageTotals.inputTokens),
+        outputTokens: FieldValue.increment(usageTotals.outputTokens),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      usageDaily: {
+        [usageDate]: {
+          agentMessages: FieldValue.increment(1),
+          inputTokens: FieldValue.increment(usageTotals.inputTokens),
+          outputTokens: FieldValue.increment(usageTotals.outputTokens),
+        },
+      },
+    }, { merge: true });
+  } catch {
+    // El contador de consumo no debe tumbar una respuesta ya generada.
+  }
 }

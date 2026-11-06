@@ -1,5 +1,6 @@
 import { auth, db } from "./firebase.js";
 import { sendError } from "./http.js";
+import { isPlatformAdminEmail, resolveTenantStatus } from "./platform.js";
 
 export async function requireUser(req, res, next) {
   const authorization = req.get("authorization") ?? "";
@@ -40,10 +41,16 @@ export async function requireTenantMembership(req, res, next) {
     }
 
     const tenant = tenantSnapshot.data();
-    if (tenant.status !== "active") {
+    const tenantStatus = resolveTenantStatus(tenant);
+    const platformAdmin = isPlatformAdminEmail(req.user.email);
+    // Un negocio suspendido no deja operar a sus miembros, salvo al admin de plataforma.
+    if (tenantStatus === "suspended" && !platformAdmin) {
+      return sendError(res, 403, "tenant_suspended", "Tu cuenta está suspendida. Contacta a ALAIA.");
+    }
+    if (tenantStatus !== "active" && !platformAdmin) {
       return sendError(res, 403, "tenant_unavailable", "El acceso a este negocio está pausado.");
     }
-    req.tenant = { id: tenantId, ...tenant };
+    req.tenant = { id: tenantId, ...tenant, status: tenantStatus };
     req.membership = {
       userId: req.user.uid,
       role: membership.role,
@@ -60,6 +67,17 @@ export async function requireTenantMembership(req, res, next) {
 export function requireOwner(req, res, next) {
   if (req.membership?.role !== "owner") {
     return sendError(res, 403, "not_owner", "Solo el dueño del negocio puede hacer este cambio.");
+  }
+  return next();
+}
+
+// Administrador de la plataforma ALAIA. Debe usarse después de requireUser.
+export function requirePlatformAdmin(req, res, next) {
+  if (!req.user) {
+    return sendError(res, 401, "unauthenticated", "Inicia sesión para continuar.");
+  }
+  if (!isPlatformAdminEmail(req.user.email)) {
+    return sendError(res, 403, "not_platform_admin", "No tienes acceso al panel de plataforma.");
   }
   return next();
 }
