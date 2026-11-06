@@ -15,8 +15,10 @@ import {
   isTenantAccessError,
   isUnauthorized,
   listAppointments,
+  listAvailability,
   listTenants,
   messageForError,
+  rescheduleAppointment as rescheduleAppointmentRequest,
   saveAgentConfig,
   sendAgentMessage,
 } from "./api.js";
@@ -186,6 +188,23 @@ const appointmentError = $("#appointment-error");
 const closeDialogButton = $("#close-dialog");
 const cancelDialogButton = $("#cancel-dialog");
 const saveAppointmentButton = $("#save-appointment");
+const appointmentSlotsCount = $("#appointment-slots-count");
+const appointmentSlotList = $("#appointment-slot-list");
+
+const rescheduleDialog = $("#reschedule-dialog");
+const rescheduleForm = $("#reschedule-form");
+const rescheduleAvatar = $("#reschedule-avatar");
+const rescheduleClient = $("#reschedule-client");
+const rescheduleDetail = $("#reschedule-detail");
+const rescheduleCurrent = $("#reschedule-current");
+const rescheduleDate = $("#reschedule-date");
+const rescheduleTime = $("#reschedule-time");
+const rescheduleSlotsCount = $("#reschedule-slots-count");
+const rescheduleSlotList = $("#reschedule-slot-list");
+const rescheduleError = $("#reschedule-error");
+const closeRescheduleDialogButton = $("#close-reschedule-dialog");
+const cancelRescheduleButton = $("#cancel-reschedule");
+const saveRescheduleButton = $("#save-reschedule");
 
 const configView = $("#config-view");
 const agentConfigStatus = $("#agent-config-status");
@@ -226,6 +245,15 @@ const state = {
   sessionSeq: 0,
   daySeq: 0,
   createRequestId: null,
+  availabilityCache: new Map(),
+  createSlotsSeq: 0,
+  createSlotsTimer: null,
+  createSlots: [],
+  rescheduleSlotsSeq: 0,
+  rescheduleSlotsTimer: null,
+  rescheduleSlots: [],
+  rescheduleTargetId: null,
+  rescheduleDuration: 45,
   agentConfig: null,
   agentTenantId: null,
   agentLoadSeq: 0,
@@ -298,6 +326,7 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
     state.tenant = summary;
     state.context = context;
     state.cache.clear();
+    state.availabilityCache.clear();
     state.agentConfig = null;
     state.agentTenantId = null;
     state.agentLoadSeq += 1;
@@ -332,9 +361,15 @@ function handleSignedOut() {
   state.context = null;
   state.appointments = [];
   state.cache.clear();
+  state.availabilityCache.clear();
   state.selectedDate = null;
   state.view = "resumen";
   state.createRequestId = null;
+  state.createSlotsSeq += 1;
+  state.rescheduleSlotsSeq += 1;
+  state.rescheduleTargetId = null;
+  if (appointmentDialog.open) appointmentDialog.close();
+  if (rescheduleDialog.open) rescheduleDialog.close();
   state.agentConfig = null;
   state.agentTenantId = null;
   state.agentLoadSeq += 1;
@@ -817,6 +852,10 @@ function appointmentRowHtml(appointment, index) {
   const price = formatCOP(appointment.priceCOP);
   const cancelled = appointment.status === "cancelled";
   const cancelLabel = `Cancelar la cita de ${name || "este cliente"} a las ${time}`;
+  const rescheduleLabel = `Reprogramar la cita de ${name || "este cliente"} a las ${time}`;
+  const actions = cancelled
+    ? `<div class="row-actions"></div>`
+    : `<div class="row-actions"><button class="row-shift" type="button" data-reschedule-id="${escapeHtml(appointment.appointmentId)}" aria-label="${escapeHtml(rescheduleLabel)}">Reprogramar</button><button class="row-cancel" type="button" data-cancel-id="${escapeHtml(appointment.appointmentId)}" aria-label="${escapeHtml(cancelLabel)}">Cancelar</button></div>`;
 
   return `
     <article class="appointment-row${cancelled ? " is-cancelled" : ""}">
@@ -825,7 +864,7 @@ function appointmentRowHtml(appointment, index) {
       <div class="client-avatar ${AVATAR_STYLES[index % AVATAR_STYLES.length]}">${escapeHtml(initialsOf(name))}</div>
       <div class="appointment-info"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(service)} · ${escapeHtml(price)}</span></div>
       <span class="status ${cancelled ? "status-cancelled" : "status-upcoming"}">${cancelled ? "Cancelada" : "Programada"}</span>
-      <button class="row-cancel" type="button" data-cancel-id="${escapeHtml(appointment.appointmentId)}" aria-label="${escapeHtml(cancelLabel)}"${cancelled ? " disabled" : ""}>${cancelled ? "Cancelada" : "Cancelar"}</button>
+      ${actions}
     </article>`;
 }
 
@@ -833,6 +872,13 @@ agendaList.addEventListener("click", async (event) => {
   const retryButton = event.target.closest("[data-retry-agenda]");
   if (retryButton) {
     await loadDay(state.selectedDate);
+    return;
+  }
+
+  const rescheduleButton = event.target.closest("[data-reschedule-id]");
+  if (rescheduleButton && !rescheduleButton.disabled) {
+    const appointment = state.appointments.find((item) => item.appointmentId === rescheduleButton.dataset.rescheduleId);
+    if (appointment) openRescheduleDialog(appointment);
     return;
   }
 
@@ -857,6 +903,7 @@ async function cancelAppointment(appointment, button) {
   try {
     await cancelAppointmentRequest(tenantId, appointment.appointmentId);
     state.cache.clear();
+    state.availabilityCache.clear();
     showToast(`Cita de ${appointment.customerName} cancelada.`);
     await loadDay(state.selectedDate);
   } catch (error) {
@@ -871,6 +918,7 @@ async function cancelAppointment(appointment, button) {
     showToast(messageForError(error));
     if (error.code === "appointment_not_found") {
       state.cache.clear();
+      state.availabilityCache.clear();
       await loadDay(state.selectedDate);
     } else {
       button.disabled = false;
@@ -1385,6 +1433,357 @@ function providerLabel(providerId) {
 }
 
 // ---------------------------------------------------------------------------
+// Horarios libres y reprogramación
+// ---------------------------------------------------------------------------
+
+appointmentDate.addEventListener("change", () => scheduleSlots("create"));
+appointmentDuration.addEventListener("change", () => scheduleSlots("create"));
+appointmentTime.addEventListener("input", () => syncSlotSelection("create", appointmentTime.value));
+appointmentTime.addEventListener("change", () => syncSlotSelection("create", appointmentTime.value));
+
+rescheduleDate.addEventListener("change", () => scheduleSlots("reschedule"));
+rescheduleTime.addEventListener("input", () => syncSlotSelection("reschedule", rescheduleTime.value));
+rescheduleTime.addEventListener("change", () => syncSlotSelection("reschedule", rescheduleTime.value));
+
+appointmentSlotList.addEventListener("click", (event) => handleSlotClick(event, "create"));
+rescheduleSlotList.addEventListener("click", (event) => handleSlotClick(event, "reschedule"));
+
+closeRescheduleDialogButton.addEventListener("click", () => rescheduleDialog.close());
+cancelRescheduleButton.addEventListener("click", () => rescheduleDialog.close());
+rescheduleDialog.addEventListener("close", () => {
+  clearTimeout(state.rescheduleSlotsTimer);
+  state.rescheduleSlotsSeq += 1;
+  state.rescheduleTargetId = null;
+});
+
+function slotElements(mode) {
+  return mode === "create"
+    ? { list: appointmentSlotList, count: appointmentSlotsCount }
+    : { list: rescheduleSlotList, count: rescheduleSlotsCount };
+}
+
+function scheduleSlots(mode, delay = 250) {
+  if (mode === "create") {
+    clearTimeout(state.createSlotsTimer);
+    state.createSlotsTimer = setTimeout(loadCreateSlots, delay);
+  } else {
+    clearTimeout(state.rescheduleSlotsTimer);
+    state.rescheduleSlotsTimer = setTimeout(loadRescheduleSlots, delay);
+  }
+}
+
+async function loadCreateSlots() {
+  if (!appointmentDialog.open) return;
+  const seq = ++state.createSlotsSeq;
+  const dateValue = appointmentDate.value;
+  const durationMinutes = Number(appointmentDuration.value);
+
+  if (!isDateValue(dateValue) || !Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 480) {
+    renderSlotsMessage("create", "Indica una fecha y una duración válidas para ver los horarios libres.");
+    return;
+  }
+
+  setSlotsLoading("create");
+  try {
+    const slots = await fetchAvailability(dateValue, durationMinutes);
+    if (seq !== state.createSlotsSeq || !appointmentDialog.open || dateValue !== appointmentDate.value) return;
+    state.createSlots = slots ?? [];
+    renderSlots("create", state.createSlots, dateValue, appointmentTime.value);
+  } catch (error) {
+    if (seq !== state.createSlotsSeq || !appointmentDialog.open) return;
+    await handleAvailabilityError(error, "create");
+  }
+}
+
+async function loadRescheduleSlots() {
+  if (!rescheduleDialog.open) return;
+  const seq = ++state.rescheduleSlotsSeq;
+  const dateValue = rescheduleDate.value;
+  const durationMinutes = state.rescheduleDuration || 45;
+
+  if (!isDateValue(dateValue)) {
+    renderSlotsMessage("reschedule", "Elige una fecha válida para ver los horarios libres.");
+    return;
+  }
+
+  setSlotsLoading("reschedule");
+  try {
+    const slots = await fetchAvailability(dateValue, durationMinutes);
+    if (seq !== state.rescheduleSlotsSeq || !rescheduleDialog.open || dateValue !== rescheduleDate.value) return;
+    state.rescheduleSlots = slots ?? [];
+    renderSlots("reschedule", state.rescheduleSlots, dateValue, rescheduleTime.value);
+  } catch (error) {
+    if (seq !== state.rescheduleSlotsSeq || !rescheduleDialog.open) return;
+    await handleAvailabilityError(error, "reschedule");
+  }
+}
+
+async function fetchAvailability(dateValue, durationMinutes) {
+  const tenantId = state.tenant?.tenantId;
+  if (!tenantId) return [];
+  const key = `${tenantId}|${dateValue}|${durationMinutes}`;
+  if (state.availabilityCache.has(key)) return state.availabilityCache.get(key);
+
+  const data = await listAvailability(tenantId, { from: dateValue, to: dateValue, durationMinutes });
+  if (state.tenant?.tenantId !== tenantId) return [];
+  const slots = Array.isArray(data?.slots) ? data.slots : [];
+  state.availabilityCache.set(key, slots);
+  return slots;
+}
+
+function setSlotsLoading(mode) {
+  const { list, count } = slotElements(mode);
+  list.setAttribute("aria-busy", "true");
+  list.replaceChildren();
+  const message = document.createElement("p");
+  message.className = "slot-message";
+  message.textContent = "Buscando horarios libres…";
+  list.append(message);
+  count.textContent = "Buscando horarios…";
+}
+
+function renderSlotsMessage(mode, text) {
+  const { list, count } = slotElements(mode);
+  list.setAttribute("aria-busy", "false");
+  list.replaceChildren();
+  const message = document.createElement("p");
+  message.className = "slot-message";
+  message.textContent = text;
+  list.append(message);
+  count.textContent = "";
+}
+
+function renderSlots(mode, slots, dateValue, selectedTime) {
+  const { list, count } = slotElements(mode);
+  list.setAttribute("aria-busy", "false");
+  list.replaceChildren();
+
+  if (!slots.length) {
+    const open = isBusinessOpenOn(dateValue);
+    const message = document.createElement("p");
+    message.className = "slot-message";
+    if (!open) {
+      message.textContent = "Ese día el negocio está cerrado. Elige otra fecha.";
+    } else if (dateValue === todayValue()) {
+      message.textContent = "No quedan horarios libres hoy; prueba otra fecha.";
+    } else {
+      message.textContent = "No quedan horarios libres ese día; prueba otra fecha.";
+    }
+    list.append(message);
+    count.textContent = "Sin horarios libres";
+    return;
+  }
+
+  for (const slot of slots) {
+    const time = slotClock(slot);
+    if (!time) continue;
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "slot-chip";
+    chip.dataset.slotTime = time;
+    chip.dataset.slotMode = mode;
+    chip.textContent = time;
+    chip.setAttribute("aria-label", `${time}${mode === "reschedule" ? " para reprogramar" : ""}`);
+    const selected = time === selectedTime;
+    chip.setAttribute("aria-pressed", String(selected));
+    if (selected) chip.classList.add("is-selected");
+    list.append(chip);
+  }
+
+  count.textContent = `${slots.length} ${slots.length === 1 ? "horario libre" : "horarios libres"}`;
+}
+
+function syncSlotSelection(mode, selectedTime) {
+  const { list } = slotElements(mode);
+  for (const chip of list.querySelectorAll("[data-slot-time]")) {
+    const selected = chip.dataset.slotTime === selectedTime;
+    chip.classList.toggle("is-selected", selected);
+    chip.setAttribute("aria-pressed", String(selected));
+  }
+}
+
+function handleSlotClick(event, mode) {
+  const chip = event.target.closest("[data-slot-time]");
+  if (chip) {
+    if (mode === "create") {
+      appointmentTime.value = chip.dataset.slotTime;
+      syncSlotSelection("create", appointmentTime.value);
+    } else {
+      rescheduleTime.value = chip.dataset.slotTime;
+      syncSlotSelection("reschedule", rescheduleTime.value);
+    }
+    return;
+  }
+
+  const retry = event.target.closest("[data-retry-slots]");
+  if (retry) {
+    if (mode === "create") loadCreateSlots();
+    else loadRescheduleSlots();
+  }
+}
+
+function setSlotChipsDisabled(list, disabled) {
+  for (const chip of list.querySelectorAll("button")) {
+    chip.disabled = disabled;
+  }
+}
+
+async function handleAvailabilityError(error, mode) {
+  if (isUnauthorized(error)) {
+    if (appointmentDialog.open) appointmentDialog.close();
+    if (rescheduleDialog.open) rescheduleDialog.close();
+    await forceSignOut(messageForError(error));
+    return;
+  }
+  if (isTenantAccessError(error)) {
+    if (appointmentDialog.open) appointmentDialog.close();
+    if (rescheduleDialog.open) rescheduleDialog.close();
+    await handleTenantUnavailable(error);
+    return;
+  }
+
+  const { list, count } = slotElements(mode);
+  list.setAttribute("aria-busy", "false");
+  list.replaceChildren();
+  const message = document.createElement("p");
+  message.className = "slot-message is-error";
+  message.textContent = messageForError(error);
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "slot-retry";
+  retry.dataset.retrySlots = mode;
+  retry.textContent = "Reintentar";
+  list.append(message, retry);
+  count.textContent = "Error al buscar horarios";
+}
+
+function isBusinessOpenOn(dateValue) {
+  const hours = Array.isArray(state.context?.tenant?.openingHours) ? state.context.tenant.openingHours : null;
+  if (!hours) {
+    return new Date(`${dateValue}T12:00:00Z`).getUTCDay() !== 0;
+  }
+  const dayNumber = ((new Date(`${dateValue}T12:00:00Z`).getUTCDay() + 6) % 7) + 1;
+  return hours.some((entry) => Number(entry?.day) === dayNumber);
+}
+
+function slotClock(slot) {
+  const local = String(slot?.startsAtLocal ?? "");
+  const match = local.match(/T(\d{2}):(\d{2})/);
+  return match ? `${match[1]}:${match[2]}` : "";
+}
+
+function openRescheduleDialog(appointment) {
+  if (!state.tenant || rescheduleDialog.open || !appointment || appointment.status === "cancelled") return;
+
+  const local = String(appointment.startsAtLocal ?? "");
+  const dateValue = isDateValue(local.slice(0, 10)) ? local.slice(0, 10) : state.selectedDate;
+  const timeValue = /^\d{2}:\d{2}$/.test(local.slice(11, 16)) ? local.slice(11, 16) : formatAppointmentTime(appointment);
+
+  state.rescheduleTargetId = appointment.appointmentId;
+  state.rescheduleDuration = numberOrZero(appointment.durationMinutes) || 45;
+
+  rescheduleAvatar.textContent = initialsOf(appointment.customerName);
+  rescheduleClient.textContent = appointment.customerName ?? "Cliente";
+  rescheduleDetail.textContent = `${appointment.serviceName ?? "Servicio"} · ${state.rescheduleDuration} min`;
+  rescheduleCurrent.textContent = `Actualmente: ${formatLongDate(dateValue)} a las ${timeValue}.`;
+  rescheduleDate.value = dateValue;
+  rescheduleTime.value = timeValue;
+  rescheduleError.textContent = "";
+  rescheduleSlotsCount.textContent = "";
+  rescheduleSlotList.replaceChildren();
+  rescheduleSlotList.setAttribute("aria-busy", "false");
+  setRescheduleBusy(false);
+  rescheduleDialog.showModal();
+  loadRescheduleSlots();
+}
+
+function setRescheduleBusy(busy) {
+  saveRescheduleButton.disabled = busy;
+  saveRescheduleButton.textContent = busy ? "Guardando…" : "Guardar cambio";
+  rescheduleDate.disabled = busy;
+  rescheduleTime.disabled = busy;
+  cancelRescheduleButton.disabled = busy;
+  setSlotChipsDisabled(rescheduleSlotList, busy);
+}
+
+function showRescheduleError(message) {
+  rescheduleError.textContent = message;
+}
+
+rescheduleForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  rescheduleError.textContent = "";
+
+  const appointmentId = state.rescheduleTargetId;
+  const tenantId = state.tenant?.tenantId;
+  if (!tenantId || !appointmentId) return;
+
+  const dateValue = rescheduleDate.value;
+  const timeValue = rescheduleTime.value;
+  if (!isDateValue(dateValue) || !/^\d{2}:\d{2}$/.test(timeValue)) {
+    showRescheduleError("Elige una fecha y una hora válidas.");
+    return;
+  }
+
+  const target = state.appointments.find((item) => item.appointmentId === appointmentId);
+
+  setRescheduleBusy(true);
+  try {
+    const result = await rescheduleAppointmentRequest(tenantId, appointmentId, {
+      startsAt: `${dateValue}T${timeValue}`,
+      durationMinutes: state.rescheduleDuration,
+    });
+    const updated = result?.appointment ?? null;
+    state.cache.clear();
+    state.availabilityCache.clear();
+    rescheduleDialog.close();
+    showToast(`Cita de ${updated?.customerName ?? target?.customerName ?? "cliente"} reprogramada.`);
+
+    const savedDate = typeof updated?.startsAtLocal === "string" ? updated.startsAtLocal.slice(0, 10) : dateValue;
+    if (isDateValue(savedDate)) {
+      state.selectedDate = savedDate;
+      agendaDateInput.value = savedDate;
+    }
+    await loadDay(state.selectedDate);
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      rescheduleDialog.close();
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      rescheduleDialog.close();
+      await handleTenantUnavailable(error);
+      return;
+    }
+    if (error.code === "appointment_conflict") {
+      showRescheduleError("Ese horario se cruza con otra cita de tu negocio. Elige otro horario libre.");
+      rescheduleTime.focus();
+      return;
+    }
+    if (error.code === "appointment_cancelled") {
+      state.cache.clear();
+      state.availabilityCache.clear();
+      rescheduleDialog.close();
+      showToast(messageForError(error));
+      await loadDay(state.selectedDate);
+      return;
+    }
+    if (error.code === "appointment_not_found") {
+      state.cache.clear();
+      state.availabilityCache.clear();
+      rescheduleDialog.close();
+      showToast(messageForError(error));
+      await loadDay(state.selectedDate);
+      return;
+    }
+    showRescheduleError(messageForError(error));
+  } finally {
+    setRescheduleBusy(false);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Crear cita
 // ---------------------------------------------------------------------------
 
@@ -1398,16 +1797,22 @@ function openAppointmentDialog() {
   appointmentDuration.value = "45";
   appointmentPrice.value = "50000";
   appointmentError.textContent = "";
+  appointmentSlotsCount.textContent = "";
+  appointmentSlotList.replaceChildren();
+  appointmentSlotList.setAttribute("aria-busy", "false");
   setDialogBusy(false);
   state.createRequestId = createClientRequestId();
   appointmentDialog.showModal();
   appointmentClient.focus();
+  loadCreateSlots();
 }
 
 closeDialogButton.addEventListener("click", () => appointmentDialog.close());
 cancelDialogButton.addEventListener("click", () => appointmentDialog.close());
 appointmentDialog.addEventListener("close", () => {
   state.createRequestId = null;
+  clearTimeout(state.createSlotsTimer);
+  state.createSlotsSeq += 1;
 });
 
 function setDialogBusy(busy) {
@@ -1417,6 +1822,7 @@ function setDialogBusy(busy) {
     field.disabled = busy;
   }
   cancelDialogButton.disabled = busy;
+  setSlotChipsDisabled(appointmentSlotList, busy);
 }
 
 function showDialogError(message) {
@@ -1473,6 +1879,7 @@ appointmentForm.addEventListener("submit", async (event) => {
     const appointment = result?.appointment ?? null;
     state.createRequestId = null;
     state.cache.clear();
+    state.availabilityCache.clear();
     appointmentDialog.close();
     showToast(`Cita de ${appointment?.customerName ?? customerName} agregada.`);
 

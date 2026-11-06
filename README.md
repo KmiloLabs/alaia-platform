@@ -4,12 +4,12 @@ Plataforma SaaS multiempresa para negocios de servicios. Su agente atiende las c
 
 ## Estado
 
-Corte actual (**panel real con citas guardadas**, 5 de noviembre de 2026): el panel ya no es una demostración. Tiene acceso con correo y contraseña (Firebase Auth), creación y selección de negocio, y una agenda que crea, lista y cancela citas **persistidas** en Firestore con aislamiento por `tenantId`, zona horaria del negocio, prevención de doble reserva e idempotencia. La API también calcula **disponibilidad real** según el horario del negocio y permite **reprogramar** citas: es la base para que el agente consulte horarios en vez de inventarlos.
+Corte actual (**panel real con citas guardadas**, 5 de noviembre de 2026): el panel ya no es una demostración. Tiene acceso con correo y contraseña (Firebase Auth), creación y selección de negocio, y una agenda que crea, lista y cancela citas **persistidas** en Firestore con aislamiento por `tenantId`, zona horaria del negocio, prevención de doble reserva e idempotencia. La API también calcula **disponibilidad real** según el horario del negocio y permite **reprogramar** citas; el panel muestra los huecos libres al crear o mover una cita, en vez de escribir horas a ciegas. Es la base para que el agente consulte horarios en vez de inventarlos.
 
 Estado por capas del [plano técnico](docs/plano-y-reglas-codex.md):
 
 - **Capa 1 (identidad y tenant):** API y pantalla de acceso funcionando contra emuladores. Pendiente: invitaciones, verificación de correo, consola de plataforma.
-- **Capa 5 (agenda y reservas):** citas, disponibilidad y reprogramación listas en backend; el panel crea, lista y cancela. Pendiente: reprogramar desde el panel, página pública de reservas y reglas de asignación.
+- **Capa 5 (agenda y reservas):** citas, disponibilidad y reprogramación listas en backend y en el panel (crear, listar, cancelar, reprogramar y elegir horarios libres). Pendiente: página pública de reservas y reglas de asignación por profesional.
 - **Agente (parte IA de la Capa 7):** agente conversacional con herramientas reales de agenda (consultar disponibilidad, crear, reprogramar y cancelar citas). El dueño elige **proveedor y modelo** desde Configuración → Asistente IA y puede probarlo antes de publicarlo. Pendiente: entrada por WhatsApp, audio y recordatorios.
 - **Resto de capas:** pagos, inventario, consola de plataforma y página pública siguen documentadas, no implementadas.
 - **n8n:** la plantilla de recepción multiempresa existe en `infra/n8n/` como arnés de contrato; sigue inactiva y no es el agente final. El workflow real `Recepcionista epresarial IA` ya está analizado en [docs/agente-recepcion-n8n.md](docs/agente-recepcion-n8n.md).
@@ -51,6 +51,7 @@ El proveedor `mock` (solo desarrollo) se habilita con `AGENT_ENABLE_MOCK=true` y
 
 - `docs/corte-agenda-panel-real.md`: contrato del corte de agenda (rutas, reglas, criterios de aceptación).
 - `docs/corte-agente-configurable.md`: contrato del agente (proveedores, configuración por negocio, herramientas).
+- `docs/decision-whatsapp.md`: por qué Alaia usa WhatsApp Cloud API oficial y no Evolution API.
 - `docs/agente-recepcion-n8n.md`: qué se reutiliza del recepcionista IA de n8n y cómo se conecta a Alaia.
 - `docs/arquitectura.md`: arquitectura, seguridad, costos y escalabilidad.
 - `docs/plano-y-reglas-codex.md`: roadmap por capas e instrucciones para agentes de código.

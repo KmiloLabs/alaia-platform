@@ -15,10 +15,12 @@ const ERROR_MESSAGES = {
   invalid_duration: "La duración debe estar entre 5 y 480 minutos.",
   invalid_price: "El precio debe ser un entero entre 0 y 10.000.000 COP.",
   invalid_range: "El rango de fechas no es válido.",
+  invalid_step: "El intervalo entre horarios no es válido.",
   invalid_sector: "Selecciona un tipo de negocio válido.",
   invalid_timezone: "La zona horaria no es válida.",
   appointment_conflict: "Ese horario se cruza con otra cita del negocio. Elige otra hora.",
   appointment_not_found: "No encontramos esa cita en este negocio. Recarga la agenda.",
+  appointment_cancelled: "Esa cita ya está cancelada; no se puede reprogramar. Actualiza la agenda.",
   invalid_provider: "Ese proveedor no está disponible. Elige uno de los que ya están configurados.",
   invalid_model: "Ese modelo no pertenece al proveedor elegido.",
   invalid_instructions: "Las instrucciones deben tener 500 caracteres como máximo.",
@@ -161,6 +163,23 @@ export function cancelAppointment(tenantId, appointmentId) {
   return request(
     `/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments/${encodeURIComponent(appointmentId)}/cancel`,
     { method: "POST" },
+  );
+}
+
+export function listAvailability(tenantId, { from, to, durationMinutes, stepMinutes }) {
+  const params = new URLSearchParams({ from, to, durationMinutes: String(durationMinutes) });
+  if (stepMinutes) params.set("stepMinutes", String(stepMinutes));
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/availability?${params.toString()}`);
+}
+
+export function rescheduleAppointment(tenantId, appointmentId, { startsAt, durationMinutes }) {
+  const body = { startsAt };
+  if (durationMinutes !== undefined && durationMinutes !== null) {
+    body.durationMinutes = durationMinutes;
+  }
+  return request(
+    `/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments/${encodeURIComponent(appointmentId)}/reschedule`,
+    { method: "POST", body },
   );
 }
 

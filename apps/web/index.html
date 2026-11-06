@@ -335,14 +335,52 @@
         <label for="appointment-service">Servicio<input id="appointment-service" name="service" placeholder="Ej. Corte clásico" required minlength="2" maxlength="80" /></label>
         <div class="form-pair">
           <label for="appointment-date">Fecha<input id="appointment-date" name="date" type="date" required /></label>
-          <label for="appointment-time">Hora<input id="appointment-time" name="time" type="time" value="14:00" required /></label>
+          <div>
+            <label for="appointment-time">Hora<input id="appointment-time" name="time" type="time" value="14:00" required /></label>
+            <p class="slot-indicator" id="appointment-slots-count" aria-live="polite"></p>
+          </div>
         </div>
         <div class="form-pair">
           <label for="appointment-duration">Duración (min)<input id="appointment-duration" name="duration" type="number" min="5" max="480" step="5" value="45" required /></label>
           <label for="appointment-price">Precio (COP)<input id="appointment-price" name="price" type="number" min="0" max="10000000" step="1000" value="50000" required /></label>
         </div>
+        <div class="slot-picker" id="appointment-availability">
+          <div class="slot-picker-head">
+            <p class="slot-label" id="appointment-slots-label">HORARIOS LIBRES</p>
+            <span class="slot-hint">Toca uno para usarlo</span>
+          </div>
+          <div class="slot-list" id="appointment-slot-list" role="group" aria-labelledby="appointment-slots-label" aria-live="polite" aria-busy="false"></div>
+        </div>
         <p class="form-error" id="appointment-error" role="alert" aria-live="assertive"></p>
         <div class="dialog-actions"><button class="secondary-button" id="cancel-dialog" type="button">Cancelar</button><button class="primary-button" id="save-appointment" type="submit">Agregar cita</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="appointment-dialog reschedule-dialog" id="reschedule-dialog" aria-labelledby="reschedule-title">
+      <form id="reschedule-form">
+        <div class="dialog-heading"><div><p class="eyebrow">AGENDA</p><h2 id="reschedule-title">Reprogramar cita</h2></div><button class="dialog-close" id="close-reschedule-dialog" type="button" aria-label="Cerrar">×</button></div>
+        <div class="reschedule-summary">
+          <span class="client-avatar avatar-mint" id="reschedule-avatar" aria-hidden="true">CL</span>
+          <div><strong id="reschedule-client">Cliente</strong><small id="reschedule-detail">Servicio · duración</small></div>
+          <span class="status status-upcoming">Programada</span>
+        </div>
+        <p class="dialog-note" id="reschedule-current">Actualmente: —</p>
+        <div class="form-pair">
+          <label for="reschedule-date">Nueva fecha<input id="reschedule-date" name="date" type="date" required /></label>
+          <div>
+            <label for="reschedule-time">Nueva hora<input id="reschedule-time" name="time" type="time" required /></label>
+            <p class="slot-indicator" id="reschedule-slots-count" aria-live="polite"></p>
+          </div>
+        </div>
+        <div class="slot-picker" id="reschedule-availability">
+          <div class="slot-picker-head">
+            <p class="slot-label" id="reschedule-slots-label">HORARIOS LIBRES</p>
+            <span class="slot-hint">Toca uno para usarlo</span>
+          </div>
+          <div class="slot-list" id="reschedule-slot-list" role="group" aria-labelledby="reschedule-slots-label" aria-live="polite" aria-busy="false"></div>
+        </div>
+        <p class="form-error" id="reschedule-error" role="alert" aria-live="assertive"></p>
+        <div class="dialog-actions"><button class="secondary-button" id="cancel-reschedule" type="button">Cancelar</button><button class="primary-button" id="save-reschedule" type="submit">Guardar cambio</button></div>
       </form>
     </dialog>
 
