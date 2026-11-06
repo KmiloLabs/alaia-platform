@@ -15,6 +15,7 @@ import {
 } from "./providers.js";
 import { buildAgentSystemPrompt } from "./prompts.js";
 import { parseAgentOutput } from "./parse.js";
+import { normalizeAgentAction } from "./actions.js";
 import { AGENT_TOOLS, executeTool } from "./tools.js";
 
 const MAX_HISTORY_MESSAGES = 20;
@@ -168,7 +169,9 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
 
   const parsed = parseAgentOutput(finalText);
   const derived = toolCalls.some((call) => call.name === "derivar_a_persona" && call.ok);
-  const action = derived ? "derivar" : parsed.action;
+  // La acción refleja lo que de verdad ocurrió con las herramientas, no solo lo
+  // que el modelo escribió en su JSON (DeepSeek devolvía "responder" tras crear).
+  const action = normalizeAgentAction({ action: parsed.action, toolCalls });
   const handoff = parsed.handoff || derived;
   const reply = parsed.reply || FALLBACK_REPLY;
 

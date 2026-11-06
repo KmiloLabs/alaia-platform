@@ -40,8 +40,8 @@ La configuración de ejemplo apunta al proyecto ficticio `demo-alaia`. **No camb
 ## Pruebas
 
 ```bash
-npm --workspace @alaia/api run test   # pruebas puras de API y agente (111)
-npm run verify                        # end-to-end contra emuladores + API (66 comprobaciones)
+npm --workspace @alaia/api run test   # pruebas puras de API y agente (141)
+npm run verify                        # end-to-end contra emuladores + API (75 comprobaciones)
 ```
 
 `npm run verify` crea dos cuentas y dos negocios ficticios y comprueba, entre otras cosas: aislamiento entre negocios (lectura y escritura cruzadas), no doble reserva, idempotencia, cancelación, disponibilidad, reprogramación y el agente configurable con el proveedor `mock`. Requiere emuladores y API en marcha.
