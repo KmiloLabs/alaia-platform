@@ -1,79 +1,155 @@
-# Arquitectura del ecosistema Alaia
+# Alaia — plano técnico SaaS por capas
 
-**Fecha:** 6 de noviembre de 2026. Documento de referencia: qué usa Alaia, qué no usa y por qué.
+**Versión:** propuesta para revisión  
+**Fecha:** 5 de noviembre de 2026  
+**Estado:** arquitectura base aprobada. El prototipo visual y el núcleo inicial de API para identidad/tenant están escritos; todavía no hay login visual, agenda real ni agente. El repositorio de Alaia es público; no subir secretos, datos personales ni configuraciones operativas.
 
-## 1. Las piezas y su responsabilidad
+## Decisión de producto
 
-| Pieza | Qué hace | Estado |
-|---|---|---|
-| **Panel web** (Vite + JS) | Lo que ven dueño, trabajador y tu panel de plataforma. Una sola app responsive | En producción local; listo para desplegar |
-| **API** (Node.js + Express) | Reglas del negocio: agenda, precios, permisos, agente, WhatsApp | Local; lista para desplegar |
-| **Firestore** | Base de datos: negocios, citas, clientes, servicios, conversaciones | Emulador local → proyecto Firebase real |
-| **Firebase Auth** | Login con correo/contraseña y Google | Emulador local → proyecto real |
-| **DeepSeek** | El "cerebro" del agente: entiende al cliente y decide qué herramienta usar | Activo (API key real) |
-| **WhatsApp Cloud API** (Meta) | Canal por donde escribe el cliente final | Código listo; falta registrar el número en Meta |
-| **Firebase Hosting** | Sirve el panel en internet | Pendiente de desplegar |
-| **Hosting de la API** | Corre el backend en internet (Render gratuito hoy; Cloud Run cuando haya clientes) | Pendiente de desplegar |
-| **Dominio** | Dirección tipo `alaia.app` | Se compra cuando el sistema funcione |
+Alaia será una aplicación SaaS central para barberías, spas, peluquerías y otros negocios de servicios. Un solo producto y repositorio atenderá a muchos negocios. Cada negocio tendrá su propia configuración, equipo, agenda, clientes, pagos, página pública e integraciones. Un superadministrador de Alaia controlará altas, planes, suscripciones, vencimientos, consumo, soporte e incidencias.
 
-## 2. Cómo fluye una reserva
+Nombre de trabajo: **Alaia**. El nombre comercial y el nombre del repositorio pueden cambiar sin cambiar la arquitectura.
 
-**Por WhatsApp (canal principal):**
+## Estado auditado antes de proponer
 
-1. El cliente escribe al número del negocio.
-2. Meta entrega el mensaje al **webhook** de Alaia con el `phone_number_id`.
-3. La API busca ese número en `whatsappNumbers` y sabe de qué negocio es.
-4. Crea/reutiliza el cliente por teléfono y llama al **agente**.
-5. El agente usa herramientas (servicios, disponibilidad, crear cita) contra la misma agenda del panel.
-6. La API responde por Graph API y el cliente recibe el mensaje.
+- La carpeta de trabajo abierta contiene documentos de planificación, no es el repositorio de código.
+- GitHub da acceso al repositorio privado **KmiloLabs/novara-bot**. Ese proyecto es el bot de Novara en producción: n8n, WhatsApp Cloud API, Firestore y Google Calendar. Se conserva separado; aporta experiencia y automatizaciones.
+- El repositorio público **KmiloLabs/alaia-platform** se creó para el producto nuevo. Solo debe contener código y documentación publicables; los secretos van fuera de Git.
+- El workflow principal de Novara está activo en n8n. Su exportación principal en GitHub no se puede leer como JSON válido, así que no se debe usar para restaurar ni modificar la instancia antes de reconciliarla.
+- El prototipo dental adjunto tiene 39 nodos y está inactivo. Muestra un flujo útil de WhatsApp, audios, preguntas, horarios y recordatorios; está configurado como una clínica individual y usa Google Calendar y Sheets. Es una referencia conversacional, no la base multiempresa.
+- La búsqueda de repositorios no encontró un proyecto popular que reúna SaaS multiempresa, gestión comercial, agenda por sectores, WhatsApp e IA con licencias adecuadas. Los repositorios con muchas estrellas cubren subconjuntos y algunos excluyen uso productivo o funciones de equipo.
 
-**Por la página pública:**
+## Arquitectura recomendada
 
-1. El cliente abre `tu-dominio.com/b/nombre-del-negocio`.
-2. Ve servicios, precios, equipo y horarios reales.
-3. Reserva; la cita entra a la misma agenda.
+**Cliente:** web adaptable a móvil y escritorio, instalable como PWA. No usar Electron para el lanzamiento.
 
-**El dueño:**
-- Ve todo en el panel (agenda, clientes, servicios, equipo, comisiones, resumen).
-- Puede probar el agente desde Configuración y el canal de WhatsApp en modo prueba.
+**Entrada y páginas públicas:** Cloudflare para DNS, CDN, protección y resolución de subdominios. Una aplicación y una plantilla pública compartida resolverán el negocio según el host o slug. Subdominios primero; dominios propios en una capa posterior usando Cloudflare for SaaS y verificación de propiedad.
 
-## 3. Qué NO usamos y por qué
+**API central:** Cloud Run en Google Cloud para las reglas de negocio, API, webhooks, pagos, reservas y tareas que exijan permisos de servidor. Cloud Functions de segunda generación se pueden usar para eventos puntuales de Firebase si reducen trabajo; evitar duplicar reglas de negocio entre funciones.
 
-| Herramienta | Por qué no |
-|---|---|
-| **n8n** | Fue un piloto (el workflow del recepcionista). El agente ya vive en nuestra API, con herramientas auditables. n8n no es la autoridad de reservas ni pagos. Solo podría usarse más adelante para automatizaciones auxiliares (avisos externos), y es opcional. |
-| **Electron** | Electron sirve para empaquetar una app de escritorio. Alaia es web responsive: el trabajador entra desde el navegador del celular. Una app de escritorio duplicaría trabajo sin aportar nada. |
-| **Cloudflare** | No es obligatorio. Sirve como DNS/CDN o para túneles. Se puede usar al comprar el dominio (DNS gratis y rápido) o para exponer un servidor local mientras no haya despliegue. No es parte de la lógica del producto. |
-| **Microservicios / Kubernetes** | Con un piloto no se justifican: más costo, más complejidad, más cosas que se rompen. |
-| **WordPress / hosting compartido** | No soporta este stack (Node + Firestore + webhooks). |
+**Identidad:** Firebase Authentication. Una identidad puede pertenecer a uno o más negocios mediante membresías; los roles son superadministrador de plataforma, propietario/administrador, profesional/empleado y cliente. Para el MVP, el negocio (tenant) se modela en Alaia y no como un tenant de Identity Platform; la función multi-tenancy de Identity Platform es una opción que agrega coste y complejidad, no un requisito inicial.
 
-## 4. Dos entornos
+**Datos:** Firestore con separación lógica por rutas de negocio, por ejemplo tenants/{tenantId}/appointments, customers, services, staff, payments e integrations. Las reglas validan usuario y membresía para acceso directo. Las operaciones críticas pasan por Cloud Run. Las consultas administrativas de plataforma quedan separadas de los datos accesibles por cada negocio.
 
-**Local (desarrollo, hoy):**
-- API en `localhost:3001`, panel en `localhost:5173`, emuladores de Firebase en la máquina.
-- Datos de prueba temporales.
-- WhatsApp en modo `sandbox`: todo el flujo corre, pero no envía a Meta.
+**Archivos:** Cloud Storage con prefijos y metadatos de tenant, acceso mediante URLs firmadas y límites de tipo/tamaño. Los medios no se guardan dentro de documentos de Firestore.
 
-**Producción (cuando despleguemos):**
-- API en hosting gratuito (Render) o Cloud Run.
-- Panel en Firebase Hosting.
-- Firestore y Auth reales del proyecto "Alaia".
-- WhatsApp en modo `live` con el número registrado en Meta.
+**Automatización:** n8n puede ser una capa auxiliar central para recordatorios, notificaciones y procesos operativos. No será la fuente de verdad de agenda, pagos o permisos. Sus workflows reciben un tenantId validado, una lista pequeña de acciones permitidas y un identificador de evento idempotente; nunca secretos en código ni acceso al editor para clientes.
 
-El mismo código sirve en los dos entornos: solo cambian variables de configuración.
+**Canales y proveedores:** conectores intercambiables para WhatsApp Cloud API, pasarela(s) de pago, Google Calendar opcional, modelos de IA, voz y facturación electrónica DIAN opcional. Las claves se guardan como secretos del servidor y cada conexión queda asociada a su tenant.
 
-## 5. Decisiones todavía abiertas
+## Diagrama de infraestructura
 
-1. **Hosting de la API:** Render gratuito (se duerme) vs Cloud Run (requiere el prepago de Google).
-2. **Dominio:** cuándo comprarlo y con qué proveedor (Cloudflare/Namecheap/Hostinger).
-3. **Pagos:** Wompi como recomendación, cuando haya planes cobrándose.
-4. **Google Calendar:** integración opcional futura; la agenda de Alaia es la fuente de verdad.
-5. **Recordatorios:** envío programado por WhatsApp; requiere el canal en modo `live` y algún disparador (cron o tarea programada).
+Navegador / PWA  
+→ Cloudflare DNS, CDN y encaminamiento por dominio  
+→ aplicación web común  
+→ API de Alaia en Cloud Run  
+→ Firebase Authentication para identidad  
+→ Firestore para negocios, membresías, agenda, clientes, planes y consumo  
+→ Cloud Storage para archivos
 
-## 6. Principios
+La API valida cada solicitud y habla con WhatsApp Cloud API, pasarelas, Google Calendar opcional, Groq u otro proveedor de IA y Fish Audio u otro proveedor de audio. n8n recibe tareas auxiliares desde una cola/evento autenticado y devuelve estados; no ejecuta el libro mayor ni confirma una reserva sin validación del backend.
 
-- Una sola plataforma multi-negocio, no una instalación por cliente.
-- La IA no es la autoridad: reserva, precios y permisos los decide el backend.
-- Si una integración falla (Meta, Google Calendar), la agenda interna no se corrompe.
-- Cada capa se prueba (unitarias + end-to-end) y se sube a GitHub antes de seguir.
-- No se reescribe por moda: se adopta lo que resuelve un problema real.
+## Modelo lógico por capas
+
+### Plataforma Alaia
+
+Business/Tenant, estado, sector, plan, fecha de alta, vencimiento, límites, dominios, integraciones y uso. Usuarios y membresías relacionan identidades con negocios. Roles y permisos se verifican en cada operación.
+
+### Negocio
+
+Sucursales/ubicaciones, horarios, servicios, empleados/profesionales, asignación de citas, disponibilidad, clientes, página pública, canales y preferencias de comunicación.
+
+### Agenda y operación
+
+Citas con estados e historial, bloqueos, disponibilidad, cancelación y reagendamiento. La reserva se confirma con una transacción o mecanismo de exclusión para evitar dos citas en el mismo espacio. Google Calendar sincroniza opcionalmente, pero Alaia mantiene la fuente principal de verdad.
+
+### Finanzas y remuneración
+
+Planes y suscripciones, cargos, pagos, reembolsos, consumo y conciliación. La remuneración del profesional tiene reglas configurables (porcentaje, fijo, alquiler o mixto), vigencia e historial. Las liquidaciones confirmadas son inmutables; los ajustes se registran como movimientos nuevos.
+
+### Afiliados y costos
+
+Afiliado, referido, regla de comisión, evento que genera derecho, saldo, pago manual o automático, reverso y auditoría. Se mide consumo por negocio: WhatsApp por categoría/país/proveedor, IA por tokens/modelo, voz por segundos, archivos por almacenamiento/egreso, y operaciones de base de datos.
+
+## Aislamiento, seguridad y auditoría
+
+- Nunca confiar en un tenantId enviado por el navegador. El servidor deriva el negocio de una membresía autorizada o valida el recurso contra una membresía existente.
+- Cada lectura y escritura de negocio incluye tenantId/ruta de tenant. Las reglas de Firestore cierran el acceso por defecto y autorizan explícitamente membresías y roles.
+- La librería Admin de Firebase en Cloud Run omite las reglas de Firestore; la API debe aplicar autenticación, pertenencia, permisos y tenant scoping antes de cada consulta.
+- El superadministrador usa permisos de plataforma distintos a los del negocio. Sus acciones sensibles quedan auditadas.
+- Webhooks de Meta y pagos: verificar firma, deduplicar con idempotency key, validar estado y guardar el evento antes de procesarlo.
+- Separar secretos por tenant/proveedor, cifrarlos en reposo, no incluirlos en prompts, registros, workflows exportados ni respuestas del cliente.
+- Aplicar cuotas por tenant, límites de frecuencia, App Check donde corresponda, protección contra abuso en páginas públicas, respaldos, retención y borrado/exportación de datos.
+- Audio y transcripciones se procesan con aviso y consentimiento adecuados. Solo retener lo necesario; la clonación de voz requiere permisos documentados del titular.
+- Un cliente dental puede implicar datos de salud sensibles. Ese sector debe tener una revisión específica de protección de datos y de los mensajes de IA antes de venderse.
+
+## n8n y licencia
+
+La edición Community autohospedada usa Sustainable Use License. La guía oficial actualizada el 6 de octubre de 2026 permite crear y ejecutar workflows para clientes desde una instancia propia y que conecten sus cuentas, si los clientes solo reciben resultados y no pueden abrir el editor ni cambiar la lógica. Ofrecer n8n como servicio, exponer el editor o permitir que los clientes configuren automatizaciones requiere licencia comercial. La implementación mantendrá el editor solo para el equipo interno y confirmará por escrito con n8n cualquier flujo de credenciales de clientes antes de monetizarlo.
+
+## Cloudflare y Electron
+
+**Cloudflare sí encaja**, sobre todo para DNS, CDN, seguridad, subdominios y dominios personalizados. Pages tiene límites de dominios por proyecto según el plan; Cloudflare for SaaS está pensado para servir dominios de clientes hacia un origen común y tiene habilitación/condiciones de cuenta. Por eso se empieza con un solo frontend y subdominios; no se crea un proyecto o despliegue por negocio.
+
+**Electron no hace falta ahora.** Electron empaqueta una aplicación web para escritorio; no resuelve multiempresa, backend, seguridad ni hosting. Una PWA permite empezar desde navegador y pantalla móvil, con instalación sencilla. Electron se reconsidera si hay una necesidad real de impresoras, periféricos, funcionamiento sin conexión o integración profunda con Windows.
+
+## Papel de Groq y Fish Audio
+
+Groq puede ser un proveedor de modelos de texto o transcripción detrás de una interfaz de proveedores. La documentación indica que las entradas y salidas de inferencia no se conservan por defecto, con excepciones para confiabilidad/abuso y funciones que requieren retención; existen controles de Zero Data Retention. Cada sector tendrá límites de IA, registro de coste y opción de proveedor alterno.
+
+Fish Audio ofrece APIs de texto a voz y voz a texto. Se integra como módulo opcional para notas de voz, respuestas habladas o futuras funciones de voz; no se necesita para lanzar reservas por texto. Guardar proveedor, modelo, segundos y costo por tenant. El producto no dependerá de la disponibilidad, licenciamiento o precios de un único proveedor.
+
+## Costos compartidos y variables
+
+| Compartidos por la plataforma | Variables atribuibles a cada tenant |
+| --- | --- |
+| Dominio y zona principal; Cloudflare base; API y monitorización; base de Firestore; instancia n8n; operación y soporte | Mensajes Meta por país y categoría; tokens de IA; segundos de transcripción/TTS; almacenamiento/egreso; lecturas, escrituras y listeners Firestore; comisiones de pago; dominios propios |
+| Se reparten sobre el total de negocios activos | Se miden desde el primer uso y alimentan cuotas, límites y facturación |
+
+Cada evento de consumo guarda tenantId, proveedor, unidad, cantidad, costo estimado, moneda, timestamp e idempotency key. Un proceso de conciliación compara estimados con facturas reales. Los planes incluyen límites claros y margen; sobrepasar límites notifica y aplica la regla comercial acordada. No vender “ilimitado” mientras Meta y proveedores cobran por uso.
+
+## Hosting, dominios y almacenamiento
+
+- Desarrollo, pruebas y producción separados por proyecto/cuenta; sin compartir datos reales en desarrollo.
+- Un frontend de producto y una página pública parametrizada. Los subdominios negocio.alaia… se resuelven a tenant por registro de dominio.
+- Los dominios del cliente se verifican por DNS, se ligan a un tenant y se sirven por el mismo frontend. Estado de certificado y renovación queda visible al superadministrador.
+- Backend único con escalado horizontal y cola para tareas que puedan reintentarse. El número de tenants no implica número de servidores.
+- Almacenamiento privado por tenant, URLs firmadas con vencimiento, límites de carga y política de retención.
+- No fijar todavía región, servicios pagos o límites comerciales hasta estimar volumen y confirmar requisitos de datos de los primeros clientes.
+
+## Escalamiento de 1 a 50 y a 100 negocios
+
+**1–10:** validar reservas, roles, dos verticales, costos por tenant y una sola ubicación/múltiples ubicaciones según necesidad. Activar presupuestos y alertas antes de conectar IA y WhatsApp.
+
+**10–50:** automatizar onboarding y suspensión por estado de suscripción; activar colas, reintentos, cuotas por tenant, tableros de consumo, conciliación, copias de seguridad verificadas y rotación de credenciales. Simular picos y aislamiento entre negocios.
+
+**50–100:** revisar índices, partición lógica, cargas de calendario, costos por consulta, listeners y webhooks. Ajustar Cloud Run concurrency/limits y límites de proveedores. Considerar bases separadas o regiones solo por requisito de aislamiento, residencia de datos o carga demostrada, no por defecto.
+
+No asumir que los planes gratuitos alcanzan para este volumen: Firestore cobra por lecturas, escrituras, almacenamiento, índices y transferencia; WhatsApp y proveedores de IA/voz tienen cargos variables.
+
+## Capas de trabajo y criterios para aprobar
+
+El panel visual no está listo para un ensayo de producto. La ruta es: 1) login y aislamiento tenant; 2) negocio, profesional, servicios y horarios; 3) agenda y reserva web; 4) administrador real con citas, caja e inventario; 5) agente que lleva las conversaciones, reconoce clientes nuevos/recurrentes con historial autorizado, agenda y registra ventas con reglas del backend; 6) ensayo end-to-end en staging; 7) revisión del dueño de Araan con datos ficticios; 8) piloto real autorizado; 9) WhatsApp real, Calendar opcional y administración comercial ampliada; 10) analítica social, IA avanzada y voz.
+
+Para QA: datos ficticios en local, luego proyecto Firebase aislado de staging y cuentas de prueba. Araan revisa flujos en staging antes de compartir datos reales. No se envían mensajes ni cobros reales desde staging; Google Calendar queda opcional y secundario a la agenda de Alaia. Métricas de redes sociales quedan para una etapa posterior y dependen del acceso que permitan las APIs de cada plataforma.
+
+## Fuentes oficiales consultadas
+
+- [n8n: qué licencia aplica a cada caso de uso](https://support.n8n.io/article/can-i-use-your-license-for-my-use-case?trk=article-ssr-frontend-pulse_little-text-block)
+- [Firebase: reglas de seguridad de Firestore](https://firebase.google.com/docs/firestore/security/rules-conditions)
+- [Firebase: transacciones y escrituras atómicas](https://firebase.google.com/docs/firestore/manage-data/transactions)
+- [Firebase: facturación de Firestore](https://firebase.google.com/docs/firestore/pricing)
+- [Firebase: Auth multi-tenancy](https://firebase.google.com/docs/auth/)
+- [Cloudflare Pages: dominios propios y límites](https://developers.cloudflare.com/pages/configuration/custom-domains/), [límites](https://developers.cloudflare.com/pages/platform/limits/)
+- [Cloudflare for SaaS: dominios personalizados](https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/domain-support/)
+- [Groq: tratamiento y retención de datos](https://console.groq.com/docs/your-data)
+- [Fish Audio: APIs y planes](https://fish.audio/developers/), [términos empresariales](https://beta.fish.audio/enterprise-terms/)
+- [WhatsApp Business Platform: precios y categorías](https://whatsappbusiness.com/products/platform-pricing/), [FAQ de tarifas](https://whatsappbusiness.com/resources/faq/)
+
+## Dirección inicial aprobada
+
+Dirección inicial: **web/PWA + Cloudflare para entrada/dominios + Firebase Auth/Firestore + Cloud Run para operaciones críticas + n8n solo como automatización auxiliar controlada + adaptadores separados para WhatsApp, pagos, Groq y Fish Audio**.
+
+El primer piloto previsto es Araan Barbería, inicialmente con un solo profesional. El prototipo actual permite elegir fecha, ver un perfil de profesional, cambiar el periodo de ingresos (día/semana/mes) y agregar citas temporales. Todo usa datos ficticios; no hay login, backend, datos persistentes ni integraciones. Los datos reales se incorporan cuando la estructura esté lista y el dueño los apruebe. Google Calendar es opcional y secundario a la agenda de Alaia; métricas de redes sociales quedan para una etapa posterior.
+
+
