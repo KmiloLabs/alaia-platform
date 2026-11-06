@@ -66,7 +66,7 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
   const sector = typeof req.body?.sector === "string" ? req.body.sector : "";
   const timeZone = typeof req.body?.timeZone === "string" ? req.body.timeZone : "America/Bogota";
-  const allowedSectors = new Set(["barberia", "peluqueria", "spa", "servicios"]);
+  const allowedSectors = new Set(["barberia", "peluqueria", "spa", "unas", "pestanas", "cejas", "masajes", "estetica", "servicios"]);
 
   if (name.length < 2 || name.length > 120) {
     return sendError(res, 400, "invalid_name", "El nombre debe tener entre 2 y 120 caracteres.");

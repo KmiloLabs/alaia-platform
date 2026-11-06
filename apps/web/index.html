@@ -101,6 +101,11 @@
                 <option value="barberia">Barbería</option>
                 <option value="peluqueria">Peluquería</option>
                 <option value="spa">Spa</option>
+                <option value="unas">Uñas</option>
+                <option value="pestanas">Pestañas</option>
+                <option value="cejas">Cejas</option>
+                <option value="masajes">Masajes</option>
+                <option value="estetica">Estética</option>
                 <option value="servicios">Servicios</option>
               </select>
             </div>
@@ -153,6 +158,8 @@
           <button class="nav-item" data-view="equipo"><span class="nav-icon" aria-hidden="true">♧</span><span>Equipo</span></button>
           <button class="nav-item" data-view="servicios"><span class="nav-icon" aria-hidden="true">◇</span><span>Servicios</span></button>
           <button class="nav-item" data-view="plataforma" id="platform-nav" hidden><span class="nav-icon" aria-hidden="true">▤</span><span>Plataforma</span></button>
+<button class="nav-item nav-subitem" data-view="plataforma-negocios" id="platform-nav-businesses" hidden><span class="nav-icon" aria-hidden="true">▦</span><span>Negocios</span></button>
+<button class="nav-item nav-subitem" data-view="plataforma-proveedores" id="platform-nav-providers" hidden><span class="nav-icon" aria-hidden="true">✦</span><span>Proveedores IA</span></button>
         </nav>
 
         <div class="sidebar-bottom">
@@ -590,7 +597,7 @@
 
           <section class="platform-view" id="platform-view" aria-labelledby="platform-title" hidden>
             <div class="platform-summary" id="platform-summary" aria-label="Resumen de la plataforma"></div>
-            <article class="panel platform-panel">
+            <article class="panel platform-panel" id="platform-businesses-panel">
               <div class="panel-heading">
                 <div><p class="eyebrow">NEGOCIOS</p><h2 id="platform-title">Negocios registrados</h2></div>
                 <span class="services-count" id="platform-tenants-count"></span>

@@ -956,3 +956,6 @@ a.customer-info-value { color: var(--teal); }
 .settlement-unassigned { font-size: 12px; color: var(--ink-soft); }
 .settlement-unassigned strong { color: var(--ink); }
 [data-theme="dark"] .settlement-summary-card strong, [data-theme="dark"] .settlement-table tbody th { color: #e1ece9; }
+.nav-item.nav-subitem { min-height: 36px; margin-left: 12px; padding-left: 14px; font-size: 11px; color: var(--ink-soft); border-left: 2px solid var(--line); border-radius: 0 9px 9px 0; }
+.nav-item.nav-subitem.is-active { background: var(--mint); color: #276f65; border-left-color: var(--teal); }
+.nav-item.nav-subitem .nav-icon { font-size: 10px; width: 12px; }

@@ -54,6 +54,11 @@ const SECTOR_LABELS = {
   barberia: "Barbería",
   peluqueria: "Peluquería",
   spa: "Spa",
+  unas: "Uñas",
+  pestanas: "Pestañas",
+  cejas: "Cejas",
+  masajes: "Masajes",
+  estetica: "Estética",
   servicios: "Servicios",
 };
 const ROLE_LABELS = {
@@ -368,7 +373,12 @@ const profileStatusBadge = $("#profile-status-badge");
 const profileSaveButton = $("#profile-save");
 const profilePreview = $("#profile-preview");
 
-const platformNav = $("#platform-nav");const platformView = $("#platform-view");
+const platformNav = $("#platform-nav");
+const platformNavBusinesses = $("#platform-nav-businesses");
+const platformNavProviders = $("#platform-nav-providers");
+const platformBusinessesPanel = $("#platform-businesses-panel");
+const platformProvidersPanel = $("#platform-providers");
+const platformView = $("#platform-view");
 const platformSummary = $("#platform-summary");
 const platformSearchInput = $("#platform-search");
 const platformStatusFilter = $("#platform-status-filter");
@@ -986,13 +996,15 @@ function updatePlatformVisibility() {
 function updateNavigationVisibility() {
   const hasTenant = Boolean(state.tenant);
   for (const item of document.querySelectorAll(".nav-item[data-view]")) {
-    if (item.id === "platform-nav") {
+    if (["platform-nav", "platform-nav-businesses", "platform-nav-providers"].includes(item.id)) {
       item.hidden = !state.isPlatformAdmin;
       continue;
     }
     item.hidden = !hasTenant;
   }
   if (platformNav) platformNav.hidden = !state.isPlatformAdmin;
+  if (platformNavBusinesses) platformNavBusinesses.hidden = !state.isPlatformAdmin;
+  if (platformNavProviders) platformNavProviders.hidden = !state.isPlatformAdmin;
 }
 
 function renderPlatformWorkspace() {
@@ -1394,15 +1406,16 @@ agendaToggle.addEventListener("click", () => {
 });
 
 function setView(view) {
-  state.view = ["agenda", "configuracion", "servicios", "clientes", "equipo", "plataforma"].includes(view) ? view : "resumen";
+  state.view = ["agenda", "configuracion", "servicios", "clientes", "equipo", "plataforma", "plataforma-negocios", "plataforma-proveedores"].includes(view) ? view : "resumen";
+  const isPlatformView = state.view.startsWith("plataforma");
   document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
-    const isActive = item.dataset.view === state.view;
+    const isActive = item.dataset.view === state.view || (isPlatformView && item.id === "platform-nav");
     item.classList.toggle("is-active", isActive);
     if (isActive) item.setAttribute("aria-current", "page");
     else item.removeAttribute("aria-current");
   });
 
-  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios", clientes: "Clientes", equipo: "Equipo", plataforma: "Plataforma" };
+  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios", clientes: "Clientes", equipo: "Equipo", plataforma: "Plataforma", "plataforma-negocios": "Plataforma", "plataforma-proveedores": "Plataforma" };
   currentSection.textContent = sectionLabels[state.view];
 
   const metricGrid = document.querySelector(".metric-grid");
@@ -1413,7 +1426,7 @@ function setView(view) {
   const isServices = state.view === "servicios";
   const isCustomers = state.view === "clientes";
   const isTeam = state.view === "equipo";
-  const isPlatform = state.view === "plataforma";
+  const isPlatform = state.view.startsWith("plataforma");
 
   if (metricGrid) metricGrid.hidden = true;
   if (legacyMetrics) legacyMetrics.hidden = true;
@@ -1428,6 +1441,12 @@ function setView(view) {
   if (servicesView) servicesView.hidden = !isServices;
   if (customersView) customersView.hidden = !isCustomers;
   if (platformView) platformView.hidden = !isPlatform;
+  if (isPlatform) {
+    const platformSection = state.view === "plataforma-negocios" ? "negocios" : state.view === "plataforma-proveedores" ? "proveedores" : "resumen";
+    if (platformSummary) platformSummary.hidden = platformSection !== "resumen";
+    if (platformBusinessesPanel) platformBusinessesPanel.hidden = platformSection === "proveedores";
+    if (platformProvidersPanel) platformProvidersPanel.hidden = platformSection === "negocios";
+  }
   if (teamView) teamView.hidden = !isTeam;
   newAppointmentButton.hidden = isConfig || isServices || isCustomers || isTeam || isPlatform;
   agendaToggle.textContent = isAgenda ? "Ver resumen →" : "Ver agenda →";
@@ -1449,7 +1468,7 @@ function setView(view) {
 }
 
 function renderHeader() {
-  if (state.view === "plataforma") {
+  if (state.view.startsWith("plataforma")) {
     todayLabel.textContent = "PLATAFORMA ALAIA";
     setPageTitle("Plataforma");
     pageSubtitle.textContent = "Todos los negocios, sus planes, su consumo y el estado de la plataforma.";
