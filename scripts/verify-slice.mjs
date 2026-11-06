@@ -692,6 +692,63 @@ async function main() {
   const invalidInvitation = await api("/api/v1/invitations/token-inventado-123");
   check("Un token inventado responde 404", invalidInvitation.status === 404 && invalidInvitation.json?.error?.code === "invitation_not_found", `HTTP ${invalidInvitation.status}`);
 
+  section("20. Página pública de reservas");
+  const publicPage = await api(`/api/v1/public/tenants/${tenantA.slug}`);
+  const publicBody = publicPage.json ?? {};
+  const publicJson = JSON.stringify(publicBody);
+  check("La página pública responde por slug", publicPage.status === 200 && publicBody.tenant?.slug === tenantA.slug, `HTTP ${publicPage.status}`);
+  check("La página pública no expone datos privados", !publicJson.includes("commission") && !publicJson.includes("ownerEmail") && !publicJson.includes(userA.email), "sin comisiones ni correo del dueño");
+  const publicServices = publicBody.services ?? [];
+  const publicProfessionals = publicBody.professionals ?? [];
+  check("La página pública lista servicios y equipo", publicServices.length >= 3 && publicProfessionals.length >= 1, `${publicServices.length} servicios, ${publicProfessionals.length} profesionales`);
+
+  const publicDate = (() => {
+    for (let offset = 3; offset < 15; offset += 1) {
+      const candidate = new Date(Date.now() + offset * 86400000);
+      const weekday = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Bogota", weekday: "short" }).format(candidate) === "Sun");
+      const iso = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" }).format(candidate);
+      if (!weekday) return iso;
+    }
+    return "";
+  })();
+  const publicService = publicServices[0];
+  const publicSlots = await api(`/api/v1/public/tenants/${tenantA.slug}/availability?date=${publicDate}&serviceId=${publicService.serviceId}`, {});
+  const slotList = publicSlots.json?.slots ?? [];
+  check("La disponibilidad pública usa la duración del servicio", publicSlots.status === 200 && publicSlots.json?.durationMinutes === publicService.durationMinutes && slotList.length > 0, `${slotList.length} huecos de ${publicSlots.json?.durationMinutes} min`);
+
+  const publicRequestId = `public-${RUN_ID}`;
+  const publicBooking = await api(`/api/v1/public/tenants/${tenantA.slug}/appointments`, {
+    method: "POST", body: {
+      customerName: "Camila Pública", customerPhone: "3005551122", serviceId: publicService.serviceId,
+      startsAt: `${publicDate}T09:00`, clientRequestId: publicRequestId,
+    },
+  });
+  const publicAppointment = publicBooking.json?.appointment ?? {};
+  check("La reserva pública crea la cita", publicBooking.status === 201 && Boolean(publicAppointment.appointmentId), `HTTP ${publicBooking.status} ${publicAppointment.startsAtLocal ?? ""}`);
+
+  const repeatedBooking = await api(`/api/v1/public/tenants/${tenantA.slug}/appointments`, {
+    method: "POST", body: {
+      customerName: "Camila Pública", customerPhone: "3005551122", serviceId: publicService.serviceId,
+      startsAt: `${publicDate}T09:00`, clientRequestId: publicRequestId,
+    },
+  });
+  check("Repetir la reserva no duplica la cita", repeatedBooking.status === 200 && (repeatedBooking.json?.appointment?.appointmentId === publicAppointment.appointmentId), `HTTP ${repeatedBooking.status}`);
+
+  const ownerDay = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments?from=${publicDate}&to=${publicDate}`, { token: userA.idToken });
+  const ownerEntry = (ownerDay.json?.appointments ?? []).find((item) => item.appointmentId === publicAppointment.appointmentId);
+  check("La cita pública aparece en la agenda del dueño", ownerEntry?.source === "public" && ownerEntry?.priceCOP === publicService.priceCOP, `source=${ownerEntry?.source}`);
+
+  const conflictBooking = await api(`/api/v1/public/tenants/${tenantA.slug}/appointments`, {
+    method: "POST", body: {
+      customerName: "Otro Cliente", customerPhone: "3009998877", serviceId: publicService.serviceId,
+      startsAt: `${publicDate}T09:00`, clientRequestId: `conflicto-${RUN_ID}`,
+    },
+  });
+  check("Un horario ocupado responde 409", conflictBooking.status === 409 && conflictBooking.json?.error?.code === "appointment_conflict", `HTTP ${conflictBooking.status}`);
+
+  const missingTenant = await api("/api/v1/public/tenants/no-existe-ese-slug");
+  check("Un slug inexistente responde 404", missingTenant.status === 404 && missingTenant.json?.error?.code === "tenant_not_found", `HTTP ${missingTenant.status}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {

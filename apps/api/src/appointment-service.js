@@ -123,7 +123,7 @@ export async function getAvailability({ tenant, query, now = new Date(), profess
   };
 }
 
-export async function createAppointment({ tenantId, timeZone, actorUid, body }) {
+export async function createAppointment({ tenantId, timeZone, actorUid, body, source = "panel" }) {
   const rawBody = body && typeof body === "object" && !Array.isArray(body) ? body : {};
 
   // customerId opcional: el cliente debe pertenecer al negocio y sus datos
@@ -204,6 +204,7 @@ export async function createAppointment({ tenantId, timeZone, actorUid, body }) 
       customerPhone: input.customerPhone,
       professionalId: assignedProfessionalId,
       professionalName: assignedProfessionalName,
+      source,
       serviceName: input.serviceName,
       startsAt: Timestamp.fromDate(input.startsAtUtc),
       startsAtLocal: input.startsAtLocal,
@@ -488,6 +489,7 @@ export function serializeAppointment(appointmentId, data) {
     durationMinutes: data?.durationMinutes ?? null,
     priceCOP: data?.priceCOP ?? null,
     status: data?.status ?? "scheduled",
+    source: data?.source ?? "panel",
     notes: data?.notes ?? "",
     createdAt: toIsoString(data?.createdAt),
   };

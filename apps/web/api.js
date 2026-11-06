@@ -59,6 +59,11 @@ const ERROR_MESSAGES = {
   invitation_not_pending: "Esta invitación fue cancelada o ya se usó.",
   invitation_already_member: "Ya haces parte de este negocio.",
   invalid_status: "El estado de la cita no es válido.",
+  invalid_customer_name: "El nombre debe tener entre 2 y 80 caracteres.",
+  service_not_found: "Ese servicio no está disponible.",
+  outside_business_hours: "Ese horario está fuera del horario del negocio.",
+  too_many_requests: "Demasiados intentos. Espera un momento y vuelve a intentar.",
+  public_tenant_not_found: "No encontramos ese negocio.",
   provider_not_found: "No encontramos ese proveedor de IA.",
   invalid_api_key: "La clave debe tener entre 8 y 200 caracteres.",
   invalid_models: "Escribe entre 1 y 10 modelos, separados por comas (máx. 64 caracteres cada uno).",
@@ -174,6 +179,36 @@ async function request(path, { method = "GET", body } = {}) {
   return payload;
 }
 
+async function publicRequest(path, { method = "GET", body } = {}) {
+  const headers = { Accept: "application/json" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(0, "network_error", `No pudimos conectar con ${API_BASE}.`);
+  }
+  const text = await response.text();
+  let payload = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = null;
+    }
+  }
+  if (!response.ok) {
+    const code = payload?.error?.code ?? `http_${response.status}`;
+    const message = payload?.error?.message ?? `La API respondió ${response.status}.`;
+    throw new ApiError(response.status, code, message);
+  }
+  return payload;
+}
+
 export function listTenants() {
   return request("/api/v1/me/tenants");
 }
@@ -264,6 +299,24 @@ export function updateAppointmentStatus(tenantId, appointmentId, status) {
     `/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments/${encodeURIComponent(appointmentId)}/status`,
     { method: "POST", body: { status } },
   );
+}
+
+export function getPublicTenant(slug) {
+  return publicRequest(`/api/v1/public/tenants/${encodeURIComponent(slug)}`);
+}
+
+export function getPublicAvailability(slug, { date, serviceId, professionalId }) {
+  const params = new URLSearchParams({ date });
+  if (serviceId) params.set("serviceId", serviceId);
+  if (professionalId) params.set("professionalId", professionalId);
+  return publicRequest(`/api/v1/public/tenants/${encodeURIComponent(slug)}/availability?${params.toString()}`);
+}
+
+export function createPublicAppointment(slug, appointment) {
+  return publicRequest(`/api/v1/public/tenants/${encodeURIComponent(slug)}/appointments`, {
+    method: "POST",
+    body: appointment,
+  });
 }
 
 export function createTenant({ name, sector, timeZone }) {

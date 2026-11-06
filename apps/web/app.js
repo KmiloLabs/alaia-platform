@@ -17,6 +17,7 @@ import {
   createCustomer,
   createInvitation,
   createProfessional,
+  createPublicAppointment,
   createService,
   createTenant,
   deactivateCustomer,
@@ -30,6 +31,8 @@ import {
   getMe,
   getPlatformSummary,
   getPlatformTenant,
+  getPublicAvailability,
+  getPublicTenant,
   getSettlementPreview,
 getTenantContext,
   isTenantAccessError,
@@ -133,6 +136,7 @@ const screens = {
   boot: $("#boot-screen"),
   auth: $("#auth-screen"),
   invite: $("#invite-screen"),
+  public: $("#public-screen"),
   onboarding: $("#onboarding-screen"),
   panel: $("#panel-screen"),
 };
@@ -162,6 +166,42 @@ const inviteStatus = $("#invite-status");
 const inviteError = $("#invite-error");
 const inviteGoogle = $("#invite-google");
 const inviteAccept = $("#invite-accept");
+
+const publicScreen = $("#public-screen");
+const publicLoading = $("#public-loading");
+const publicLoadError = $("#public-load-error");
+const publicLoadErrorMessage = $("#public-load-error-message");
+const publicRetry = $("#public-retry");
+const publicContent = $("#public-content");
+const publicName = $("#public-business-name");
+const publicSector = $("#public-sector");
+const publicDescription = $("#public-description");
+const publicContact = $("#public-contact");
+const publicSocial = $("#public-social");
+const publicServices = $("#public-services");
+const publicNoServices = $("#public-no-services");
+const publicTeamSection = $("#public-team-section");
+const publicTeam = $("#public-team");
+const publicBooking = $("#public-booking");
+const publicBookingService = $("#public-booking-service");
+const publicDate = $("#public-date");
+const publicProfessional = $("#public-professional");
+const publicSlots = $("#public-slots");
+const publicSlotsMessage = $("#public-slots-message");
+const publicNameInput = $("#public-name");
+const publicPhoneInput = $("#public-phone");
+const publicBookingError = $("#public-booking-error");
+const publicConfirm = $("#public-confirm");
+const publicChangeService = $("#public-change-service");
+const publicSuccess = $("#public-success");
+const publicSuccessDetail = $("#public-success-detail");
+const publicBookAgain = $("#public-book-again");
+const publicPageLinkInput = $("#public-page-link");
+const copyPublicPage = $("#copy-public-page");
+const openPublicPage = $("#open-public-page");
+const publicPageQr = $("#public-page-qr");
+const publicPageQrNote = $("#public-page-qr-note");
+const publicPageStatus = $("#public-page-status");
 
 const tenantForm = $("#tenant-form");
 const tenantName = $("#tenant-name");
@@ -511,6 +551,16 @@ const toast = $("#toast");
 
 const state = {
   inviteToken: null,
+  publicMode: false,
+  publicSlug: null,
+  publicData: null,
+  publicService: null,
+  publicSlots: [],
+  publicSlotsSeq: 0,
+  publicSlotsLoading: false,
+  publicSelectedSlot: "",
+  publicBookingRequestId: null,
+  publicBookingBusy: false,
   user: null,
   tenants: [],
   tenant: null,
@@ -616,6 +666,12 @@ const state = {
   profileSaving: false,
   tenantSuspended: false,
 };
+
+const initialPublicSlug = parsePublicSlug();
+if (initialPublicSlug) {
+  state.publicMode = true;
+  state.publicSlug = initialPublicSlug;
+}
 
 const initialInviteToken = parseInviteToken();
 if (initialInviteToken) {
@@ -794,7 +850,359 @@ inviteGoogle.addEventListener("click", async () => {
 
 inviteAccept.addEventListener("click", acceptCurrentInvitation);
 
+function parsePublicSlug() {
+  const hashMatch = window.location.hash.match(/(?:^|[#/])b\/([^/?#]+)/);
+  if (hashMatch) return decodeURIComponent(hashMatch[1]);
+  const pathMatch = window.location.pathname.match(/\/b\/([^/]+)\/?$/);
+  return pathMatch ? decodeURIComponent(pathMatch[1]) : "";
+}
+
+function showPublicLoading() {
+  publicLoading.hidden = false;
+  publicLoadError.hidden = true;
+  publicContent.hidden = true;
+}
+
+function showPublicLoadError(message) {
+  publicLoading.hidden = true;
+  publicLoadError.hidden = false;
+  publicLoadErrorMessage.textContent = message;
+  publicContent.hidden = true;
+}
+
+function setPublicStatus(message, tone = "idle") {
+  publicBookingError.textContent = message;
+  publicBookingError.className = `form-error ${tone === "error" ? "" : ""}`.trim();
+}
+
+function publicSocialEntries(socialLinks) {
+  const links = socialLinks ?? {};
+  const entries = [];
+  for (const [key, label] of [["instagram", "Instagram"], ["facebook", "Facebook"], ["tiktok", "TikTok"], ["website", "Sitio web"]]) {
+    const value = typeof links[key] === "string" ? links[key].trim() : "";
+    if (!value || !/^https:\/\//i.test(value)) continue;
+    entries.push({ label, href: value });
+  }
+  const whatsapp = typeof links.whatsapp === "string" ? links.whatsapp.replace(/\D+/g, "") : "";
+  if (whatsapp) entries.push({ label: "WhatsApp", href: `https://wa.me/${whatsapp}` });
+  return entries;
+}
+
+async function initializePublicPage(slug) {
+  if (!slug) {
+    showPublicLoadError("El enlace de la página no es válido.");
+    return;
+  }
+  showScreen("public");
+  document.documentElement.setAttribute("data-theme", "light");
+  showPublicLoading();
+  try {
+    const data = await getPublicTenant(slug);
+    if (state.publicSlug !== slug) return;
+    state.publicData = data;
+    renderPublicTenant(data);
+  } catch (error) {
+    if (state.publicSlug !== slug) return;
+    showPublicLoadError(messageForError(error));
+  }
+}
+
+function renderPublicTenant(data) {
+  const tenant = data?.tenant ?? {};
+  const services = Array.isArray(data?.services) ? data.services : [];
+  const professionals = Array.isArray(data?.professionals) ? data.professionals : [];
+  state.publicServices = services;
+  state.publicProfessionals = professionals;
+  publicName.textContent = String(tenant.name ?? "Reserva tu cita");
+  publicSector.textContent = String(SECTOR_LABELS[tenant.sector] ?? tenant.sector ?? "NEGOCIO").toLocaleUpperCase("es-CO");
+  publicDescription.textContent = tenant.description || "Reserva tu próxima cita en línea.";
+  document.title = `${tenant.name ?? "Reserva"} · Reserva tu cita`;
+
+  const contact = [];
+  if (tenant.address) {
+    const item = document.createElement("span");
+    item.textContent = `⌖ ${tenant.address}`;
+    contact.push(item);
+  }
+  if (tenant.phone) {
+    const item = document.createElement("a");
+    item.href = `tel:${String(tenant.phone).replace(/[^\d+]/g, "")}`;
+    item.textContent = `☎ ${tenant.phone}`;
+    contact.push(item);
+  }
+  publicContact.replaceChildren(...contact);
+  const socialEntries = publicSocialEntries(tenant.socialLinks);
+  publicSocial.replaceChildren(...socialEntries.map((entry) => {
+    const link = document.createElement("a");
+    link.href = entry.href;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = entry.label;
+    return link;
+  }));
+  publicSocial.hidden = socialEntries.length === 0;
+
+  publicServices.replaceChildren(...services.map((service) => {
+    const card = document.createElement("article");
+    card.className = "public-service-card";
+    const title = document.createElement("strong");
+    title.textContent = String(service.name ?? "Servicio");
+    const meta = document.createElement("span");
+    meta.textContent = `${numberOrZero(service.durationMinutes)} min · ${formatCOP(service.priceCOP)}`;
+    const description = document.createElement("p");
+    description.textContent = service.description || "";
+    description.hidden = !service.description;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "primary-button public-service-button";
+    button.dataset.publicServiceId = service.serviceId ?? service.id ?? "";
+    button.textContent = "Reservar";
+    button.setAttribute("aria-label", `Reservar ${service.name ?? "servicio"}`);
+    card.append(title, meta, description, button);
+    return card;
+  }));
+  publicNoServices.hidden = services.length > 0;
+  if (!services.length) publicBooking.hidden = true;
+
+  publicTeamSection.hidden = professionals.length === 0;
+  publicTeam.replaceChildren(...professionals.map((professional) => {
+    const badge = document.createElement("span");
+    badge.className = "public-professional";
+    badge.textContent = String(professional.name ?? "Profesional");
+    return badge;
+  }));
+
+  publicProfessional.replaceChildren();
+  const anybody = document.createElement("option");
+  anybody.value = "";
+  anybody.textContent = "Cualquiera";
+  publicProfessional.append(anybody);
+  for (const professional of professionals) {
+    const option = document.createElement("option");
+    option.value = professional.professionalId ?? professional.id ?? "";
+    option.textContent = String(professional.name ?? "Profesional");
+    publicProfessional.append(option);
+  }
+
+  const today = todayValue();
+  publicDate.min = today;
+  publicDate.max = addDays(today, 60);
+  publicDate.value = today;
+  publicBookingError.textContent = "";
+  publicSuccess.hidden = true;
+  publicBooking.hidden = true;
+  state.publicSelectedSlot = "";
+  state.publicBookingRequestId = null;
+  publicLoading.hidden = true;
+  publicContent.hidden = false;
+}
+
+function openPublicBooking(service) {
+  if (!service) return;
+  state.publicService = service;
+  state.publicSelectedSlot = "";
+  state.publicBookingRequestId = null;
+  publicBookingService.textContent = `${service.name ?? "Servicio"} · ${numberOrZero(service.durationMinutes)} min · ${formatCOP(service.priceCOP)}`;
+  publicBooking.hidden = false;
+  publicSuccess.hidden = true;
+  publicBookingError.textContent = "";
+  publicNameInput.value = publicNameInput.value || "";
+  publicPhoneInput.value = publicPhoneInput.value || "";
+  publicBooking.scrollIntoView({ behavior: "smooth", block: "start" });
+  loadPublicAvailability();
+}
+
+function setPublicSlotsMessage(message) {
+  publicSlotsMessage.textContent = message;
+}
+
+async function loadPublicAvailability() {
+  if (!state.publicService || !state.publicSlug) return;
+  const date = publicDate.value;
+  if (!isDateValue(date)) {
+    setPublicSlotsMessage("Elige una fecha válida.");
+    publicSlots.replaceChildren();
+    return;
+  }
+  const seq = ++state.publicSlotsSeq;
+  state.publicSelectedSlot = "";
+  publicSlots.setAttribute("aria-busy", "true");
+  publicSlots.replaceChildren(textBlock("Buscando horarios libres…", "slot-message"));
+  setPublicSlotsMessage("Buscando horarios…");
+  try {
+    const data = await getPublicAvailability(state.publicSlug, {
+      date,
+      serviceId: state.publicService.serviceId ?? state.publicService.id ?? "",
+      professionalId: publicProfessional.value || "",
+    });
+    if (seq !== state.publicSlotsSeq) return;
+    const slots = Array.isArray(data?.slots) ? data.slots : [];
+    state.publicSlots = slots;
+    publicSlots.setAttribute("aria-busy", "false");
+    if (!slots.length) {
+      publicSlots.replaceChildren();
+      setPublicSlotsMessage("No quedan horarios libres ese día. Prueba otra fecha.");
+      return;
+    }
+    publicSlots.replaceChildren(...slots.map((slot) => {
+      const time = String(slot.startsAtLocal ?? "").slice(11, 16);
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "slot-chip";
+      chip.dataset.publicSlotTime = time;
+      chip.textContent = time;
+      chip.setAttribute("aria-pressed", "false");
+      return chip;
+    }));
+    setPublicSlotsMessage(`${slots.length} ${slots.length === 1 ? "horario disponible" : "horarios disponibles"}`);
+  } catch (error) {
+    if (seq !== state.publicSlotsSeq) return;
+    publicSlots.setAttribute("aria-busy", "false");
+    publicSlots.replaceChildren();
+    setPublicSlotsMessage(messageForError(error));
+  }
+}
+
+async function confirmPublicBooking() {
+  if (state.publicBookingBusy) return;
+  publicBookingError.textContent = "";
+  if (!state.publicService || !state.publicSlug) return;
+  const date = publicDate.value;
+  const name = publicNameInput.value.trim();
+  const phoneRaw = publicPhoneInput.value.trim();
+  const phone = normalizePhoneDigits(phoneRaw);
+  if (!isDateValue(date)) {
+    publicBookingError.textContent = "Elige una fecha válida.";
+    publicDate.focus();
+    return;
+  }
+  if (!state.publicSelectedSlot) {
+    publicBookingError.textContent = "Elige un horario disponible.";
+    publicSlots.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  if (name.length < 2 || name.length > 80) {
+    publicBookingError.textContent = "Escribe tu nombre (entre 2 y 80 caracteres).";
+    publicNameInput.focus();
+    return;
+  }
+  if (phone.length < 7 || phone.length > 15) {
+    publicBookingError.textContent = "Escribe un teléfono de 7 a 15 dígitos.";
+    publicPhoneInput.focus();
+    return;
+  }
+
+  const requestId = state.publicBookingRequestId ?? createClientRequestId();
+  state.publicBookingRequestId = requestId;
+  state.publicBookingBusy = true;
+  publicConfirm.disabled = true;
+  publicConfirm.textContent = "Reservando…";
+  try {
+    const data = await createPublicAppointment(state.publicSlug, {
+      customerName: name,
+      customerPhone: phone,
+      serviceId: state.publicService.serviceId ?? state.publicService.id ?? "",
+      ...(publicProfessional.value ? { professionalId: publicProfessional.value } : {}),
+      startsAt: `${date}T${state.publicSelectedSlot}`,
+      clientRequestId: requestId,
+    });
+    const appointment = data?.appointment ?? {};
+    const start = String(appointment.startsAtLocal ?? `${date}T${state.publicSelectedSlot}`);
+    const appointmentDate = isDateValue(start.slice(0, 10)) ? start.slice(0, 10) : date;
+    publicSuccessDetail.textContent = `${formatLongDate(appointmentDate)} a las ${start.slice(11, 16) || state.publicSelectedSlot} · ${appointment.serviceName ?? state.publicService.name} · ${appointment.professionalName ?? "Cualquier profesional"}`;
+    publicBooking.hidden = true;
+    publicSuccess.hidden = false;
+    publicSuccess.scrollIntoView({ behavior: "smooth", block: "center" });
+    state.publicSelectedSlot = "";
+    state.publicBookingRequestId = null;
+  } catch (error) {
+    if (error.code === "appointment_conflict") {
+      state.publicBookingRequestId = null;
+      state.publicSelectedSlot = "";
+      publicBookingError.textContent = "Ese horario se ocupó mientras reservabas. Elige otro, tus datos siguen aquí.";
+      await loadPublicAvailability();
+    } else {
+      publicBookingError.textContent = messageForError(error);
+    }
+  } finally {
+    state.publicBookingBusy = false;
+    publicConfirm.disabled = false;
+    publicConfirm.textContent = "Confirmar reserva";
+  }
+}
+
+publicRetry.addEventListener("click", () => initializePublicPage(state.publicSlug));
+publicServices.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-public-service-id]");
+  if (!button) return;
+  const service = state.publicServices.find((item) => (item.serviceId ?? item.id) === button.dataset.publicServiceId);
+  openPublicBooking(service);
+});
+publicSlots.addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-public-slot-time]");
+  if (!chip) return;
+  state.publicSelectedSlot = chip.dataset.publicSlotTime;
+  state.publicBookingRequestId = null;
+  for (const item of publicSlots.querySelectorAll("[data-public-slot-time]")) {
+    const selected = item === chip;
+    item.classList.toggle("is-selected", selected);
+    item.setAttribute("aria-pressed", String(selected));
+  }
+});
+publicDate.addEventListener("change", loadPublicAvailability);
+publicProfessional.addEventListener("change", loadPublicAvailability);
+publicChangeService.addEventListener("click", () => {
+  publicBooking.hidden = true;
+  state.publicService = null;
+  state.publicSelectedSlot = "";
+  state.publicBookingRequestId = null;
+  document.getElementById("public-services-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+publicConfirm.addEventListener("click", confirmPublicBooking);
+publicBookAgain.addEventListener("click", () => window.location.reload());
+
+// ---------------------------------------------------------------------------
+// Tarjeta "Tu página pública" en Configuración
+// ---------------------------------------------------------------------------
+
+function publicPageUrl() {
+  const slug = state.tenant?.slug;
+  return slug ? `${window.location.origin}/b/${encodeURIComponent(slug)}` : "";
+}
+
+function renderPublicPageCard() {
+  if (!publicPageLinkInput) return;
+  const link = publicPageUrl();
+  if (!link) {
+    publicPageLinkInput.value = "";
+    if (publicPageStatus) publicPageStatus.textContent = "Sin enlace";
+    if (openPublicPage) openPublicPage.removeAttribute("href");
+    if (publicPageQr) publicPageQr.getContext("2d")?.clearRect(0, 0, publicPageQr.width, publicPageQr.height);
+    return;
+  }
+  publicPageLinkInput.value = link;
+  if (openPublicPage) openPublicPage.href = link;
+  if (publicPageStatus) publicPageStatus.textContent = "Lista";
+  drawQrCanvas(publicPageQr, link, publicPageQrNote);
+}
+
+copyPublicPage.addEventListener("click", async () => {
+  const link = publicPageLinkInput.value;
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+  } catch {
+    publicPageLinkInput.select();
+    document.execCommand("copy");
+  }
+  publicPageStatus.textContent = "Enlace copiado";
+  setTimeout(() => {
+    if (publicPageStatus) publicPageStatus.textContent = "Lista";
+  }, 1800);
+});
+
 onAuthStateChanged(auth, (user) => {
+  if (state.publicMode) return;
   if (state.inviteMode) {
     handleInviteAuth(user);
     return;
@@ -1711,6 +2119,7 @@ function setView(view) {
   renderHeader();
   if (isConfig) {
     renderProfile();
+    renderPublicPageCard();
     loadSchedule();
     loadAgentConfig();
   }
@@ -6311,20 +6720,12 @@ function generateQrMatrix(text) {
   return modules;
 }
 
-function drawInvitationQr(link) {
-  if (!inviteQrCanvas) return;
-  if (inviteQrNote) inviteQrNote.hidden = true;
+function drawQrCanvas(canvas, link, noteElement = null) {
+  if (!canvas) return;
+  if (noteElement) noteElement.hidden = true;
   try {
-    if (typeof generateQrMatrix !== "function") {
-      fallbackInvitationQr();
-      return;
-    }
-    const matrix = generateQrMatrix(link);
-    if (!matrix || !matrix.length) {
-      fallbackInvitationQr();
-      return;
-    }
-    const canvas = inviteQrCanvas;
+    const matrix = typeof generateQrMatrix === "function" ? generateQrMatrix(link) : null;
+    if (!matrix || !matrix.length) throw new Error("sin qr");
     const context = canvas.getContext("2d");
     const quiet = 4;
     const count = matrix.length;
@@ -6341,8 +6742,20 @@ function drawInvitationQr(link) {
       }
     }
   } catch (error) {
-    fallbackInvitationQr();
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#94a39f";
+    context.font = "12px system-ui, sans-serif";
+    context.textAlign = "center";
+    context.fillText("QR no disponible", canvas.width / 2, canvas.height / 2 - 6);
+    context.fillText("Comparte el enlace", canvas.width / 2, canvas.height / 2 + 12);
+    if (noteElement) noteElement.hidden = false;
   }
+}
+
+function drawInvitationQr(link) {
+  drawQrCanvas(inviteQrCanvas, link, inviteQrNote);
 }
 
 inviteForm.addEventListener("submit", async (event) => {
@@ -6673,7 +7086,11 @@ if (themeMediaQuery) {
 
 applyTheme(themeChoice, { persist: false });
 
-if (state.inviteMode) {
+if (state.publicMode) {
+  document.documentElement.setAttribute("data-theme", "light");
+  showScreen("public");
+  initializePublicPage(state.publicSlug);
+} else if (state.inviteMode) {
   showScreen("invite");
   initializeInvite(state.inviteToken);
 } else {

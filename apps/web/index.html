@@ -105,6 +105,70 @@
       </div>
     </section>
 
+    <section class="screen public-screen" id="public-screen" hidden>
+      <div class="public-shell">
+        <header class="public-brandbar">
+          <span class="brand brand-compact"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span class="brand-name">alaia<span class="brand-dot">.</span></span></span>
+          <span>Reservas en línea</span>
+        </header>
+        <div class="public-state" id="public-loading">
+          <strong>Cargando la página del negocio…</strong>
+          <span>Estamos preparando sus servicios y horarios.</span>
+        </div>
+        <div class="public-state" id="public-load-error" hidden>
+          <strong>No pudimos cargar esta página</strong>
+          <span id="public-load-error-message"></span>
+          <button class="secondary-button" id="public-retry" type="button">Reintentar</button>
+        </div>
+        <div class="public-content" id="public-content" hidden>
+          <header class="public-hero">
+            <p class="eyebrow" id="public-sector">NEGOCIO</p>
+            <h1 id="public-business-name">Reserva tu cita</h1>
+            <p class="public-description" id="public-description"></p>
+            <div class="public-contact" id="public-contact"></div>
+            <div class="public-social" id="public-social"></div>
+          </header>
+          <main class="public-main">
+            <section class="public-section" aria-labelledby="public-services-title">
+              <div class="public-section-head"><div><p class="eyebrow">SERVICIOS</p><h2 id="public-services-title">Elige tu servicio</h2></div></div>
+              <div class="public-services" id="public-services"></div>
+              <div class="public-empty" id="public-no-services" hidden><strong>Este negocio aún no tiene servicios disponibles</strong><span>Vuelve a intentarlo más tarde.</span></div>
+            </section>
+            <section class="public-section" id="public-team-section" aria-labelledby="public-team-title" hidden>
+              <div class="public-section-head"><div><p class="eyebrow">EQUIPO</p><h2 id="public-team-title">Quién te atiende</h2></div></div>
+              <div class="public-team" id="public-team"></div>
+            </section>
+            <section class="public-booking" id="public-booking" aria-labelledby="public-booking-title" hidden>
+              <div class="public-section-head"><div><p class="eyebrow">RESERVA</p><h2 id="public-booking-title">Reserva tu cita</h2></div><button class="text-button" id="public-change-service" type="button">Cambiar servicio</button></div>
+              <p class="public-selected-service" id="public-booking-service"></p>
+              <div class="public-form-grid">
+                <div><label for="public-date">Fecha</label><input id="public-date" type="date" required /></div>
+                <div><label for="public-professional">Profesional</label><select id="public-professional"></select></div>
+              </div>
+              <div class="public-slots-block">
+                <p class="slot-label">HORARIOS DISPONIBLES</p>
+                <div class="slot-list" id="public-slots" role="group" aria-label="Horarios disponibles" aria-live="polite" aria-busy="false"></div>
+                <p class="slot-indicator" id="public-slots-message" aria-live="polite"></p>
+              </div>
+              <div class="public-form-grid">
+                <div><label for="public-name">Tu nombre</label><input id="public-name" autocomplete="name" maxlength="80" placeholder="Ej. Camila Rojas" required minlength="2" /></div>
+                <div><label for="public-phone">Tu teléfono</label><input id="public-phone" type="tel" autocomplete="tel" maxlength="25" placeholder="Ej. 3001234567" required /></div>
+              </div>
+              <p class="form-error" id="public-booking-error" role="alert" aria-live="assertive"></p>
+              <button class="primary-button public-confirm" id="public-confirm" type="button">Confirmar reserva</button>
+            </section>
+            <section class="public-success" id="public-success" aria-labelledby="public-success-title" hidden>
+              <p class="eyebrow">RESERVA CONFIRMADA</p>
+              <h2 id="public-success-title">¡Listo!</h2>
+              <p id="public-success-detail"></p>
+              <button class="secondary-button" id="public-book-again" type="button">Reservar otra cita</button>
+            </section>
+          </main>
+          <footer class="public-footer"><span>Reservas gestionadas con</span><span class="brand-name">alaia<span class="brand-dot">.</span></span></footer>
+        </div>
+      </div>
+    </section>
+
     <section class="screen onboarding-screen" id="onboarding-screen" aria-labelledby="onboarding-title" hidden>
       <div class="onboarding-card">
         <a class="brand" href="#primer-paso" aria-label="Alaia, inicio">
@@ -426,6 +490,24 @@
                   <p class="eyebrow">VISTA PREVIA</p>
                   <div class="profile-preview-card" id="profile-preview"></div>
                 </aside>
+              </div>
+            </article>
+
+            <article class="panel public-page-panel" aria-labelledby="public-page-title">
+              <div class="panel-heading">
+                <div><p class="eyebrow">TU PÁGINA PÚBLICA</p><h2 id="public-page-title">Comparte tu página</h2></div>
+                <span class="config-status is-ready" id="public-page-status">Lista</span>
+              </div>
+              <p class="config-intro">Tus clientes pueden reservar sin crear cuenta. Comparte el enlace o el QR por WhatsApp, redes o donde quieras.</p>
+              <label for="public-page-link">Enlace público</label>
+              <div class="public-page-link-row">
+                <input id="public-page-link" type="text" readonly />
+                <button class="secondary-button" id="copy-public-page" type="button">Copiar</button>
+                <a class="secondary-button" id="open-public-page" href="#" target="_blank" rel="noreferrer">Abrir página</a>
+              </div>
+              <div class="public-page-qr-wrap">
+                <canvas id="public-page-qr" width="180" height="180" role="img" aria-label="Código QR de tu página pública"></canvas>
+                <p class="field-hint" id="public-page-qr-note" hidden>No pudimos dibujar el QR; comparte el enlace.</p>
               </div>
             </article>
 

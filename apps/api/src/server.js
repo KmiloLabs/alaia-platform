@@ -7,6 +7,7 @@ import { dashboardRoutes } from "./dashboard-routes.js";
 import { professionalRoutes } from "./professional-routes.js";
 import { settlementRoutes } from "./settlement-routes.js";
 import { invitationRoutes, publicInvitationRoutes } from "./invitation-routes.js";
+import { publicRoutes } from "./public-routes.js";
 import { agentRoutes } from "./agent/routes.js";
 import { platformRoutes } from "./platform-routes.js";
 import { sendError } from "./http.js";
@@ -46,6 +47,7 @@ app.use("/api/v1", (_req, res, next) => {
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "alaia-api" }));
 // Las rutas públicas van antes de los routers autenticados: esos routers aplican
 // requireUser como middleware global del montaje y si no, interceptarían 401.
+app.use("/api/v1", publicRoutes);
 app.use("/api/v1", publicInvitationRoutes);
 app.use("/api/v1", tenantRoutes);
 app.use("/api/v1", appointmentRoutes);
