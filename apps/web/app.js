@@ -9,18 +9,23 @@ import {
   cancelAppointment as cancelAppointmentRequest,
   createAppointment as createAppointmentRequest,
   createClientRequestId,
+  createService,
   createTenant,
+  deactivateService,
   getAgentConfig,
   getTenantContext,
   isTenantAccessError,
   isUnauthorized,
   listAppointments,
   listAvailability,
+  listServices,
   listTenants,
   messageForError,
   rescheduleAppointment as rescheduleAppointmentRequest,
   saveAgentConfig,
   sendAgentMessage,
+  updateService,
+  updateTenant,
 } from "./api.js";
 
 const DEFAULT_TIME_ZONE = "America/Bogota";
@@ -55,6 +60,9 @@ const AGENT_ACTION_LABELS = {
   derivar: "Derivar a una persona",
 };
 const AGENT_TONES = ["cercano", "formal", "directo"];
+const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+const DEFAULT_OPENING_HOURS = [1, 2, 3, 4, 5, 6].map((day) => ({ day, open: "09:00", close: "18:00" }));
+const SCHEDULE_STEPS = [15, 30, 45, 60];
 const AUTH_MODE_COPY = {
   signin: {
     title: "Bienvenido de nuevo",
@@ -190,6 +198,38 @@ const cancelDialogButton = $("#cancel-dialog");
 const saveAppointmentButton = $("#save-appointment");
 const appointmentSlotsCount = $("#appointment-slots-count");
 const appointmentSlotList = $("#appointment-slot-list");
+const appointmentServiceSelect = $("#appointment-service-select");
+const appointmentServiceHint = $("#appointment-service-hint");
+
+const scheduleForm = $("#schedule-form");
+const scheduleDays = $("#schedule-days");
+const scheduleStep = $("#schedule-step");
+const scheduleStatus = $("#schedule-status");
+const scheduleMessage = $("#schedule-message");
+const scheduleSaveButton = $("#schedule-save");
+
+const servicesView = $("#services-view");
+const servicesList = $("#services-list");
+const servicesEmpty = $("#services-empty");
+const servicesStatus = $("#services-status");
+const servicesCount = $("#services-count");
+const servicesShowInactive = $("#services-show-inactive");
+const newServiceButton = $("#new-service-button");
+const newServiceEmptyButton = $("#new-service-empty");
+const serviceDialog = $("#service-dialog");
+const serviceForm = $("#service-form");
+const serviceDialogTitle = $("#service-dialog-title");
+const serviceDialogNote = $("#service-dialog-note");
+const serviceNameInput = $("#service-name");
+const serviceCategoryInput = $("#service-category");
+const serviceDurationInput = $("#service-duration");
+const servicePriceInput = $("#service-price");
+const serviceDescriptionInput = $("#service-description");
+const serviceDescriptionCount = $("#service-description-count");
+const serviceError = $("#service-error");
+const closeServiceDialogButton = $("#close-service-dialog");
+const cancelServiceDialogButton = $("#cancel-service-dialog");
+const saveServiceButton = $("#save-service");
 
 const rescheduleDialog = $("#reschedule-dialog");
 const rescheduleForm = $("#reschedule-form");
@@ -260,6 +300,16 @@ const state = {
   agentLoading: false,
   agentSaving: false,
   agentTesting: false,
+  services: [],
+  servicesTenantId: null,
+  servicesLoaded: false,
+  servicesLoadSeq: 0,
+  servicesIncludeInactive: false,
+  serviceSaving: false,
+  serviceTargetId: null,
+  scheduleSeq: 0,
+  scheduleSaving: false,
+  serviceCatalogAvailable: false,
 };
 
 let authMode = "signin";
@@ -330,6 +380,11 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
     state.agentConfig = null;
     state.agentTenantId = null;
     state.agentLoadSeq += 1;
+    state.services = [];
+    state.servicesTenantId = null;
+    state.servicesLoaded = false;
+    state.servicesLoadSeq += 1;
+    state.scheduleSeq += 1;
     writeRememberedTenant(tenantId);
     state.selectedDate = state.selectedDate ?? todayValue();
     renderTenantUi();
@@ -373,6 +428,12 @@ function handleSignedOut() {
   state.agentConfig = null;
   state.agentTenantId = null;
   state.agentLoadSeq += 1;
+  state.services = [];
+  state.servicesTenantId = null;
+  state.servicesLoaded = false;
+  state.servicesLoadSeq += 1;
+  state.scheduleSeq += 1;
+  if (serviceDialog.open) serviceDialog.close();
   authForm.reset();
   clearAuthError();
   setAuthBusy(false);
@@ -1009,7 +1070,7 @@ agendaToggle.addEventListener("click", () => {
 });
 
 function setView(view) {
-  state.view = ["agenda", "configuracion"].includes(view) ? view : "resumen";
+  state.view = ["agenda", "configuracion", "servicios"].includes(view) ? view : "resumen";
   document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     const isActive = item.dataset.view === state.view;
     item.classList.toggle("is-active", isActive);
@@ -1017,7 +1078,7 @@ function setView(view) {
     else item.removeAttribute("aria-current");
   });
 
-  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración" };
+  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios" };
   currentSection.textContent = sectionLabels[state.view];
 
   const metricGrid = document.querySelector(".metric-grid");
@@ -1025,23 +1086,35 @@ function setView(view) {
   const tipCard = document.querySelector(".tip-card");
   const isAgenda = state.view === "agenda";
   const isConfig = state.view === "configuracion";
+  const isServices = state.view === "servicios";
 
-  if (metricGrid) metricGrid.hidden = isAgenda || isConfig;
-  if (contentGrid) contentGrid.hidden = isConfig;
+  if (metricGrid) metricGrid.hidden = isAgenda || isConfig || isServices;
+  if (contentGrid) contentGrid.hidden = isConfig || isServices;
   if (tipCard) tipCard.hidden = isAgenda;
   if (configView) configView.hidden = !isConfig;
-  newAppointmentButton.hidden = isConfig;
+  if (servicesView) servicesView.hidden = !isServices;
+  newAppointmentButton.hidden = isConfig || isServices;
   agendaToggle.textContent = isAgenda ? "Ver resumen →" : "Ver agenda →";
 
   renderHeader();
-  if (isConfig) loadAgentConfig();
+  if (isConfig) {
+    loadSchedule();
+    loadAgentConfig();
+  }
+  if (isServices) loadServices();
 }
 
 function renderHeader() {
   if (state.view === "configuracion") {
     todayLabel.textContent = "AJUSTES DEL NEGOCIO";
     setPageTitle("Configuración");
-    pageSubtitle.textContent = "Elige con qué proveedor y modelo trabaja tu asistente, y pruébalo antes de publicarlo.";
+    pageSubtitle.textContent = "Define tu horario de atención y elige con qué proveedor y modelo trabaja tu asistente.";
+    return;
+  }
+  if (state.view === "servicios") {
+    todayLabel.textContent = "TU CATÁLOGO";
+    setPageTitle("Servicios");
+    pageSubtitle.textContent = "Precios y duraciones reales; la agenda y tu asistente usarán estos datos.";
     return;
   }
   if (!state.selectedDate) return;
@@ -1090,6 +1163,648 @@ nextDay.addEventListener("click", () => {
 
 goToday.addEventListener("click", () => {
   loadDay(todayValue());
+});
+
+// ---------------------------------------------------------------------------
+// Horario de atención
+// ---------------------------------------------------------------------------
+
+scheduleForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveSchedule();
+});
+
+scheduleDays.addEventListener("change", (event) => {
+  const toggle = event.target.closest("[data-day-toggle]");
+  if (!toggle) return;
+  const row = toggle.closest(".schedule-row");
+  if (!row) return;
+  setScheduleRowEnabled(row, toggle.checked);
+  clearScheduleMessage();
+  if (scheduleStatus.classList.contains("is-ready")) setScheduleStatus("Cambios sin guardar", "warning");
+});
+
+async function loadSchedule(seq = state.sessionSeq) {
+  if (!state.tenant) return;
+  const tenantId = state.tenant.tenantId;
+  const loadSeq = ++state.scheduleSeq;
+  setScheduleStatus("Cargando…", "loading");
+  clearScheduleMessage();
+  setScheduleBusy(true);
+
+  try {
+    const context = await getTenantContext(tenantId);
+    if (seq !== state.sessionSeq || loadSeq !== state.scheduleSeq || state.tenant?.tenantId !== tenantId) return;
+    state.context = context;
+    renderSchedule();
+    setScheduleStatus("Horario listo", "ready");
+  } catch (error) {
+    if (seq !== state.sessionSeq || loadSeq !== state.scheduleSeq) return;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    renderSchedule();
+    setScheduleStatus("Sin actualizar", "warning");
+    showScheduleMessage(messageForError(error), "error");
+  } finally {
+    if (loadSeq === state.scheduleSeq) setScheduleBusy(false);
+  }
+}
+
+function renderSchedule() {
+  const byDay = new Map(effectiveOpeningHours().map((entry) => [entry.day, entry]));
+  const rows = [];
+
+  for (let day = 1; day <= 7; day += 1) {
+    const entry = byDay.get(day);
+    const row = document.createElement("div");
+    row.className = "schedule-row";
+    row.dataset.day = String(day);
+    if (!entry) row.classList.add("is-closed");
+
+    const dayWrap = document.createElement("div");
+    dayWrap.className = "schedule-day";
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.setAttribute("role", "switch");
+    toggle.id = `schedule-day-${day}`;
+    toggle.dataset.dayToggle = String(day);
+    toggle.checked = Boolean(entry);
+    const dayLabel = document.createElement("label");
+    dayLabel.htmlFor = toggle.id;
+    dayLabel.textContent = DAY_NAMES[day - 1];
+    dayWrap.append(toggle, dayLabel);
+
+    const times = document.createElement("div");
+    times.className = "schedule-times";
+    times.append(
+      createScheduleTimeField(day, "open", "Apertura", entry?.open ?? "09:00", Boolean(entry)),
+      createScheduleDash(),
+      createScheduleTimeField(day, "close", "Cierre", entry?.close ?? "18:00", Boolean(entry)),
+    );
+
+    row.append(dayWrap, times);
+    rows.push(row);
+  }
+
+  scheduleDays.replaceChildren(...rows);
+  renderScheduleStep();
+  clearScheduleMessage();
+}
+
+function createScheduleTimeField(day, kind, labelText, value, enabled) {
+  const label = document.createElement("label");
+  label.htmlFor = `schedule-${kind}-${day}`;
+  label.textContent = labelText;
+  const input = document.createElement("input");
+  input.type = "time";
+  input.id = `schedule-${kind}-${day}`;
+  input.dataset[kind] = String(day);
+  input.value = normalizeTimeValue(value) || (kind === "open" ? "09:00" : "18:00");
+  input.disabled = !enabled;
+  const fragment = document.createDocumentFragment();
+  fragment.append(label, input);
+  return fragment;
+}
+
+function createScheduleDash() {
+  const dash = document.createElement("span");
+  dash.className = "schedule-dash";
+  dash.setAttribute("aria-hidden", "true");
+  dash.textContent = "—";
+  return dash;
+}
+
+function setScheduleRowEnabled(row, enabled) {
+  row.classList.toggle("is-closed", !enabled);
+  for (const input of row.querySelectorAll("input[type=time]")) input.disabled = !enabled;
+}
+
+function renderScheduleStep() {
+  const step = Number(state.context?.tenant?.slotStepMinutes);
+  const value = Number.isInteger(step) && step >= 5 && step <= 240 ? step : 30;
+  const options = SCHEDULE_STEPS.includes(value) ? [...SCHEDULE_STEPS] : [...SCHEDULE_STEPS, value].sort((a, b) => a - b);
+  scheduleStep.replaceChildren(...options.map((minutes) => {
+    const option = document.createElement("option");
+    option.value = String(minutes);
+    option.textContent = `Cada ${minutes} minutos`;
+    return option;
+  }));
+  scheduleStep.value = String(value);
+}
+
+function effectiveOpeningHours() {
+  const hours = state.context?.tenant?.openingHours;
+  if (!Array.isArray(hours) || !hours.length) {
+    return DEFAULT_OPENING_HOURS.map((entry) => ({ ...entry }));
+  }
+  const seen = new Set();
+  const result = [];
+  for (const raw of hours) {
+    const day = Number(raw?.day);
+    const open = normalizeTimeValue(raw?.open);
+    const close = normalizeTimeValue(raw?.close);
+    if (!Number.isInteger(day) || day < 1 || day > 7 || seen.has(day)) continue;
+    if (!open || !close || open >= close) continue;
+    seen.add(day);
+    result.push({ day, open, close });
+  }
+  return result.length ? result.sort((a, b) => a.day - b.day) : DEFAULT_OPENING_HOURS.map((entry) => ({ ...entry }));
+}
+
+function collectSchedule() {
+  const openingHours = [];
+  let invalidRow = null;
+
+  for (const row of scheduleDays.querySelectorAll(".schedule-row")) {
+    const toggle = row.querySelector("[data-day-toggle]");
+    row.classList.remove("has-error");
+    if (!toggle?.checked) continue;
+    const day = Number(row.dataset.day);
+    const openInput = row.querySelector("[data-open]");
+    const closeInput = row.querySelector("[data-close]");
+    if (!openInput || !closeInput) continue;
+    const open = normalizeTimeValue(openInput.value);
+    const close = normalizeTimeValue(closeInput.value);
+    if (!/^\d{2}:\d{2}$/.test(open) || !/^\d{2}:\d{2}$/.test(close) || open >= close) {
+      row.classList.add("has-error");
+      if (!invalidRow) invalidRow = row;
+      continue;
+    }
+    openingHours.push({ day, open, close });
+  }
+
+  return { openingHours, invalidRow };
+}
+
+async function saveSchedule() {
+  if (!state.tenant || state.scheduleSaving) return;
+  clearScheduleMessage();
+
+  const { openingHours, invalidRow } = collectSchedule();
+  if (invalidRow) {
+    showScheduleMessage("Revisa los días marcados: la hora de cierre debe ser posterior a la de apertura.", "error");
+    const focusTarget = invalidRow.querySelector("input[type=time]:not(:disabled)");
+    if (focusTarget) focusTarget.focus();
+    return;
+  }
+  if (!openingHours.length) {
+    showScheduleMessage("Marca al menos un día de atención.", "error");
+    return;
+  }
+
+  const slotStepMinutes = Number(scheduleStep.value);
+  if (!Number.isInteger(slotStepMinutes) || slotStepMinutes < 5 || slotStepMinutes > 240) {
+    showScheduleMessage("Elige un intervalo entre citas válido.", "error");
+    scheduleStep.focus();
+    return;
+  }
+
+  const tenantId = state.tenant.tenantId;
+  state.scheduleSaving = true;
+  setScheduleBusy(true);
+  setScheduleStatus("Guardando…", "loading");
+
+  try {
+    await updateTenant(tenantId, { openingHours, slotStepMinutes });
+    const context = await getTenantContext(tenantId);
+    if (state.tenant?.tenantId !== tenantId) return;
+    state.context = context;
+    state.availabilityCache.clear();
+    renderSchedule();
+    setScheduleStatus("Guardado", "ready");
+    showScheduleMessage("Horario guardado. La agenda ya usa estos horarios.", "ok");
+    showToast("Horario de atención guardado.");
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    setScheduleStatus("Error", "error");
+    showScheduleMessage(messageForError(error), "error");
+  } finally {
+    state.scheduleSaving = false;
+    setScheduleBusy(false);
+  }
+}
+
+function setScheduleBusy(busy) {
+  for (const field of scheduleDays.querySelectorAll("input")) field.disabled = busy;
+  scheduleStep.disabled = busy;
+  scheduleSaveButton.disabled = busy;
+  scheduleSaveButton.textContent = busy ? "Guardando…" : "Guardar horario";
+  if (!busy) {
+    for (const row of scheduleDays.querySelectorAll(".schedule-row")) {
+      setScheduleRowEnabled(row, Boolean(row.querySelector("[data-day-toggle]")?.checked));
+    }
+  }
+}
+
+function setScheduleStatus(text, tone) {
+  scheduleStatus.textContent = text;
+  scheduleStatus.className = `config-status is-${tone}`;
+}
+
+function clearScheduleMessage() {
+  scheduleMessage.textContent = "";
+  scheduleMessage.className = "form-status";
+}
+
+function showScheduleMessage(message, tone) {
+  scheduleMessage.textContent = message;
+  scheduleMessage.className = `form-status is-${tone}`;
+}
+
+function normalizeTimeValue(value) {
+  const match = String(value ?? "").match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return "";
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return "";
+  return `${pad(hours)}:${pad(minutes)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Servicios
+// ---------------------------------------------------------------------------
+
+newServiceButton.addEventListener("click", () => openServiceDialog(null));
+newServiceEmptyButton.addEventListener("click", () => openServiceDialog(null));
+
+servicesShowInactive.addEventListener("change", () => {
+  state.servicesIncludeInactive = servicesShowInactive.checked;
+  loadServices({ force: true });
+});
+
+servicesList.addEventListener("click", async (event) => {
+  const retry = event.target.closest("[data-retry-services]");
+  if (retry) {
+    loadServices({ force: true });
+    return;
+  }
+  const editButton = event.target.closest("[data-edit-service-id]");
+  if (editButton) {
+    const service = state.services.find((item) => item.id === editButton.dataset.editServiceId);
+    if (service) openServiceDialog(service);
+    return;
+  }
+  const deactivateButton = event.target.closest("[data-deactivate-service-id]");
+  if (deactivateButton && !deactivateButton.disabled) {
+    const service = state.services.find((item) => item.id === deactivateButton.dataset.deactivateServiceId);
+    if (service) await deactivateServiceItem(service, deactivateButton);
+  }
+});
+
+serviceDescriptionInput.addEventListener("input", updateServiceDescriptionCount);
+closeServiceDialogButton.addEventListener("click", () => serviceDialog.close());
+cancelServiceDialogButton.addEventListener("click", () => serviceDialog.close());
+serviceDialog.addEventListener("close", () => {
+  state.serviceTargetId = null;
+});
+
+async function loadServices({ force = false } = {}) {
+  if (!state.tenant) return null;
+  const tenantId = state.tenant.tenantId;
+
+  if (!force && state.servicesLoaded && state.servicesTenantId === tenantId) {
+    renderServices();
+    return state.services;
+  }
+
+  const loadSeq = ++state.servicesLoadSeq;
+  setServicesLoading();
+
+  try {
+    const data = await listServices(tenantId, { includeInactive: state.servicesIncludeInactive });
+    if (loadSeq !== state.servicesLoadSeq || state.tenant?.tenantId !== tenantId) return null;
+    state.services = Array.isArray(data?.services) ? data.services : [];
+    state.servicesTenantId = tenantId;
+    state.servicesLoaded = true;
+    renderServices();
+    return state.services;
+  } catch (error) {
+    if (loadSeq !== state.servicesLoadSeq) return null;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return null;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return null;
+    }
+    renderServicesError(messageForError(error));
+    return null;
+  }
+}
+
+function setServicesLoading() {
+  servicesList.setAttribute("aria-busy", "true");
+  servicesList.replaceChildren();
+  const message = document.createElement("p");
+  message.className = "services-message";
+  message.textContent = "Cargando servicios…";
+  servicesList.append(message);
+  servicesEmpty.hidden = true;
+  servicesCount.textContent = "";
+  setServicesStatus("Cargando…", "loading");
+}
+
+function renderServices() {
+  const visible = state.services.filter((service) => state.servicesIncludeInactive || service.active !== false);
+  const activeCount = state.services.filter((service) => service.active !== false).length;
+
+  servicesList.setAttribute("aria-busy", "false");
+  servicesList.innerHTML = visible.map((service) => serviceRowHtml(service)).join("");
+  servicesEmpty.hidden = visible.length > 0;
+  servicesCount.textContent = `${activeCount} ${activeCount === 1 ? "servicio activo" : "servicios activos"}`;
+  setServicesStatus("", "idle");
+}
+
+function renderServicesError(message) {
+  servicesList.setAttribute("aria-busy", "false");
+  servicesList.replaceChildren();
+  const text = document.createElement("p");
+  text.className = "services-message is-error";
+  text.textContent = message;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "secondary-button";
+  retry.dataset.retryServices = "1";
+  retry.textContent = "Reintentar";
+  servicesList.append(text, retry);
+  servicesEmpty.hidden = true;
+  servicesCount.textContent = "";
+  setServicesStatus("Error al cargar servicios", "error");
+}
+
+function serviceRowHtml(service) {
+  const name = String(service.name ?? "");
+  const category = String(service.category ?? "").trim();
+  const description = String(service.description ?? "").trim();
+  const duration = numberOrZero(service.durationMinutes);
+  const price = formatCOP(service.priceCOP);
+  const inactive = service.active === false;
+  const detailParts = [category || "Sin categoría"];
+  if (description) detailParts.push(description);
+  const editLabel = `Editar el servicio ${name || "sin nombre"}`;
+  const deactivateLabel = `Desactivar el servicio ${name || "sin nombre"}`;
+
+  const actions = inactive
+    ? `<div class="row-actions"></div>`
+    : `<div class="row-actions"><button class="row-shift" type="button" data-edit-service-id="${escapeHtml(service.id)}" aria-label="${escapeHtml(editLabel)}">Editar</button><button class="row-cancel" type="button" data-deactivate-service-id="${escapeHtml(service.id)}" aria-label="${escapeHtml(deactivateLabel)}">Desactivar</button></div>`;
+
+  return `
+    <article class="service-row${inactive ? " is-inactive" : ""}">
+      <div class="service-main"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(detailParts.join(" · "))}</span></div>
+      <div class="service-meta"><span class="service-duration">${duration} min</span><span class="service-price">${escapeHtml(price)}</span><span class="status ${inactive ? "status-cancelled" : "status-upcoming"}">${inactive ? "Inactivo" : "Activo"}</span></div>
+      ${actions}
+    </article>`;
+}
+
+function openServiceDialog(service) {
+  if (!state.tenant || serviceDialog.open) return;
+  state.serviceTargetId = service?.id ?? null;
+  const editing = Boolean(service);
+
+  serviceDialogTitle.textContent = editing ? "Editar servicio" : "Nuevo servicio";
+  serviceDialogNote.textContent = editing
+    ? "Los cambios se aplican a las próximas citas que uses con este servicio."
+    : "Quedará disponible al agendar citas.";
+  serviceNameInput.value = service?.name ?? "";
+  serviceCategoryInput.value = service?.category ?? "";
+  serviceDurationInput.value = String(numberOrZero(service?.durationMinutes) || 45);
+  servicePriceInput.value = String(numberOrZero(service?.priceCOP) || 50000);
+  serviceDescriptionInput.value = service?.description ?? "";
+  serviceError.textContent = "";
+  updateServiceDescriptionCount();
+  setServiceBusy(false);
+  serviceDialog.showModal();
+  serviceNameInput.focus();
+}
+
+function updateServiceDescriptionCount() {
+  serviceDescriptionCount.textContent = String(serviceDescriptionInput.value.length);
+}
+
+function setServiceBusy(busy) {
+  state.serviceSaving = busy;
+  for (const field of [serviceNameInput, serviceCategoryInput, serviceDurationInput, servicePriceInput, serviceDescriptionInput]) {
+    field.disabled = busy;
+  }
+  saveServiceButton.disabled = busy;
+  saveServiceButton.textContent = busy
+    ? "Guardando…"
+    : state.serviceTargetId ? "Guardar cambios" : "Crear servicio";
+  closeServiceDialogButton.disabled = busy;
+  cancelServiceDialogButton.disabled = busy;
+}
+
+serviceForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  serviceError.textContent = "";
+  if (!state.tenant || state.serviceSaving) return;
+
+  const name = serviceNameInput.value.trim();
+  const category = serviceCategoryInput.value.trim();
+  const description = serviceDescriptionInput.value.trim();
+  const durationMinutes = Number(serviceDurationInput.value);
+  const priceCOP = Number(servicePriceInput.value);
+
+  if (name.length < 2 || name.length > 80) {
+    serviceError.textContent = "El nombre del servicio debe tener entre 2 y 80 caracteres.";
+    serviceNameInput.focus();
+    return;
+  }
+  if (description.length > 300) {
+    serviceError.textContent = "La descripción no puede superar los 300 caracteres.";
+    return;
+  }
+  if (category.length > 40) {
+    serviceError.textContent = "La categoría no puede superar los 40 caracteres.";
+    return;
+  }
+  if (!Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 480) {
+    serviceError.textContent = "La duración debe ser un número entero entre 5 y 480 minutos.";
+    serviceDurationInput.focus();
+    return;
+  }
+  if (!Number.isInteger(priceCOP) || priceCOP < 0 || priceCOP > 10000000) {
+    serviceError.textContent = "El precio debe ser un número entero entre 0 y 10.000.000 COP.";
+    servicePriceInput.focus();
+    return;
+  }
+
+  const tenantId = state.tenant.tenantId;
+  const targetId = state.serviceTargetId;
+  setServiceBusy(true);
+
+  try {
+    const payload = { name, category, description, durationMinutes, priceCOP };
+    if (targetId) await updateService(tenantId, targetId, payload);
+    else await createService(tenantId, payload);
+    if (state.tenant?.tenantId !== tenantId) return;
+    state.servicesLoaded = false;
+    serviceDialog.close();
+    showToast(targetId ? "Servicio actualizado." : "Servicio creado.");
+    await loadServices({ force: true });
+    if (state.view === "servicios") setServicesStatus(targetId ? "Servicio actualizado." : "Servicio creado con su precio.", "ok");
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      serviceDialog.close();
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      serviceDialog.close();
+      await handleTenantUnavailable(error);
+      return;
+    }
+    serviceError.textContent = messageForError(error);
+  } finally {
+    setServiceBusy(false);
+  }
+});
+
+async function deactivateServiceItem(service, button) {
+  const tenantId = state.tenant?.tenantId;
+  if (!tenantId) return;
+  const confirmed = window.confirm(`¿Desactivar «${service.name}»? Dejará de aparecer al agendar citas.`);
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = "Desactivando…";
+  try {
+    await deactivateService(tenantId, service.id);
+    state.servicesLoaded = false;
+    showToast(`Servicio «${service.name}» desactivado.`);
+    await loadServices({ force: true });
+    if (state.view === "servicios") setServicesStatus("Servicio desactivado.", "ok");
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    showToast(messageForError(error));
+    if (error.code === "service_not_found") {
+      state.servicesLoaded = false;
+      await loadServices({ force: true });
+    } else {
+      button.disabled = false;
+      button.textContent = "Desactivar";
+    }
+  }
+}
+
+function setServicesStatus(message, tone) {
+  servicesStatus.textContent = message;
+  servicesStatus.className = `form-status is-${tone}`;
+}
+
+async function ensureServiceCatalog() {
+  const tenantId = state.tenant?.tenantId;
+  if (!tenantId) return [];
+  if (state.servicesLoaded && state.servicesTenantId === tenantId) return state.services;
+
+  try {
+    const data = await listServices(tenantId);
+    if (state.tenant?.tenantId !== tenantId) return [];
+    state.services = Array.isArray(data?.services) ? data.services : [];
+    state.servicesTenantId = tenantId;
+    state.servicesLoaded = true;
+    return state.services;
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return null;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return null;
+    }
+    return null;
+  }
+}
+
+async function prepareAppointmentServices() {
+  if (!state.tenant) return;
+  state.serviceCatalogAvailable = false;
+  appointmentServiceSelect.replaceChildren();
+  appointmentServiceSelect.disabled = true;
+  const loading = document.createElement("option");
+  loading.value = "";
+  loading.textContent = "Cargando servicios…";
+  loading.disabled = true;
+  appointmentServiceSelect.replaceChildren(loading);
+  appointmentServiceHint.textContent = "Cargando servicios del negocio…";
+
+  const services = await ensureServiceCatalog();
+  if (!appointmentDialog.open) return;
+
+  if (!services) {
+    const unavailable = document.createElement("option");
+    unavailable.value = "";
+    unavailable.textContent = "Servicios no disponibles";
+    unavailable.disabled = true;
+    appointmentServiceSelect.replaceChildren(unavailable);
+    appointmentServiceHint.textContent = "No pudimos cargar los servicios; escribe el servicio a mano.";
+    return;
+  }
+
+  const active = services.filter((service) => service.active !== false);
+  if (!active.length) {
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "Sin servicios configurados";
+    empty.disabled = true;
+    appointmentServiceSelect.replaceChildren(empty);
+    appointmentServiceSelect.disabled = true;
+    appointmentServiceHint.textContent = "Sin servicios configurados; puedes escribir el servicio a mano.";
+    return;
+  }
+
+  const manual = document.createElement("option");
+  manual.value = "";
+  manual.textContent = "Escribe el servicio a mano";
+  const options = active.map((service) => {
+    const option = document.createElement("option");
+    option.value = service.id;
+    option.textContent = `${service.name} · ${numberOrZero(service.durationMinutes)} min · ${formatCOP(service.priceCOP)}`;
+    return option;
+  });
+  appointmentServiceSelect.replaceChildren(manual, ...options);
+  appointmentServiceSelect.value = "";
+  appointmentServiceSelect.disabled = false;
+  state.serviceCatalogAvailable = true;
+  appointmentServiceHint.textContent = "Elige uno para usar su duración y precio.";
+}
+
+appointmentServiceSelect.addEventListener("change", () => {
+  const serviceId = appointmentServiceSelect.value;
+  if (!serviceId) {
+    appointmentServiceHint.textContent = "Elige uno para usar su duración y precio.";
+    return;
+  }
+  const service = state.services.find((item) => item.id === serviceId && item.active !== false);
+  if (!service) return;
+  appointmentService.value = service.name;
+  appointmentDuration.value = String(numberOrZero(service.durationMinutes) || 45);
+  appointmentPrice.value = String(numberOrZero(service.priceCOP));
+  appointmentServiceHint.textContent = `Catálogo: ${numberOrZero(service.durationMinutes)} min · ${formatCOP(service.priceCOP)}.`;
+  scheduleSlots("create");
+  syncSlotSelection("create", appointmentTime.value);
 });
 
 // ---------------------------------------------------------------------------
@@ -1800,11 +2515,16 @@ function openAppointmentDialog() {
   appointmentSlotsCount.textContent = "";
   appointmentSlotList.replaceChildren();
   appointmentSlotList.setAttribute("aria-busy", "false");
+  appointmentServiceSelect.replaceChildren();
+  appointmentServiceSelect.disabled = true;
+  appointmentServiceHint.textContent = "Cargando servicios del negocio…";
+  state.serviceCatalogAvailable = false;
   setDialogBusy(false);
   state.createRequestId = createClientRequestId();
   appointmentDialog.showModal();
   appointmentClient.focus();
   loadCreateSlots();
+  prepareAppointmentServices();
 }
 
 closeDialogButton.addEventListener("click", () => appointmentDialog.close());
@@ -1822,6 +2542,7 @@ function setDialogBusy(busy) {
     field.disabled = busy;
   }
   cancelDialogButton.disabled = busy;
+  appointmentServiceSelect.disabled = busy || !state.serviceCatalogAvailable;
   setSlotChipsDisabled(appointmentSlotList, busy);
 }
 

@@ -16,6 +16,15 @@ const ERROR_MESSAGES = {
   invalid_price: "El precio debe ser un entero entre 0 y 10.000.000 COP.",
   invalid_range: "El rango de fechas no es válido.",
   invalid_step: "El intervalo entre horarios no es válido.",
+  invalid_hours: "Revisa el horario: cada día abierto necesita una apertura anterior al cierre.",
+  invalid_slot_step: "El intervalo entre citas debe ser un número entre 5 y 240 minutos.",
+  empty_update: "No hay cambios para guardar.",
+  not_owner: "Solo el propietario del negocio puede cambiar esta configuración.",
+  invalid_service_name: "El nombre del servicio debe tener entre 2 y 80 caracteres.",
+  invalid_service_description: "La descripción no puede superar los 300 caracteres.",
+  invalid_service_category: "La categoría no puede superar los 40 caracteres.",
+  service_name_taken: "Ya existe un servicio con ese nombre en tu negocio.",
+  service_not_found: "No encontramos ese servicio en tu negocio.",
   invalid_sector: "Selecciona un tipo de negocio válido.",
   invalid_timezone: "La zona horaria no es válida.",
   appointment_conflict: "Ese horario se cruza con otra cita del negocio. Elige otra hora.",
@@ -135,6 +144,45 @@ export function createTenant({ name, sector, timeZone }) {
 
 export function getTenantContext(tenantId) {
   return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/context`);
+}
+
+export function updateTenant(tenantId, changes) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}`, {
+    method: "PATCH",
+    body: changes,
+  });
+}
+
+export function listServices(tenantId, { includeInactive = false } = {}) {
+  const query = includeInactive ? "?includeInactive=1" : "";
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/services${query}`);
+}
+
+export function createService(tenantId, service) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/services`, {
+    method: "POST",
+    body: {
+      name: service.name,
+      description: service.description ?? "",
+      category: service.category ?? "",
+      durationMinutes: service.durationMinutes,
+      priceCOP: service.priceCOP,
+    },
+  });
+}
+
+export function updateService(tenantId, serviceId, changes) {
+  return request(
+    `/api/v1/tenants/${encodeURIComponent(tenantId)}/services/${encodeURIComponent(serviceId)}`,
+    { method: "PATCH", body: changes },
+  );
+}
+
+export function deactivateService(tenantId, serviceId) {
+  return request(
+    `/api/v1/tenants/${encodeURIComponent(tenantId)}/services/${encodeURIComponent(serviceId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export function listAppointments(tenantId, { from, to }) {

@@ -69,3 +69,35 @@ test("formatHumanDateTime usa la zona del negocio", () => {
   assert.match(formatted, /2030/);
   assert.match(formatted, /10:00/);
 });
+
+test("incluye los servicios activos con nombre, duración y precio", () => {
+  const prompt = buildAgentSystemPrompt({
+    tenant: TENANT,
+    config: {},
+    services: [
+      { serviceId: "svc_1", name: "Corte clásico", durationMinutes: 45, priceCOP: 50000 },
+      { serviceId: "svc_2", name: "Barba", durationMinutes: 30, priceCOP: 20000 },
+    ],
+  });
+  assert.match(prompt, /Servicios activos: Corte clásico — 45 min — \$50\.000 \(id: svc_1\); Barba — 30 min — \$20\.000 \(id: svc_2\)/);
+  assert.match(prompt, /consultar_servicios/);
+  assert.match(prompt, /no cotices distinto al catálogo/i);
+  assert.match(prompt, /serviceId/);
+});
+
+test("sin servicios el prompt lo indica", () => {
+  const prompt = buildAgentSystemPrompt({ tenant: TENANT, config: {}, services: [] });
+  assert.match(prompt, /Servicios activos: \(sin servicios configurados\)/);
+});
+
+test("la lista de servicios del prompt se limita a 15", () => {
+  const services = Array.from({ length: 20 }, (_, index) => ({
+    serviceId: `svc_${index}`,
+    name: `Servicio ${index}`,
+    durationMinutes: 30,
+    priceCOP: 1000,
+  }));
+  const prompt = buildAgentSystemPrompt({ tenant: TENANT, config: {}, services });
+  assert.match(prompt, /Servicio 14 — 30 min — \$1\.000/);
+  assert.doesNotMatch(prompt, /Servicio 15 —/);
+});

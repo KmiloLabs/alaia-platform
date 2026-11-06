@@ -8,8 +8,9 @@ import { isValidTimeZone, utcToLocalDate, utcToLocalDateTime } from "../timezone
 const FALLBACK_TIME_ZONE = "America/Bogota";
 const DAY_NAMES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
 const ALLOWED_ACTIONS = "responder|ofrecer_horarios|reservar|reprogramar|cancelar|derivar";
+const MAX_SERVICES_IN_PROMPT = 15;
 
-export function buildAgentSystemPrompt({ tenant, config, now = new Date() }) {
+export function buildAgentSystemPrompt({ tenant, config, services = [], now = new Date() }) {
   const name = typeof tenant?.name === "string" && tenant.name.trim() !== "" ? tenant.name.trim() : "el negocio";
   const timeZone = isValidTimeZone(tenant?.timeZone) ? tenant.timeZone : FALLBACK_TIME_ZONE;
   const openingHours = resolveOpeningHours(tenant);
@@ -20,23 +21,42 @@ export function buildAgentSystemPrompt({ tenant, config, now = new Date() }) {
   const instructions = typeof config?.instructions === "string" && config.instructions.trim() !== ""
     ? config.instructions.trim()
     : "(sin instrucciones adicionales)";
+  const serviceLines = (Array.isArray(services) ? services : [])
+    .slice(0, MAX_SERVICES_IN_PROMPT)
+    .map(formatServiceLine)
+    .filter(Boolean);
 
   return [
     `Eres el asistente de recepción de ${name} y atiendes a clientes por escrito.`,
     `Negocio: ${name}. Zona horaria del negocio: ${timeZone}.`,
     `Fecha y hora actuales en el negocio: ${humanNow} (${currentLocal}; fecha local ${currentDate}).`,
     `Horario de atención: ${formatOpeningHours(openingHours)}.`,
+    `Servicios activos: ${serviceLines.length > 0 ? serviceLines.join("; ") : "(sin servicios configurados)"}.`,
     `Tono de atención: ${tone}.`,
     `Instrucciones del negocio: ${instructions}`,
     "Reglas:",
     "- Responde en español, breve (máximo 3 frases), sin markdown y con un emoji como máximo.",
     "- No inventes precios, horarios, disponibilidad ni historial: usa las herramientas y responde solo con lo que devuelvan.",
+    "- Usa consultar_servicios para conocer el catálogo y no cotices distinto al catálogo; si el servicio no está, dilo y ofrece transferir a una persona.",
+    "- Al reservar un servicio del catálogo, pasa crear_cita con serviceId: el backend fija el nombre, la duración y el precio.",
     "- Antes de crear, reprogramar o cancelar una cita, pide confirmación explícita al cliente; ejecuta la acción solo cuando la haya confirmado en la conversación.",
     "- Si falta un dato (nombre, servicio, fecha, hora), pídelo antes de reservar.",
     "- No compartas identificadores técnicos, datos internos ni información de otros clientes.",
     "- Deriva a una persona con derivar_a_persona ante urgencias, quejas o temas fuera de alcance.",
     `- Responde SIEMPRE con un único objeto JSON válido, sin texto alrededor: {"reply": "texto para el cliente", "action": "${ALLOWED_ACTIONS}"}. No añadas claves adicionales.`,
   ].join("\n");
+}
+
+export function formatServiceLine(service) {
+  if (!service || typeof service.name !== "string" || service.name.trim() === "") return "";
+  const price = Number.isInteger(service.priceCOP) ? formatCOP(service.priceCOP) : "precio no disponible";
+  const duration = Number.isInteger(service.durationMinutes) ? `${service.durationMinutes} min` : "duración no disponible";
+  const id = typeof service.serviceId === "string" ? ` (id: ${service.serviceId})` : "";
+  return `${service.name} — ${duration} — $${price}${id}`;
+}
+
+export function formatCOP(value) {
+  return new Intl.NumberFormat("es-CO").format(value);
 }
 
 export function formatOpeningHours(openingHours) {

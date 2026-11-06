@@ -13,7 +13,7 @@ const CONTEXT = { tenant: TENANT, actorUid: "uid-1", conversationId: "conv-1" };
 const NOW = new Date("2030-03-15T15:00:00.000Z"); // 10:00 en Bogotá
 
 function fakeDeps(overrides = {}) {
-  const calls = { availability: [], list: [], create: [], reschedule: [], cancel: [] };
+  const calls = { availability: [], list: [], create: [], reschedule: [], cancel: [], services: [], getService: [] };
   const deps = {
     now: () => NOW,
     getAvailability: async (args) => {
@@ -59,15 +59,32 @@ function fakeDeps(overrides = {}) {
       calls.cancel.push(args);
       return { ok: true, appointment: { appointmentId: args.appointmentId, status: "cancelled" } };
     },
+    listActiveServices: async (args) => {
+      calls.services.push(args);
+      return {
+        ok: true,
+        services: [
+          { serviceId: "svc_1", name: "Corte clásico", durationMinutes: 45, priceCOP: 50000 },
+          { serviceId: "svc_2", name: "Barba", durationMinutes: 30, priceCOP: 20000 },
+          { serviceId: "svc_3", name: "Tinte", durationMinutes: 90, priceCOP: 120000 },
+        ],
+      };
+    },
+    getActiveService: async (args) => {
+      calls.getService.push(args);
+      if (args.serviceId !== "svc_activo") return null;
+      return { serviceId: "svc_activo", name: "Corte del catálogo", durationMinutes: 60, priceCOP: 75000, active: true };
+    },
     ...overrides,
   };
   return { deps, calls };
 }
 
-test("se registran las seis herramientas del contrato", () => {
+test("se registran las herramientas del contrato", () => {
   assert.deepEqual(AGENT_TOOLS.map((tool) => tool.name), [
     "consultar_disponibilidad",
     "consultar_agenda",
+    "consultar_servicios",
     "crear_cita",
     "reprogramar_cita",
     "cancelar_cita",
@@ -228,4 +245,86 @@ test("derivar_a_persona marca handoff y valida el motivo", async () => {
   const tooLong = await executeTool("derivar_a_persona", { reason: "x".repeat(201) }, CONTEXT, deps);
   assert.equal(tooLong.ok, false);
   assert.equal(tooLong.error.code, "invalid_arguments");
+});
+
+test("consultar_servicios devuelve el catálogo activo con su tenant", async () => {
+  const { deps, calls } = fakeDeps();
+  const result = await executeTool("consultar_servicios", {}, CONTEXT, deps);
+
+  assert.equal(result.ok, true);
+  assert.equal(calls.services[0].tenantId, "tenant-1");
+  assert.equal(result.data.count, 3);
+  assert.deepEqual(result.data.services[0], {
+    id: "svc_1",
+    name: "Corte clásico",
+    durationMinutes: 45,
+    priceCOP: 50000,
+  });
+
+  const filtered = await executeTool("consultar_servicios", { query: "barba" }, CONTEXT, deps);
+  assert.equal(filtered.ok, true);
+  assert.equal(calls.services[1].query, "barba");
+});
+
+test("consultar_servicios sin servicios activos devuelve lista vacía", async () => {
+  const { deps } = fakeDeps({
+    listActiveServices: async () => ({ ok: true, services: [] }),
+  });
+  const result = await executeTool("consultar_servicios", { query: "tinte" }, CONTEXT, deps);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.data, { count: 0, services: [] });
+});
+
+test("consultar_servicios valida la query", async () => {
+  const { deps } = fakeDeps();
+  const tooLong = await executeTool("consultar_servicios", { query: "x".repeat(61) }, CONTEXT, deps);
+  assert.equal(tooLong.ok, false);
+  assert.equal(tooLong.error.code, "invalid_arguments");
+});
+
+test("crear_cita con serviceId sobrescribe nombre, duración y precio del catálogo", async () => {
+  const { deps, calls } = fakeDeps();
+  const result = await executeTool("crear_cita", {
+    customerName: "Ana",
+    startsAt: "2030-03-20T10:00",
+    serviceId: "svc_activo",
+    serviceName: "Lo que diga el modelo",
+    durationMinutes: 5,
+    priceCOP: 1,
+  }, CONTEXT, deps);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.appointment.appointmentId, "appt_nueva");
+  assert.deepEqual(calls.getService[0], { tenantId: "tenant-1", serviceId: "svc_activo" });
+  assert.equal(calls.create[0].tenantId, "tenant-1");
+  assert.equal(calls.create[0].body.serviceName, "Corte del catálogo");
+  assert.equal(calls.create[0].body.durationMinutes, 60);
+  assert.equal(calls.create[0].body.priceCOP, 75000);
+});
+
+test("crear_cita con servicio inexistente o inactivo devuelve service_not_found y no crea", async () => {
+  const { deps, calls } = fakeDeps();
+  const result = await executeTool("crear_cita", {
+    customerName: "Ana",
+    startsAt: "2030-03-20T10:00",
+    serviceId: "svc_inactivo",
+  }, CONTEXT, deps);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "service_not_found");
+  assert.equal(calls.create.length, 0);
+});
+
+test("crear_cita sin serviceId mantiene el comportamiento de texto libre", async () => {
+  const { deps, calls } = fakeDeps();
+  const result = await executeTool("crear_cita", {
+    customerName: "Ana",
+    serviceName: "Servicio libre",
+    startsAt: "2030-03-20T10:00",
+  }, CONTEXT, deps);
+  assert.equal(result.ok, true);
+  assert.equal(calls.getService.length, 0);
+  assert.equal(calls.create[0].body.serviceName, "Servicio libre");
+  assert.equal(calls.create[0].body.priceCOP, 0);
+  assert.equal(calls.create[0].body.durationMinutes, 45);
 });

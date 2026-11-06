@@ -14,22 +14,37 @@ import {
 
 const MAX_AGENDA_RESULTS = 20;
 const MAX_AVAILABILITY_RESULTS = 12;
+const MAX_SERVICE_RESULTS = 20;
 const DEFAULT_DURATION_MINUTES = 45;
 const FALLBACK_TIME_ZONE = "America/Bogota";
 const APPOINTMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
-// Las dependencias reales (servicio de agenda con Firestore) se cargan de forma
-// perezosa para que las pruebas unitarias puedan inyectar dobles sin tocar
-// Firebase. En producción executeTool no recibe deps y usa el servicio real.
+// Las dependencias reales (servicio de agenda y catálogo con Firestore) se
+// cargan de forma perezosa para que las pruebas unitarias puedan inyectar
+// dobles sin tocar Firebase. En producción executeTool no recibe deps.
 let defaultDepsPromise = null;
 async function loadDefaultDeps() {
   if (!defaultDepsPromise) {
-    defaultDepsPromise = import("../appointment-service.js").then((service) => ({
-      getAvailability: service.getAvailability,
-      listAppointments: service.listAppointments,
-      createAppointment: service.createAppointment,
-      rescheduleAppointment: service.rescheduleAppointment,
-      cancelAppointment: service.cancelAppointment,
+    defaultDepsPromise = Promise.all([
+      import("../appointment-service.js"),
+      import("../service-catalog.js"),
+      import("../service-repository.js"),
+    ]).then(([agenda, catalog, repository]) => ({
+      getAvailability: agenda.getAvailability,
+      listAppointments: agenda.listAppointments,
+      createAppointment: agenda.createAppointment,
+      rescheduleAppointment: agenda.rescheduleAppointment,
+      cancelAppointment: agenda.cancelAppointment,
+      listActiveServices: ({ tenantId, query }) => catalog.listActiveServices({
+        tenantId,
+        query,
+        repository: repository.serviceRepository,
+      }),
+      getActiveService: ({ tenantId, serviceId }) => catalog.getActiveService({
+        tenantId,
+        serviceId,
+        repository: repository.serviceRepository,
+      }),
       now: () => new Date(),
     }));
   }
@@ -66,21 +81,34 @@ export const AGENT_TOOLS = Object.freeze([
     },
   },
   {
+    name: "consultar_servicios",
+    description: "Consulta el catálogo de servicios activos del negocio (nombre, duración y precio). Úsala para cotizar con los precios reales.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Texto para filtrar por nombre o categoría (máximo 60 caracteres). Opcional." },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "crear_cita",
-    description: "Crea una cita. Solo después de que el cliente confirme nombre, servicio y horario.",
+    description: "Crea una cita. Solo después de que el cliente confirme nombre, servicio y horario. Prefiere serviceId del catálogo.",
     parameters: {
       type: "object",
       properties: {
         customerName: { type: "string", description: "Nombre del cliente (2-80 caracteres)." },
-        serviceName: { type: "string", description: "Servicio solicitado (2-80 caracteres)." },
         startsAt: { type: "string", description: "Inicio en hora local del negocio AAAA-MM-DDTHH:mm." },
-        durationMinutes: { type: "integer", description: "Duración en minutos (5-480). Por defecto 45." },
-        priceCOP: { type: "integer", description: "Precio acordado en COP (0-10000000). Por defecto 0." },
+        serviceId: { type: "string", description: "ID de un servicio activo del catálogo. Si viene, el backend fija nombre, duración y precio." },
+        serviceName: { type: "string", description: "Servicio en texto libre. Obligatorio solo si no se envía serviceId." },
+        durationMinutes: { type: "integer", description: "Duración en minutos (5-480). Se ignora si viene serviceId." },
+        priceCOP: { type: "integer", description: "Precio en COP (0-10000000). Se ignora si viene serviceId." },
         customerPhone: { type: "string", description: "Teléfono del cliente. Opcional." },
         notes: { type: "string", description: "Notas breves. Opcional." },
         clientRequestId: { type: "string", description: "Clave de idempotencia. Opcional." },
       },
-      required: ["customerName", "serviceName", "startsAt"],
+      required: ["customerName", "startsAt"],
       additionalProperties: false,
     },
   },
@@ -140,6 +168,8 @@ export async function executeTool(name, rawArguments, context, deps) {
         return await consultarDisponibilidad(args, context, resolvedDeps);
       case "consultar_agenda":
         return await consultarAgenda(args, context, resolvedDeps);
+      case "consultar_servicios":
+        return await consultarServicios(args, context, resolvedDeps);
       case "crear_cita":
         return await crearCita(args, context, resolvedDeps);
       case "reprogramar_cita":
@@ -214,17 +244,56 @@ async function consultarAgenda(args, context, deps) {
   };
 }
 
+async function consultarServicios(args, context, deps) {
+  const query = optionalString(args.query, 60);
+  if (query instanceof ToolArgumentError) return query.toResult();
+
+  const result = await deps.listActiveServices({ tenantId: context.tenant.id, query });
+  const services = (result?.services ?? []).slice(0, MAX_SERVICE_RESULTS).map((service) => ({
+    id: service.serviceId,
+    name: service.name,
+    durationMinutes: service.durationMinutes,
+    priceCOP: service.priceCOP,
+  }));
+  return { ok: true, data: { count: services.length, services } };
+}
+
 async function crearCita(args, context, deps) {
   const customerName = requiredString(args.customerName, { min: 2, max: 80, field: "customerName" });
   if (customerName instanceof ToolArgumentError) return customerName.toResult();
-  const serviceName = requiredString(args.serviceName, { min: 2, max: 80, field: "serviceName" });
-  if (serviceName instanceof ToolArgumentError) return serviceName.toResult();
   const startsAt = requiredLocalDateTime(args.startsAt, "startsAt");
   if (startsAt instanceof ToolArgumentError) return startsAt.toResult();
-  const durationMinutes = optionalInteger(args.durationMinutes, { min: 5, max: 480, fallback: DEFAULT_DURATION_MINUTES });
-  if (durationMinutes instanceof ToolArgumentError) return durationMinutes.toResult();
-  const priceCOP = optionalInteger(args.priceCOP, { min: 0, max: 10_000_000, fallback: 0 });
-  if (priceCOP instanceof ToolArgumentError) return priceCOP.toResult();
+  const serviceId = optionalString(args.serviceId, 128);
+  if (serviceId instanceof ToolArgumentError) return serviceId.toResult();
+
+  // Con serviceId el catálogo manda: nombre, duración y precio se sobrescriben.
+  let catalogService = null;
+  if (serviceId) {
+    catalogService = await deps.getActiveService({ tenantId: context.tenant.id, serviceId });
+    if (!catalogService) {
+      return toolError("service_not_found", "El servicio indicado no existe o está inactivo en el negocio.");
+    }
+  }
+
+  let serviceName;
+  let durationMinutes;
+  let priceCOP;
+  if (catalogService) {
+    serviceName = catalogService.name;
+    durationMinutes = catalogService.durationMinutes;
+    priceCOP = catalogService.priceCOP;
+  } else {
+    const serviceNameResult = requiredString(args.serviceName, { min: 2, max: 80, field: "serviceName" });
+    if (serviceNameResult instanceof ToolArgumentError) return serviceNameResult.toResult();
+    const durationResult = optionalInteger(args.durationMinutes, { min: 5, max: 480, fallback: DEFAULT_DURATION_MINUTES });
+    if (durationResult instanceof ToolArgumentError) return durationResult.toResult();
+    const priceResult = optionalInteger(args.priceCOP, { min: 0, max: 10_000_000, fallback: 0 });
+    if (priceResult instanceof ToolArgumentError) return priceResult.toResult();
+    serviceName = serviceNameResult;
+    durationMinutes = durationResult;
+    priceCOP = priceResult;
+  }
+
   const customerPhone = optionalString(args.customerPhone, 40);
   if (customerPhone instanceof ToolArgumentError) return customerPhone.toResult();
   const notes = optionalString(args.notes, 500);

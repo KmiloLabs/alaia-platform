@@ -4,6 +4,8 @@
 
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../firebase.js";
+import { listActiveServices } from "../service-catalog.js";
+import { serviceRepository } from "../service-repository.js";
 import {
   chat,
   getDefaultAgentConfig,
@@ -74,8 +76,12 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
   }
 
   const history = await loadHistory(conversationRef);
+  const activeServices = await listActiveServices({
+    tenantId: tenant.id,
+    repository: serviceRepository,
+  });
   const messages = [
-    { role: "system", content: buildAgentSystemPrompt({ tenant, config }) },
+    { role: "system", content: buildAgentSystemPrompt({ tenant, config, services: activeServices.services }) },
     ...history,
     { role: "user", content: input.value.message },
   ];

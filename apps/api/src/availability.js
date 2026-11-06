@@ -51,6 +51,45 @@ export function resolveSlotStepMinutes(tenant) {
   return DEFAULT_SLOT_STEP_MINUTES;
 }
 
+// Validación pura del PATCH del horario del negocio:
+// - un rango por día como máximo (día repetido -> invalid_hours)
+// - open < close y horas HH:MM válidas
+// - slotStepMinutes entero 5-240
+// - sin ninguno de los dos campos -> empty_update
+export function validateTenantScheduleUpdate(body) {
+  const input = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+  const hasOpeningHours = input.openingHours !== undefined;
+  const hasSlotStepMinutes = input.slotStepMinutes !== undefined;
+
+  if (!hasOpeningHours && !hasSlotStepMinutes) {
+    return invalid("empty_update", "Indica openingHours o slotStepMinutes.");
+  }
+
+  const value = {};
+  if (hasOpeningHours) {
+    const normalized = normalizeOpeningHours(input.openingHours);
+    if (!normalized.ok) {
+      return invalid("invalid_hours", "El horario no es válido: días 1-7 y horas HH:MM con apertura menor que cierre.");
+    }
+    const days = new Set();
+    for (const entry of normalized.value) {
+      if (days.has(entry.day)) return invalid("invalid_hours", "Solo se permite un rango por día.");
+      days.add(entry.day);
+    }
+    value.openingHours = normalized.value;
+  }
+
+  if (hasSlotStepMinutes) {
+    const step = input.slotStepMinutes;
+    if (!Number.isInteger(step) || step < MIN_STEP_MINUTES || step > MAX_STEP_MINUTES) {
+      return invalid("invalid_slot_step", `El intervalo entre citas debe ser un entero entre ${MIN_STEP_MINUTES} y ${MAX_STEP_MINUTES} minutos.`);
+    }
+    value.slotStepMinutes = step;
+  }
+
+  return { ok: true, value };
+}
+
 export function validateAvailabilityQuery(query, { defaultStepMinutes = DEFAULT_SLOT_STEP_MINUTES } = {}) {
   const from = typeof query?.from === "string" ? query.from.trim() : "";
   const to = typeof query?.to === "string" ? query.to.trim() : "";

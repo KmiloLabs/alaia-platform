@@ -1,6 +1,7 @@
 import express from "express";
 import { tenantRoutes } from "./tenant-routes.js";
 import { appointmentRoutes } from "./appointment-routes.js";
+import { serviceRoutes } from "./service-routes.js";
 import { agentRoutes } from "./agent/routes.js";
 import { sendError } from "./http.js";
 
@@ -25,7 +26,7 @@ app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
     if (req.method === "OPTIONS") return res.sendStatus(204);
   }
   return next();
@@ -39,6 +40,7 @@ app.use("/api/v1", (_req, res, next) => {
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "alaia-api" }));
 app.use("/api/v1", tenantRoutes);
 app.use("/api/v1", appointmentRoutes);
+app.use("/api/v1", serviceRoutes);
 app.use("/api/v1", agentRoutes);
 app.use((_req, res) => sendError(res, 404, "not_found", "No encontramos esa ruta."));
 app.use((error, _req, res, _next) => {

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "./firebase.js";
-import { requireTenantMembership, requireUser } from "./auth-middleware.js";
+import { requireOwner, requireTenantMembership, requireUser } from "./auth-middleware.js";
 import { asyncRoute, sendError } from "./http.js";
 import {
   DEFAULT_SLOT_STEP_MINUTES,
@@ -10,6 +10,7 @@ import {
   normalizeOpeningHours,
   resolveOpeningHours,
   resolveSlotStepMinutes,
+  validateTenantScheduleUpdate,
 } from "./availability.js";
 
 export const tenantRoutes = Router();
@@ -33,6 +34,9 @@ tenantRoutes.get("/me/tenants", asyncRoute(async (req, res) => {
       name: tenant.name,
       slug: tenant.slug,
       sector: tenant.sector,
+      timeZone: tenant.timeZone,
+      openingHours: resolveOpeningHours(tenant),
+      slotStepMinutes: resolveSlotStepMinutes(tenant),
       role: membership.role,
     };
   }));
@@ -125,6 +129,39 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
       slotStepMinutes,
       status: "active",
       role: "owner",
+    },
+  });
+}));
+
+// Horario de atención del negocio: solo el dueño. Un rango por día en este corte.
+tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, asyncRoute(async (req, res) => {
+  const validation = validateTenantScheduleUpdate(req.body);
+  if (!validation.ok) return sendError(res, 400, validation.code, validation.message);
+
+  const update = {
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: req.user.uid,
+  };
+  if (validation.value.openingHours !== undefined) update.openingHours = validation.value.openingHours;
+  if (validation.value.slotStepMinutes !== undefined) update.slotStepMinutes = validation.value.slotStepMinutes;
+
+  await db.collection("tenants").doc(req.tenant.id).set(update, { merge: true });
+
+  const updatedTenant = {
+    ...req.tenant,
+    openingHours: validation.value.openingHours ?? req.tenant.openingHours,
+    slotStepMinutes: validation.value.slotStepMinutes ?? req.tenant.slotStepMinutes,
+  };
+  return res.json({
+    tenant: {
+      id: req.tenant.id,
+      tenantId: req.tenant.id,
+      name: req.tenant.name,
+      slug: req.tenant.slug,
+      sector: req.tenant.sector,
+      timeZone: req.tenant.timeZone,
+      openingHours: resolveOpeningHours(updatedTenant),
+      slotStepMinutes: resolveSlotStepMinutes(updatedTenant),
     },
   });
 }));

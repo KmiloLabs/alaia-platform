@@ -54,3 +54,12 @@ export async function requireTenantMembership(req, res, next) {
     return sendError(res, 503, "tenant_lookup_failed", "No se pudo comprobar el acceso. Intenta de nuevo.");
   }
 }
+
+// Escrituras sensibles del negocio (horario, catálogo): solo el dueño.
+// Debe usarse después de requireTenantMembership.
+export function requireOwner(req, res, next) {
+  if (req.membership?.role !== "owner") {
+    return sendError(res, 403, "not_owner", "Solo el dueño del negocio puede hacer este cambio.");
+  }
+  return next();
+}

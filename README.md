@@ -9,6 +9,7 @@ Corte actual (**panel real con citas guardadas**, 5 de noviembre de 2026): el pa
 Estado por capas del [plano técnico](docs/plano-y-reglas-codex.md):
 
 - **Capa 1 (identidad y tenant):** API y pantalla de acceso funcionando contra emuladores. Pendiente: invitaciones, verificación de correo, consola de plataforma.
+- **Configuración del negocio:** horario de atención por día, intervalo entre citas y catálogo de servicios con precio y duración; el panel y el agente usan esos datos reales para cotizar y encontrar huecos.
 - **Capa 5 (agenda y reservas):** citas, disponibilidad y reprogramación listas en backend y en el panel (crear, listar, cancelar, reprogramar y elegir horarios libres). Pendiente: página pública de reservas y reglas de asignación por profesional.
 - **Agente (parte IA de la Capa 7):** agente conversacional con herramientas reales de agenda (consultar disponibilidad, crear, reprogramar y cancelar citas). El dueño elige **proveedor y modelo** desde Configuración → Asistente IA y puede probarlo antes de publicarlo. Pendiente: entrada por WhatsApp, audio y recordatorios.
 - **Resto de capas:** pagos, inventario, consola de plataforma y página pública siguen documentadas, no implementadas.
@@ -39,8 +40,8 @@ La configuración de ejemplo apunta al proyecto ficticio `demo-alaia`. **No camb
 ## Pruebas
 
 ```bash
-npm --workspace @alaia/api run test   # pruebas puras de API y agente (84)
-npm run verify                        # end-to-end contra emuladores + API (53 comprobaciones)
+npm --workspace @alaia/api run test   # pruebas puras de API y agente (111)
+npm run verify                        # end-to-end contra emuladores + API (66 comprobaciones)
 ```
 
 `npm run verify` crea dos cuentas y dos negocios ficticios y comprueba, entre otras cosas: aislamiento entre negocios (lectura y escritura cruzadas), no doble reserva, idempotencia, cancelación, disponibilidad, reprogramación y el agente configurable con el proveedor `mock`. Requiere emuladores y API en marcha.

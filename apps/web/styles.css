@@ -407,3 +407,81 @@ h2 { margin-bottom: 0; color: var(--ink); font-size: 17px; font-weight: 700; let
   .row-shift, .row-cancel { min-height: 26px; padding: 0 6px; font-size: 7px; }
 }
 
+/* ---------------------------------------------------------------------------
+   Horario de atención y servicios
+   --------------------------------------------------------------------------- */
+.config-view { display: grid; gap: 16px; }
+
+.schedule-panel { padding: 20px 19px 18px; }
+#schedule-form { display: grid; gap: 15px; }
+.schedule-days { display: grid; gap: 6px; }
+.schedule-row { display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: center; gap: 14px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.schedule-row.is-closed { background: #fafbfa; }
+.schedule-row.has-error { border-color: #eccfc9; background: #fdf7f5; }
+.schedule-day { display: flex; align-items: center; gap: 10px; }
+.schedule-day label { color: #405552; cursor: pointer; font-size: 11px; font-weight: 700; }
+.schedule-day input[role="switch"] { position: relative; width: 34px; height: 19px; flex: 0 0 auto; margin: 0; border-radius: 20px; background: #dfe7e3; cursor: pointer; transition: background .18s; appearance: none; }
+.schedule-day input[role="switch"]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(26, 61, 55, .2); transition: transform .18s; }
+.schedule-day input[role="switch"]:checked { background: var(--teal); }
+.schedule-day input[role="switch"]:checked::after { transform: translateX(15px); }
+.schedule-day input[role="switch"]:focus-visible { outline: 3px solid #69b9ac; outline-offset: 3px; }
+.schedule-day input[role="switch"]:disabled { opacity: .6; cursor: progress; }
+.schedule-times { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.schedule-times label { color: #91a09e; font-size: 9px; font-weight: 700; }
+.schedule-times input[type="time"] { width: 112px; height: 34px; padding: 0 7px; border: 1px solid #dfe7e3; border-radius: 7px; background: #fff; color: var(--ink); font-size: 11px; }
+.schedule-times input[type="time"]:disabled { background: #f5f8f6; color: #a9b3b0; }
+.schedule-dash { color: #b7c2be; font-size: 10px; }
+.schedule-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.schedule-step { display: grid; width: min(260px, 100%); gap: 6px; }
+.schedule-step label { color: #526460; font-size: 10px; font-weight: 700; }
+.schedule-step select { height: 39px; padding: 0 8px; border: 1px solid #dfe7e3; border-radius: 8px; background: #fff; color: var(--ink); font-size: 11px; }
+.schedule-foot .form-status { flex: 1; min-width: 180px; padding-bottom: 9px; }
+.schedule-foot .config-actions { margin: 0; }
+
+.services-panel { padding: 20px 19px 18px; }
+.services-heading-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.services-count { color: #8d9a97; font-size: 9px; font-weight: 700; }
+.services-filter { display: inline-flex; align-items: center; gap: 6px; color: #71807e; cursor: pointer; font-size: 10px; }
+.services-filter input { accent-color: var(--teal); }
+.services-list { display: grid; gap: 6px; margin-top: 6px; }
+.services-message { margin: 8px 0; color: #7c8d88; font-size: 11px; }
+.services-message.is-error { color: #b4534a; }
+.services-empty { display: grid; justify-items: center; gap: 8px; padding: 38px 16px; border: 1px dashed #dfe7e3; border-radius: 11px; text-align: center; }
+.services-empty strong { color: #47615b; font-size: 12px; }
+.services-empty span { color: #879490; font-size: 10px; }
+.services-empty .primary-button { margin-top: 4px; }
+.service-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.service-row.is-inactive { background: #fafbfa; }
+.service-main { display: grid; min-width: 0; gap: 4px; }
+.service-main strong { overflow: hidden; color: #334846; font-size: 11px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.service-main span { overflow: hidden; color: #879491; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.service-meta { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.service-duration { color: #71807e; font-size: 10px; }
+.service-price { color: var(--ink); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.service-inactive-note { color: #a9b3b0; font-size: 8px; font-weight: 700; }
+.service-row.is-inactive .service-main strong { color: #8b9895; }
+
+.appointment-dialog textarea { width: 100%; padding: 9px 10px; border: 1px solid #dfe7e3; border-radius: 8px; background: #fff; color: var(--ink); font-size: 11px; line-height: 1.5; resize: vertical; }
+.appointment-dialog select { width: 100%; height: 39px; padding: 0 10px; border: 1px solid #dfe7e3; border-radius: 8px; background: #fff; color: var(--ink); font-size: 11px; }
+.appointment-dialog select:disabled { background: #f7f9f8; color: #8b9895; }
+.appointment-dialog .field-hint { margin: 6px 0 0; }
+.service-dialog textarea { min-height: 70px; }
+.service-dialog .config-counter { margin: -7px 0 0; }
+.service-dialog .field-hint { margin-top: -7px; }
+
+@media (max-width: 900px) {
+  .schedule-row { grid-template-columns: 1fr; gap: 8px; }
+  .schedule-times { justify-content: flex-start; }
+}
+
+@media (max-width: 760px) {
+  .services-heading-actions { width: 100%; justify-content: space-between; }
+  .services-heading-actions .primary-button { margin-left: auto; }
+  .service-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .service-meta { justify-content: flex-start; }
+  .service-row .row-actions { justify-self: start; }
+  .schedule-times { flex-wrap: wrap; }
+  .schedule-times input[type="time"] { width: 100%; max-width: 150px; }
+  .schedule-foot .form-status { min-width: 100%; }
+}
+

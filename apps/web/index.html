@@ -136,7 +136,7 @@
           <button class="nav-item" data-view="agenda"><span class="nav-icon" aria-hidden="true">▦</span><span>Agenda</span><span class="nav-count" id="nav-count">0</span></button>
           <button class="nav-item" data-view="clientes" data-future="Clientes"><span class="nav-icon" aria-hidden="true">♙</span><span>Clientes</span></button>
           <button class="nav-item" data-view="equipo" data-future="Equipo"><span class="nav-icon" aria-hidden="true">♧</span><span>Equipo</span></button>
-          <button class="nav-item" data-view="servicios" data-future="Servicios"><span class="nav-icon" aria-hidden="true">◇</span><span>Servicios</span></button>
+          <button class="nav-item" data-view="servicios"><span class="nav-icon" aria-hidden="true">◇</span><span>Servicios</span></button>
         </nav>
 
         <div class="sidebar-bottom">
@@ -248,6 +248,33 @@
           </section>
 
           <section class="config-view" id="config-view" aria-labelledby="agent-config-title" hidden>
+            <article class="panel schedule-panel" aria-labelledby="schedule-title">
+              <div class="panel-heading">
+                <div><p class="eyebrow">HORARIO DE ATENCIÓN</p><h2 id="schedule-title">Cuándo puedes recibir citas</h2></div>
+                <span class="config-status" id="schedule-status">Cargando…</span>
+              </div>
+              <p class="config-intro">Activa los días que abres y define tus horas. La agenda solo ofrecerá horarios libres dentro de este horario.</p>
+              <form id="schedule-form" aria-describedby="schedule-help">
+                <p class="visually-hidden" id="schedule-help">Horario semanal de atención del negocio.</p>
+                <div class="schedule-days" id="schedule-days"></div>
+                <div class="schedule-foot">
+                  <div class="schedule-step">
+                    <label for="schedule-step">Intervalo entre citas</label>
+                    <select id="schedule-step">
+                      <option value="15">Cada 15 minutos</option>
+                      <option value="30">Cada 30 minutos</option>
+                      <option value="45">Cada 45 minutos</option>
+                      <option value="60">Cada 60 minutos</option>
+                    </select>
+                  </div>
+                  <p class="form-status" id="schedule-message" role="status" aria-live="polite"></p>
+                  <div class="dialog-actions config-actions">
+                    <button class="primary-button" id="schedule-save" type="submit">Guardar horario</button>
+                  </div>
+                </div>
+              </form>
+            </article>
+
             <div class="config-grid">
               <article class="panel agent-config-panel">
                 <div class="panel-heading">
@@ -322,6 +349,27 @@
             </div>
           </section>
 
+          <section class="services-view" id="services-view" aria-labelledby="services-title" hidden>
+            <article class="panel services-panel">
+              <div class="panel-heading">
+                <div><p class="eyebrow">CATÁLOGO</p><h2 id="services-title">Servicios</h2></div>
+                <div class="services-heading-actions">
+                  <span class="services-count" id="services-count"></span>
+                  <label class="services-filter"><input type="checkbox" id="services-show-inactive" /> Ver inactivos</label>
+                  <button class="primary-button" id="new-service-button" type="button"><span class="plus-icon" aria-hidden="true">+</span> Nuevo servicio</button>
+                </div>
+              </div>
+              <p class="config-intro">Estos servicios se ofrecen al crear una cita y son los que usa tu asistente para cotizar. Define aquí tu precio y duración reales.</p>
+              <p class="form-status" id="services-status" role="status" aria-live="polite"></p>
+              <div class="services-list" id="services-list" aria-busy="false"></div>
+              <div class="services-empty" id="services-empty" hidden>
+                <strong>Aún no tienes servicios</strong>
+                <span>Crea el primero para agendar citas con precio y duración.</span>
+                <button class="primary-button" id="new-service-empty" type="button">Crear mi primer servicio</button>
+              </div>
+            </article>
+          </section>
+
           <footer class="page-footer"><span>Hecho para que tu negocio fluya.</span><span class="footer-brand">alaia<span class="brand-dot">.</span></span></footer>
         </div>
       </main>
@@ -332,6 +380,11 @@
         <div class="dialog-heading"><div><p class="eyebrow">AGENDA</p><h2 id="dialog-title">Crear una cita</h2></div><button class="dialog-close" id="close-dialog" type="button" aria-label="Cerrar">×</button></div>
         <p class="dialog-note">La cita se guarda en la agenda de tu negocio.</p>
         <label for="appointment-client">Nombre del cliente<input id="appointment-client" name="client" autocomplete="name" placeholder="Ej. Mariana López" required minlength="2" maxlength="80" /></label>
+        <div>
+          <label for="appointment-service-select">Servicio del catálogo (opcional)</label>
+          <select id="appointment-service-select" aria-describedby="appointment-service-hint"></select>
+          <p class="field-hint" id="appointment-service-hint">Elige uno para usar su duración y precio.</p>
+        </div>
         <label for="appointment-service">Servicio<input id="appointment-service" name="service" placeholder="Ej. Corte clásico" required minlength="2" maxlength="80" /></label>
         <div class="form-pair">
           <label for="appointment-date">Fecha<input id="appointment-date" name="date" type="date" required /></label>
@@ -381,6 +434,29 @@
         </div>
         <p class="form-error" id="reschedule-error" role="alert" aria-live="assertive"></p>
         <div class="dialog-actions"><button class="secondary-button" id="cancel-reschedule" type="button">Cancelar</button><button class="primary-button" id="save-reschedule" type="submit">Guardar cambio</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="appointment-dialog service-dialog" id="service-dialog" aria-labelledby="service-dialog-title">
+      <form id="service-form">
+        <div class="dialog-heading"><div><p class="eyebrow">SERVICIOS</p><h2 id="service-dialog-title">Nuevo servicio</h2></div><button class="dialog-close" id="close-service-dialog" type="button" aria-label="Cerrar">×</button></div>
+        <p class="dialog-note" id="service-dialog-note">Quedará disponible al agendar citas.</p>
+        <label for="service-name">Nombre<input id="service-name" required minlength="2" maxlength="80" placeholder="Ej. Corte clásico" /></label>
+        <div class="form-pair">
+          <div>
+            <label for="service-category">Categoría</label>
+            <input id="service-category" maxlength="40" placeholder="Ej. Cortes" />
+          </div>
+          <div>
+            <label for="service-duration">Duración (min)</label>
+            <input id="service-duration" type="number" min="5" max="480" step="5" value="45" required />
+          </div>
+        </div>
+        <label for="service-price">Precio (COP)<input id="service-price" type="number" min="0" max="10000000" step="1000" value="50000" required /></label>
+        <label for="service-description">Descripción (opcional)<textarea id="service-description" rows="3" maxlength="300" placeholder="Detalles que quieras recordar"></textarea></label>
+        <div class="config-counter"><span id="service-description-count">0</span>/300 caracteres</div>
+        <p class="form-error" id="service-error" role="alert" aria-live="assertive"></p>
+        <div class="dialog-actions"><button class="secondary-button" id="cancel-service-dialog" type="button">Cancelar</button><button class="primary-button" id="save-service" type="submit">Crear servicio</button></div>
       </form>
     </dialog>
 

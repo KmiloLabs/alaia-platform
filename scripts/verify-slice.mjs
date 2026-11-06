@@ -290,6 +290,76 @@ async function main() {
   });
   check("Un mensaje vacío responde 400", noMessage.status === 400, `HTTP ${noMessage.status}`);
 
+  section("12. Horario del negocio y catálogo de servicios");
+  const contextBefore = await api(`/api/v1/tenants/${tenantA.tenantId}/context`, { token: userA.idToken });
+  const hoursBefore = contextBefore.json?.tenant?.openingHours ?? contextBefore.json?.openingHours ?? [];
+  check("El contexto trae el horario del negocio", Array.isArray(hoursBefore) && hoursBefore.length === 6, `${hoursBefore.length} día(s) abierto(s)`);
+
+  const weekly = [1, 2, 3, 4, 5, 6].map((day) => ({ day, open: "09:00", close: "18:00" }));
+  const sundayOpen = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken,
+    body: { openingHours: [...weekly, { day: 7, open: "10:00", close: "14:00" }], slotStepMinutes: 30 },
+  });
+  const savedHours = sundayOpen.json?.tenant?.openingHours ?? [];
+  check("A configura su horario con domingo abierto", sundayOpen.status === 200 && savedHours.some((entry) => entry.day === 7), `días=${savedHours.length}`);
+
+  const sundaySlots = await api(`/api/v1/tenants/${tenantA.tenantId}/availability?from=2031-01-19&to=2031-01-19&durationMinutes=30`, { token: userA.idToken });
+  const sundayList = sundaySlots.json?.slots ?? [];
+  const firstSunday = sundayList[0]?.startsAtLocal ?? "";
+  const lastSunday = sundayList.at(-1)?.startsAtLocal ?? "";
+  check("El domingo abierto genera horarios reales", sundayList.length > 0 && firstSunday.endsWith("T10:00") && lastSunday.endsWith("T13:30"), `${sundayList.length} huecos, ${firstSunday}..${lastSunday}`);
+
+  const sundayClosed = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken, body: { openingHours: weekly, slotStepMinutes: 30 },
+  });
+  const closedSlots = await api(`/api/v1/tenants/${tenantA.tenantId}/availability?from=2031-01-19&to=2031-01-19&durationMinutes=30`, { token: userA.idToken });
+  check("Al cerrar el domingo deja de ofrecer horarios", sundayClosed.status === 200 && (closedSlots.json?.slots ?? []).length === 0, `huecos=${(closedSlots.json?.slots ?? []).length}`);
+
+  const repeatedDay = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken,
+    body: { openingHours: [...weekly, { day: 1, open: "09:00", close: "18:00" }] },
+  });
+  check("Un día repetido responde 400", repeatedDay.status === 400 && repeatedDay.json?.error?.code === "invalid_hours", `HTTP ${repeatedDay.status} ${repeatedDay.json?.error?.code ?? ""}`);
+
+  const badStep = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken, body: { slotStepMinutes: 4 },
+  });
+  check("Un intervalo inválido responde 400", badStep.status === 400 && badStep.json?.error?.code === "invalid_slot_step", `HTTP ${badStep.status} ${badStep.json?.error?.code ?? ""}`);
+
+  const serviceCreated = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, {
+    method: "POST", token: userA.idToken,
+    body: { name: "Corte clásico", category: "Cortes", durationMinutes: 45, priceCOP: 50000 },
+  });
+  const svc = serviceCreated.json?.service ?? {};
+  check("A crea un servicio con precio", serviceCreated.status === 201 && svc.priceCOP === 50000 && svc.durationMinutes === 45, `HTTP ${serviceCreated.status} ${svc.name ?? ""}`);
+  const serviceId = svc.serviceId ?? svc.id;
+
+  const duplicate = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, {
+    method: "POST", token: userA.idToken,
+    body: { name: "CORTE CLASICO", durationMinutes: 30, priceCOP: 40000 },
+  });
+  check("Un servicio repetido responde 409", duplicate.status === 409 && duplicate.json?.error?.code === "service_name_taken", `HTTP ${duplicate.status}`);
+
+  const svcBadPrice = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, {
+    method: "POST", token: userA.idToken, body: { name: "Corte raro", durationMinutes: 45, priceCOP: -5 },
+  });
+  check("Un precio inválido responde 400", svcBadPrice.status === 400 && svcBadPrice.json?.error?.code === "invalid_price", `HTTP ${svcBadPrice.status} ${svcBadPrice.json?.error?.code ?? ""}`);
+
+  const svcEdited = await api(`/api/v1/tenants/${tenantA.tenantId}/services/${serviceId}`, {
+    method: "PATCH", token: userA.idToken, body: { priceCOP: 60000 },
+  });
+  check("El dueño puede cambiar el precio", svcEdited.status === 200 && svcEdited.json?.service?.priceCOP === 60000, `precio=${svcEdited.json?.service?.priceCOP}`);
+
+  const svcListed = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, { token: userA.idToken });
+  check("El servicio aparece en el catálogo", (svcListed.json?.services ?? []).some((item) => item.name === "Corte clásico"), `${(svcListed.json?.services ?? []).length} servicio(s)`);
+
+  const svcRemoved = await api(`/api/v1/tenants/${tenantA.tenantId}/services/${serviceId}`, { method: "DELETE", token: userA.idToken });
+  const svcAfterRemoval = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, { token: userA.idToken });
+  check("Desactivar un servicio lo oculta del catálogo", svcRemoved.status === 200 && !(svcAfterRemoval.json?.services ?? []).some((item) => item.name === "Corte clásico"), `activos=${(svcAfterRemoval.json?.services ?? []).length}`);
+
+  const crossServices = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, { token: userB.idToken });
+  check("B no puede ver los servicios de A", [403, 404].includes(crossServices.status), `HTTP ${crossServices.status}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {
