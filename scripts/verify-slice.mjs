@@ -542,6 +542,113 @@ async function main() {
   const ownTenant = (meTenants.json?.tenants ?? []).find((item) => item.tenantId === tenantA.tenantId);
   check("El negocio nuevo entra en periodo de prueba", ownTenant?.plan === "trial" && Number.isInteger(ownTenant?.trialDaysLeft) && ownTenant.trialDaysLeft > 0, `plan=${ownTenant?.plan} días=${ownTenant?.trialDaysLeft}`);
 
+  section("17. Equipo y citas asignadas");
+  const proOne = await api(`/api/v1/tenants/${tenantA.tenantId}/professionals`, {
+    method: "POST", token: userA.idToken,
+    body: { name: "Andrés Barbero", phone: "3001112233", commission: { type: "percentage", percent: 50, effectiveFrom: "2026-01-01" } },
+  });
+  const proTwo = await api(`/api/v1/tenants/${tenantA.tenantId}/professionals`, {
+    method: "POST", token: userA.idToken,
+    body: { name: "Camila Estilista", phone: "3004445566", commission: { type: "fixed", amountCOP: 15000, effectiveFrom: "2026-01-01" } },
+  });
+  const proOneId = proOne.json?.professional?.professionalId ?? proOne.json?.professional?.id;
+  const proTwoId = proTwo.json?.professional?.professionalId ?? proTwo.json?.professional?.id;
+  check("A crea dos profesionales", proOne.status === 201 && proTwo.status === 201, `HTTP ${proOne.status}/${proTwo.status}`);
+
+  const duplicatePro = await api(`/api/v1/tenants/${tenantA.tenantId}/professionals`, {
+    method: "POST", token: userA.idToken,
+    body: { name: "ANDRÉS BARBERO", commission: { type: "percentage", percent: 40, effectiveFrom: "2026-01-01" } },
+  });
+  check("Un profesional repetido responde 409", duplicatePro.status === 409 && duplicatePro.json?.error?.code === "professional_name_taken", `HTTP ${duplicatePro.status}`);
+
+  const badPercent = await api(`/api/v1/tenants/${tenantA.tenantId}/professionals`, {
+    method: "POST", token: userA.idToken,
+    body: { name: "Porcentaje inválido", commission: { type: "percentage", percent: 150, effectiveFrom: "2026-01-01" } },
+  });
+  check("Un porcentaje inválido responde 400", badPercent.status === 400 && badPercent.json?.error?.code === "invalid_percent", `HTTP ${badPercent.status} ${badPercent.json?.error?.code ?? ""}`);
+
+  const teamDay = "2032-04-05";
+  const proAppointment = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Equipo", serviceName: "Corte clásico", startsAt: `${teamDay}T10:00`, durationMinutes: 45, priceCOP: 50000, professionalId: proOneId },
+  });
+  check("La cita se asigna al profesional", proAppointment.status === 201 && proAppointment.json?.appointment?.professionalName === "Andrés Barbero", `professionalId=${proAppointment.json?.appointment?.professionalId}`);
+
+  const otherProSameTime = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Equipo 2", serviceName: "Corte clásico", startsAt: `${teamDay}T10:00`, durationMinutes: 45, priceCOP: 50000, professionalId: proTwoId },
+  });
+  check("Dos profesionales pueden atender a la misma hora", otherProSameTime.status === 201, `HTTP ${otherProSameTime.status}`);
+
+  const sameProConflict = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Equipo 3", serviceName: "Corte clásico", startsAt: `${teamDay}T10:00`, durationMinutes: 45, priceCOP: 50000, professionalId: proOneId },
+  });
+  check("El mismo profesional no puede tener dos citas a la vez", sameProConflict.status === 409 && sameProConflict.json?.error?.code === "appointment_conflict", `HTTP ${sameProConflict.status}`);
+
+  const unassigned = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Sin Asignar", serviceName: "Corte clásico", startsAt: `${teamDay}T10:00`, durationMinutes: 45, priceCOP: 50000 },
+  });
+  check("Una cita sin asignar convive con las asignadas", unassigned.status === 201, `HTTP ${unassigned.status}`);
+
+  const secondUnassigned = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Sin Asignar 2", serviceName: "Corte clásico", startsAt: `${teamDay}T10:00`, durationMinutes: 45, priceCOP: 50000 },
+  });
+  check("Dos citas sin asignar se cruzan", secondUnassigned.status === 409, `HTTP ${secondUnassigned.status}`);
+
+  const proAvailability = await api(`/api/v1/tenants/${tenantA.tenantId}/availability?from=${teamDay}&to=${teamDay}&durationMinutes=45&stepMinutes=30&professionalId=${proOneId}`, { token: userA.idToken });
+  const proSlotTimes = (proAvailability.json?.slots ?? []).map((slot) => slot.startsAtLocal);
+  check("La disponibilidad del profesional respeta sus citas", !proSlotTimes.includes(`${teamDay}T10:00`) && proSlotTimes.includes(`${teamDay}T11:00`), `${proSlotTimes.length} huecos`);
+
+  const foreignProfessionals = await api(`/api/v1/tenants/${tenantA.tenantId}/professionals`, { token: userB.idToken });
+  check("B no puede ver los profesionales de A", [403, 404].includes(foreignProfessionals.status), `HTTP ${foreignProfessionals.status}`);
+
+  section("18. Liquidación de comisiones");
+  const rentPro = await api(`/api/v1/tenants/${tenantA.tenantId}/professionals`, {
+    method: "POST", token: userA.idToken,
+    body: { name: "Renta Puesto", commission: { type: "rent", rentCOP: 310000, effectiveFrom: "2026-01-01" } },
+  });
+  const rentProId = rentPro.json?.professional?.professionalId ?? rentPro.json?.professional?.id;
+
+  const payDay = "2032-05";
+  await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Liquidación", serviceName: "Corte clásico", startsAt: `${payDay}-10T10:00`, durationMinutes: 45, priceCOP: 100000, professionalId: proOneId },
+  });
+  await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Liquidación", serviceName: "Corte clásico", startsAt: `${payDay}-11T10:00`, durationMinutes: 45, priceCOP: 60000, professionalId: proTwoId },
+  });
+  await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Liquidación", serviceName: "Corte clásico", startsAt: `${payDay}-12T10:00`, durationMinutes: 45, priceCOP: 40000 },
+  });
+  await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Renta", serviceName: "Corte clásico", startsAt: `${payDay}-13T10:00`, durationMinutes: 45, priceCOP: 50000, professionalId: rentProId },
+  });
+
+  const settlement = await api(`/api/v1/tenants/${tenantA.tenantId}/settlements/preview?from=${payDay}-01&to=${payDay}-31`, { token: userA.idToken });
+  const settlementBody = settlement.json ?? {};
+  const professionalRows = settlementBody.professionals ?? [];
+  const rowFor = (name) => professionalRows.find((row) => row.name === name);
+  const andresRow = rowFor("Andrés Barbero");
+  const camilaRow = rowFor("Camila Estilista");
+  const rentaRow = rowFor("Renta Puesto");
+  check("La liquidación resume el negocio", settlement.status === 200 && settlementBody.business?.gross === 250000, `producido=${settlementBody.business?.gross} servicios=${settlementBody.business?.services}`);
+  check("El 50% se calcula sobre el producido", andresRow?.commission === 50000 && andresRow?.net === 50000, `comisión=${andresRow?.commission}`);
+  check("El fijo se multiplica por servicio", camilaRow?.commission === 15000 && camilaRow?.net === 15000, `comisión=${camilaRow?.commission}`);
+  check("El alquiler se prorratea por el rango", rentaRow?.rent === 310000 && rentaRow?.commission === 0 && rentaRow?.net === -310000, `alquiler=${rentaRow?.rent} neto=${rentaRow?.net}`);
+  check("Las citas sin asignar se separan", settlementBody.unassigned?.gross === 40000, `sin asignar=${settlementBody.unassigned?.gross}`);
+
+  const settlementBadRange = await api(`/api/v1/tenants/${tenantA.tenantId}/settlements/preview?from=${payDay}-31&to=${payDay}-01`, { token: userA.idToken });
+  check("Un rango invertido responde 400", settlementBadRange.status === 400 && settlementBadRange.json?.error?.code === "invalid_range", `HTTP ${settlementBadRange.status} ${settlementBadRange.json?.error?.code ?? ""}`);
+
+  const settlementLongRange = await api(`/api/v1/tenants/${tenantA.tenantId}/settlements/preview?from=2032-01-01&to=2032-12-31`, { token: userA.idToken });
+  check("Un rango de más de 92 días responde 400", settlementLongRange.status === 400 && settlementLongRange.json?.error?.code === "invalid_range", `HTTP ${settlementLongRange.status}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {

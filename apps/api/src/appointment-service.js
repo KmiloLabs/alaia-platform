@@ -19,6 +19,13 @@ import {
 } from "./appointment-validation.js";
 import { getCustomer } from "./customer-catalog.js";
 import { customerRepository } from "./customer-repository.js";
+import { getProfessional } from "./professional-catalog.js";
+import { professionalRepository } from "./professional-repository.js";
+import {
+  blocksAvailability,
+  findAppointmentConflict,
+  normalizeProfessionalId,
+} from "./appointment-conflicts.js";
 
 const MAX_APPOINTMENT_DURATION_MS = 480 * 60 * 1000;
 const FALLBACK_TIME_ZONE = "America/Bogota";
@@ -46,12 +53,30 @@ export async function listAppointments({ tenantId, timeZone, query }) {
   return { ok: true, appointments: snapshot.docs.map((doc) => serializeAppointment(doc.id, doc.data())) };
 }
 
-export async function getAvailability({ tenant, query, now = new Date() }) {
+export async function getAvailability({ tenant, query, now = new Date(), professionalId = null }) {
   const timeZone = resolveTenantTimeZone(tenant);
   const openingHours = resolveOpeningHours(tenant);
   const defaultStepMinutes = resolveSlotStepMinutes(tenant);
   const validation = validateAvailabilityQuery(query, { defaultStepMinutes });
   if (!validation.ok) return { ok: false, status: 400, code: validation.code, message: validation.message };
+
+  // Con profesional: solo sus citas y las sin asignar ocupan el hueco.
+  const requestedProfessionalId = normalizeProfessionalId(professionalId);
+  if (requestedProfessionalId !== null) {
+    const professional = await getProfessional({
+      tenantId: tenant.id,
+      professionalId: requestedProfessionalId,
+      repository: professionalRepository,
+    });
+    if (!professional) {
+      return {
+        ok: false,
+        status: 404,
+        code: "professional_not_found",
+        message: "No encontramos ese profesional en el negocio.",
+      };
+    }
+  }
 
   const { from, to, durationMinutes, stepMinutes } = validation.value;
   const range = localDateRangeToUtc(from, to, timeZone);
@@ -61,7 +86,7 @@ export async function getAvailability({ tenant, query, now = new Date() }) {
     .get();
   const busy = snapshot.docs
     .map((doc) => doc.data())
-    .filter((data) => data.status === "scheduled")
+    .filter((data) => blocksAvailability(data, requestedProfessionalId))
     .map((data) => ({ start: toMillis(data.startsAt), end: toMillis(data.endsAt) }))
     .filter((item) => item.start !== null && item.end !== null);
 
@@ -110,6 +135,27 @@ export async function createAppointment({ tenantId, timeZone, actorUid, body }) 
     ? { ...rawBody, customerName: customer.name, customerPhone: customer.phone || null }
     : rawBody;
 
+  // professionalId opcional: debe pertenecer al negocio; se guarda copia del nombre.
+  const professionalIdInput = typeof rawBody.professionalId === "string" ? rawBody.professionalId.trim() : "";
+  let professional = null;
+  if (professionalIdInput !== "") {
+    professional = await getProfessional({
+      tenantId,
+      professionalId: professionalIdInput,
+      repository: professionalRepository,
+    });
+    if (!professional) {
+      return {
+        ok: false,
+        status: 404,
+        code: "professional_not_found",
+        message: "No encontramos ese profesional en el negocio.",
+      };
+    }
+  }
+  const assignedProfessionalId = professional?.professionalId ?? null;
+  const assignedProfessionalName = professional?.name ?? null;
+
   const validation = validateAppointmentInput(effectiveBody, timeZone);
   if (!validation.ok) return { ok: false, status: 400, code: validation.code, message: validation.message };
 
@@ -133,13 +179,11 @@ export async function createAppointment({ tenantId, timeZone, actorUid, body }) 
         .where("startsAt", ">=", Timestamp.fromMillis(startsAtMs - MAX_APPOINTMENT_DURATION_MS))
         .where("startsAt", "<", Timestamp.fromMillis(endsAtMs)),
     );
-    const conflict = window.docs.some((doc) => {
-      const data = doc.data();
-      if (data.status !== "scheduled") return false;
-      const otherStart = toMillis(data.startsAt);
-      const otherEnd = toMillis(data.endsAt);
-      if (otherStart === null || otherEnd === null) return false;
-      return otherStart < endsAtMs && otherEnd > startsAtMs;
+    // Mismo profesional (o ambos sin asignar = cupo compartido) ⇒ conflicto.
+    const conflict = findAppointmentConflict(window.docs, {
+      startsAtMs,
+      endsAtMs,
+      professionalId: assignedProfessionalId,
     });
     if (conflict) return { kind: "conflict" };
 
@@ -148,6 +192,8 @@ export async function createAppointment({ tenantId, timeZone, actorUid, body }) 
       customerId: customer?.customerId ?? null,
       customerName: input.customerName,
       customerPhone: input.customerPhone,
+      professionalId: assignedProfessionalId,
+      professionalName: assignedProfessionalName,
       serviceName: input.serviceName,
       startsAt: Timestamp.fromDate(input.startsAtUtc),
       startsAtLocal: input.startsAtLocal,
@@ -231,6 +277,27 @@ export async function rescheduleAppointment({ tenantId, timeZone, actorUid, appo
   if (!validation.ok) return { ok: false, status: 400, code: validation.code, message: validation.message };
 
   const { startsAtLocal, startsAtUtc, durationMinutes: requestedDuration } = validation.value;
+
+  // professionalId opcional en reschedule: reasigna; si no viene, conserva el actual.
+  const rawBody = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+  const reassignmentId = typeof rawBody.professionalId === "string" ? rawBody.professionalId.trim() : "";
+  let reassignedProfessional = null;
+  if (reassignmentId !== "") {
+    reassignedProfessional = await getProfessional({
+      tenantId,
+      professionalId: reassignmentId,
+      repository: professionalRepository,
+    });
+    if (!reassignedProfessional) {
+      return {
+        ok: false,
+        status: 404,
+        code: "professional_not_found",
+        message: "No encontramos ese profesional en el negocio.",
+      };
+    }
+  }
+
   const startsAtMs = startsAtUtc.getTime();
   const appointments = appointmentsRef(tenantId);
   const appointmentRef = appointments.doc(appointmentId);
@@ -247,20 +314,24 @@ export async function rescheduleAppointment({ tenantId, timeZone, actorUid, appo
     const endsAtUtc = new Date(startsAtMs + durationMinutes * 60 * 1000);
     const endsAtMs = endsAtUtc.getTime();
 
+    const nextProfessionalId = reassignedProfessional
+      ? reassignedProfessional.professionalId
+      : normalizeProfessionalId(data.professionalId);
+    const nextProfessionalName = reassignedProfessional
+      ? reassignedProfessional.name
+      : (data.professionalName ?? null);
+
     // Mismo patrón que al crear, pero ignorando la propia cita.
     const window = await transaction.get(
       appointments
         .where("startsAt", ">=", Timestamp.fromMillis(startsAtMs - MAX_APPOINTMENT_DURATION_MS))
         .where("startsAt", "<", Timestamp.fromMillis(endsAtMs)),
     );
-    const conflict = window.docs.some((doc) => {
-      if (doc.id === appointmentId) return false;
-      const other = doc.data();
-      if (other.status !== "scheduled") return false;
-      const otherStart = toMillis(other.startsAt);
-      const otherEnd = toMillis(other.endsAt);
-      if (otherStart === null || otherEnd === null) return false;
-      return otherStart < endsAtMs && otherEnd > startsAtMs;
+    const conflict = findAppointmentConflict(window.docs, {
+      startsAtMs,
+      endsAtMs,
+      professionalId: nextProfessionalId,
+      ignoreAppointmentId: appointmentId,
     });
     if (conflict) return { kind: "conflict" };
 
@@ -269,6 +340,8 @@ export async function rescheduleAppointment({ tenantId, timeZone, actorUid, appo
       endsAt: Timestamp.fromDate(endsAtUtc),
       startsAtLocal,
       durationMinutes,
+      professionalId: nextProfessionalId,
+      professionalName: nextProfessionalName,
       updatedAt: FieldValue.serverTimestamp(),
     });
     transaction.create(appointmentRef.collection("events").doc(), {
@@ -294,6 +367,8 @@ export async function rescheduleAppointment({ tenantId, timeZone, actorUid, appo
         endsAt: Timestamp.fromDate(endsAtUtc),
         startsAtLocal,
         durationMinutes,
+        professionalId: nextProfessionalId,
+        professionalName: nextProfessionalName,
       },
     };
   });
@@ -337,6 +412,8 @@ export function serializeAppointment(appointmentId, data) {
     customerId: data?.customerId ?? null,
     customerName: data?.customerName ?? null,
     customerPhone: data?.customerPhone ?? null,
+    professionalId: data?.professionalId ?? null,
+    professionalName: data?.professionalName ?? null,
     serviceName: data?.serviceName ?? null,
     startsAt: toIsoString(data?.startsAt),
     startsAtLocal: data?.startsAtLocal ?? null,

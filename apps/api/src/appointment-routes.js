@@ -27,7 +27,11 @@ appointmentRoutes.get("/tenants/:tenantId/appointments", requireTenantMembership
 }));
 
 appointmentRoutes.get("/tenants/:tenantId/availability", requireTenantMembership, asyncRoute(async (req, res) => {
-  const result = await getAvailability({ tenant: req.tenant, query: req.query });
+  const result = await getAvailability({
+    tenant: req.tenant,
+    query: req.query,
+    professionalId: typeof req.query?.professionalId === "string" ? req.query.professionalId : null,
+  });
   if (!result.ok) return sendError(res, result.status, result.code, result.message);
   return res.json({
     timeZone: result.timeZone,
