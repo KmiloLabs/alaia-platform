@@ -16,12 +16,17 @@ import {
   deactivateService,
   getAgentConfig,
   getCustomer,
+  getDashboard,
+  getMe,
+  getPlatformSummary,
+  getPlatformTenant,
   getTenantContext,
   isTenantAccessError,
   isUnauthorized,
   listAppointments,
   listAvailability,
   listCustomers,
+  listPlatformTenants,
   listServices,
   listTenants,
   messageForError,
@@ -29,6 +34,7 @@ import {
   saveAgentConfig,
   sendAgentMessage,
   updateCustomer,
+  updatePlatformTenant,
   updateService,
   updateTenant,
 } from "./api.js";
@@ -154,6 +160,7 @@ const syncStatus = $("#sync-status");
 const syncText = $("#sync-text");
 const navCount = $("#nav-count");
 const currentSection = $("#current-section");
+const breadcrumbRoot = $("#breadcrumb-root");
 const todayLabel = $("#today-label");
 const pageTitle = $("#page-title");
 const pageSubtitle = $("#page-subtitle");
@@ -268,6 +275,68 @@ const deactivateCustomerButton = $("#deactivate-customer-button");
 const closeCustomerDetailButton = $("#close-customer-detail");
 const closeCustomerDetailFooter = $("#close-customer-detail-button");
 
+const legacyMetrics = $("#legacy-metrics");
+const dashboardGrid = $("#dashboard-grid");
+const dashboardServices = $("#dashboard-services");
+const dashboardAppointmentsToday = $("#dashboard-appointments-today");
+const dashboardAppointmentsWeek = $("#dashboard-appointments-week");
+const dashboardAppointmentsMonth = $("#dashboard-appointments-month");
+const dashboardIncomeToday = $("#dashboard-income-today");
+const dashboardIncomeWeek = $("#dashboard-income-week");
+const dashboardIncomeMonth = $("#dashboard-income-month");
+const dashboardCustomersTotal = $("#dashboard-customers-total");
+const dashboardCustomersNew = $("#dashboard-customers-new");
+const dashboardCancelled = $("#dashboard-cancelled");
+const dashboardDate = $("#dashboard-date");
+const dashboardStatus = $("#dashboard-status");
+const dashboardEmpty = $("#dashboard-empty");
+const dashboardRetry = $("#dashboard-retry");
+const dashboardTopServices = $("#dashboard-top-services");
+const dashboardServicesCount = $("#dashboard-services-count");
+
+const profileForm = $("#profile-form");
+const profileDescriptionInput = $("#profile-description");
+const profileDescriptionCount = $("#profile-description-count");
+const profileAddressInput = $("#profile-address");
+const profilePhoneInput = $("#profile-phone");
+const profileInstagramInput = $("#social-instagram");
+const profileFacebookInput = $("#social-facebook");
+const profileTikTokInput = $("#social-tiktok");
+const profileWhatsAppInput = $("#social-whatsapp");
+const profileWebsiteInput = $("#social-website");
+const profileError = $("#profile-error");
+const profileMessage = $("#profile-message");
+const profileStatusBadge = $("#profile-status-badge");
+const profileSaveButton = $("#profile-save");
+const profilePreview = $("#profile-preview");
+
+const platformNav = $("#platform-nav");const platformView = $("#platform-view");
+const platformSummary = $("#platform-summary");
+const platformSearchInput = $("#platform-search");
+const platformStatusFilter = $("#platform-status-filter");
+const platformStatus = $("#platform-status");
+const platformTenantsBody = $("#platform-tenants-body");
+const platformTenantsCount = $("#platform-tenants-count");
+const platformEmpty = $("#platform-empty");
+const platformDetailDialog = $("#platform-detail-dialog");
+const platformDetailTitle = $("#platform-detail-title");
+const platformDetailStatus = $("#platform-detail-status");
+const platformDetailMeta = $("#platform-detail-meta");
+const platformDetailInfo = $("#platform-detail-info");
+const platformDetailMembers = $("#platform-detail-members");
+const platformDetailActivity = $("#platform-detail-activity");
+const platformDetailMessage = $("#platform-detail-message");
+const platformDetailError = $("#platform-detail-error");
+const platformPlanSelect = $("#platform-plan");
+const platformNotesInput = $("#platform-notes");
+const platformNotesCount = $("#platform-notes-count");
+const platformSavePlanButton = $("#platform-save-plan");
+const platformSaveNotesButton = $("#platform-save-notes");
+const platformToggleStatusButton = $("#platform-toggle-status");
+const closePlatformDetailButton = $("#close-platform-detail");
+const tenantSuspendedBlock = $("#tenant-suspended");
+const suspendedChangeTenantButton = $("#suspended-change-tenant");
+
 const appointmentCustomerSearch = $("#appointment-customer-search");
 const appointmentCustomerSuggestions = $("#appointment-customer-suggestions");
 const appointmentCustomerSelected = $("#appointment-customer-selected");
@@ -376,6 +445,24 @@ const state = {
   appointmentCustomerTimer: null,
   appointmentCustomerFilling: false,
   appointmentSuggestions: [],
+  isPlatformAdmin: false,
+  platformLoaded: false,
+  platformQuery: "",
+  platformStatusFilter: "",
+  platformSearchTimer: null,
+  platformSeq: 0,
+  platformSummaryData: null,
+  platformDetailId: null,
+  platformDetailData: null,
+  platformSaving: false,
+  platformSummarySeq: 0,
+  platformTenants: [],
+  dashboard: null,
+  dashboardSeq: 0,
+  dashboardLoading: false,
+  profileDirty: false,
+  profileSaving: false,
+  tenantSuspended: false,
 };
 
 let authMode = "signin";
@@ -404,11 +491,17 @@ async function beginSession(user) {
   bootRetry.hidden = true;
 
   try {
-    const data = await listTenants();
+    const [data, me] = await Promise.all([listTenants(), getMe().catch(() => null)]);
     if (seq !== state.sessionSeq) return;
+    state.isPlatformAdmin = me?.isPlatformAdmin === true;
+    updatePlatformVisibility();
     state.tenants = Array.isArray(data?.tenants) ? data.tenants : [];
 
     if (!state.tenants.length) {
+      if (state.isPlatformAdmin) {
+        enterPlatformOnlyMode(seq);
+        return;
+      }
       onboardingCopy.textContent = "Tu cuenta todavía no tiene un negocio. Crea el primero para empezar a usar la agenda.";
       showScreen("onboarding");
       clearOnboardingError();
@@ -441,6 +534,8 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
 
     state.tenant = summary;
     state.context = context;
+    state.tenantSuspended = false;
+    hideTenantSuspended();
     state.cache.clear();
     state.availabilityCache.clear();
     state.agentConfig = null;
@@ -477,6 +572,18 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
       await handleTenantUnavailable(error);
       return;
     }
+    if (error.code === "tenant_suspended") {
+      state.tenant = summary;
+      state.context = null;
+      state.tenantSuspended = true;
+      state.selectedDate = state.selectedDate ?? todayValue();
+      renderTenantUi();
+      showScreen("panel");
+      hideTenantSuspended();
+      showTenantSuspended();
+      setSyncStatus("offline");
+      return;
+    }
     setSyncStatus("offline");
     showToast(messageForError(error));
     if (!state.tenant) showBootError(messageForError(error));
@@ -500,10 +607,21 @@ function handleSignedOut() {
   state.rescheduleTargetId = null;
   if (appointmentDialog.open) appointmentDialog.close();
   if (rescheduleDialog.open) rescheduleDialog.close();
+  if (platformDetailDialog.open) platformDetailDialog.close();
+  state.platformQuery = "";
+  state.platformStatusFilter = "";
+  state.platformTenants = [];
+  state.platformSummaryData = null;
+  if (platformSearchInput) platformSearchInput.value = "";
+  if (platformStatusFilter) platformStatusFilter.value = "";
+  hideTenantSuspended();
   state.agentConfig = null;
   state.agentTenantId = null;
   state.agentLoadSeq += 1;
   resetAgentConversation();
+  state.isPlatformAdmin = false;
+  updatePlatformVisibility();
+  hideTenantSuspended();
   state.services = [];
   state.servicesTenantId = null;
   state.servicesLoaded = false;
@@ -764,12 +882,54 @@ function renderTenantUi() {
   if (!state.tenant) return;
   const sectorLabel = SECTOR_LABELS[state.tenant.sector] ?? "Negocio";
   const roleLabel = ROLE_LABELS[state.context?.membership?.role] ?? "";
+  if (breadcrumbRoot) breadcrumbRoot.textContent = "Mi negocio";
   workspaceName.textContent = state.tenant.name;
   workspaceAvatar.textContent = initialOf(state.tenant.name);
   workspaceMeta.textContent = roleLabel ? `${sectorLabel} · ${roleLabel}` : sectorLabel;
   profileRole.textContent = roleLabel || "Cuenta";
   professionalTenant.textContent = `EQUIPO · ${state.tenant.name}`;
   renderTenantOptions();
+  if (changeTenantButton) changeTenantButton.hidden = false;
+  updateNavigationVisibility();
+}
+
+function updatePlatformVisibility() {
+  updateNavigationVisibility();
+}
+
+function updateNavigationVisibility() {
+  const hasTenant = Boolean(state.tenant);
+  for (const item of document.querySelectorAll(".nav-item[data-view]")) {
+    if (item.id === "platform-nav") {
+      item.hidden = !state.isPlatformAdmin;
+      continue;
+    }
+    item.hidden = !hasTenant;
+  }
+  if (platformNav) platformNav.hidden = !state.isPlatformAdmin;
+}
+
+function renderPlatformWorkspace() {
+  if (breadcrumbRoot) breadcrumbRoot.textContent = "Plataforma ALAIA";
+  workspaceName.textContent = "ALAIA";
+  workspaceAvatar.textContent = "A";
+  workspaceMeta.textContent = "Panel de plataforma";
+  profileRole.textContent = "Administrador de plataforma";
+  if (changeTenantButton) changeTenantButton.hidden = true;
+  tenantSelect.replaceChildren();
+  tenantSelect.disabled = true;
+  updateNavigationVisibility();
+}
+
+function enterPlatformOnlyMode(seq = state.sessionSeq) {
+  state.tenant = null;
+  state.context = null;
+  state.selectedDate = null;
+  state.appointments = [];
+  state.view = "plataforma";
+  renderPlatformWorkspace();
+  showScreen("panel");
+  setView("plataforma");
 }
 
 function renderTenantOptions() {
@@ -1053,6 +1213,7 @@ async function cancelAppointment(appointment, button) {
     state.availabilityCache.clear();
     showToast(`Cita de ${appointment.customerName} cancelada.`);
     await loadDay(state.selectedDate);
+    refreshDashboardAfterChange();
   } catch (error) {
     if (isUnauthorized(error)) {
       await forceSignOut(messageForError(error));
@@ -1156,7 +1317,7 @@ agendaToggle.addEventListener("click", () => {
 });
 
 function setView(view) {
-  state.view = ["agenda", "configuracion", "servicios", "clientes"].includes(view) ? view : "resumen";
+  state.view = ["agenda", "configuracion", "servicios", "clientes", "plataforma"].includes(view) ? view : "resumen";
   document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     const isActive = item.dataset.view === state.view;
     item.classList.toggle("is-active", isActive);
@@ -1164,7 +1325,7 @@ function setView(view) {
     else item.removeAttribute("aria-current");
   });
 
-  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios", clientes: "Clientes" };
+  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios", clientes: "Clientes", plataforma: "Plataforma" };
   currentSection.textContent = sectionLabels[state.view];
 
   const metricGrid = document.querySelector(".metric-grid");
@@ -1174,26 +1335,43 @@ function setView(view) {
   const isConfig = state.view === "configuracion";
   const isServices = state.view === "servicios";
   const isCustomers = state.view === "clientes";
+  const isPlatform = state.view === "plataforma";
 
-  if (metricGrid) metricGrid.hidden = isAgenda || isConfig || isServices || isCustomers;
-  if (contentGrid) contentGrid.hidden = isConfig || isServices || isCustomers;
+  if (metricGrid) metricGrid.hidden = true;
+  if (legacyMetrics) legacyMetrics.hidden = true;
+  if (contentGrid) contentGrid.hidden = isConfig || isServices || isCustomers || isPlatform;
+  if (dashboardGrid) dashboardGrid.hidden = state.view !== "resumen";
+  if (dashboardServices) dashboardServices.hidden = state.view !== "resumen";
+  if (dashboardStatus) dashboardStatus.hidden = state.view !== "resumen";
+  if (dashboardEmpty) dashboardEmpty.hidden = state.view !== "resumen" || !dashboardEmpty.dataset.visible;
+  if (dashboardRetry) dashboardRetry.hidden = state.view !== "resumen" || dashboardRetry.dataset.visible !== "1";
   if (tipCard) tipCard.hidden = isAgenda;
   if (configView) configView.hidden = !isConfig;
   if (servicesView) servicesView.hidden = !isServices;
   if (customersView) customersView.hidden = !isCustomers;
-  newAppointmentButton.hidden = isConfig || isServices || isCustomers;
+  if (platformView) platformView.hidden = !isPlatform;
+  newAppointmentButton.hidden = isConfig || isServices || isCustomers || isPlatform;
   agendaToggle.textContent = isAgenda ? "Ver resumen →" : "Ver agenda →";
 
   renderHeader();
   if (isConfig) {
+    renderProfile();
     loadSchedule();
     loadAgentConfig();
   }
   if (isServices) loadServices();
   if (isCustomers) loadCustomers({ force: true });
+  if (isPlatform) loadPlatformDashboard();
+  if (state.view === "resumen") loadDashboard();
 }
 
 function renderHeader() {
+  if (state.view === "plataforma") {
+    todayLabel.textContent = "PLATAFORMA ALAIA";
+    setPageTitle("Plataforma");
+    pageSubtitle.textContent = "Todos los negocios, sus planes, su consumo y el estado de la plataforma.";
+    return;
+  }
   if (state.view === "configuracion") {
     todayLabel.textContent = "AJUSTES DEL NEGOCIO";
     setPageTitle("Configuración");
@@ -1292,6 +1470,7 @@ async function loadSchedule(seq = state.sessionSeq) {
     if (seq !== state.sessionSeq || loadSeq !== state.scheduleSeq || state.tenant?.tenantId !== tenantId) return;
     state.context = context;
     renderSchedule();
+    renderProfile();
     setScheduleStatus("Horario listo", "ready");
   } catch (error) {
     if (seq !== state.sessionSeq || loadSeq !== state.scheduleSeq) return;
@@ -2563,6 +2742,778 @@ async function findCustomerByPhone(tenantId, phone) {
 }
 
 // ---------------------------------------------------------------------------
+// Resumen del negocio (dashboard)
+// ---------------------------------------------------------------------------
+
+dashboardRetry.addEventListener("click", () => loadDashboard());
+
+async function loadDashboard() {
+  if (!state.tenant) return;
+  const tenantId = state.tenant.tenantId;
+  const seq = ++state.dashboardSeq;
+  const date = todayValue();
+  state.dashboardLoading = true;
+  setDashboardLoading();
+  try {
+    const data = await getDashboard(tenantId, date);
+    if (seq !== state.dashboardSeq || state.tenant?.tenantId !== tenantId) return;
+    state.dashboard = data;
+    renderDashboard(data);
+  } catch (error) {
+    if (seq !== state.dashboardSeq) return;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    if (error.code === "tenant_suspended") return;
+    renderDashboardError(messageForError(error));
+  } finally {
+    if (seq === state.dashboardSeq) state.dashboardLoading = false;
+  }
+}
+
+function setDashboardLoading() {
+  for (const node of [dashboardAppointmentsToday, dashboardAppointmentsWeek, dashboardAppointmentsMonth, dashboardIncomeToday, dashboardIncomeWeek, dashboardIncomeMonth, dashboardCustomersTotal, dashboardCustomersNew]) {
+    if (node) node.textContent = "…";
+  }
+  if (dashboardCancelled) dashboardCancelled.textContent = "—";
+  if (dashboardDate) dashboardDate.textContent = "—";
+  if (dashboardStatus) {
+    dashboardStatus.textContent = "Cargando resumen…";
+    dashboardStatus.className = "form-status is-loading dashboard-status";
+  }
+  if (dashboardEmpty) {
+    dashboardEmpty.hidden = true;
+    dashboardEmpty.dataset.visible = "";
+  }
+  if (dashboardRetry) {
+    dashboardRetry.hidden = true;
+    dashboardRetry.dataset.visible = "";
+  }
+  if (dashboardTopServices) {
+    dashboardTopServices.replaceChildren(textBlock("Cargando servicios…", "platform-message"));
+  }
+  if (dashboardServicesCount) dashboardServicesCount.textContent = "";
+}
+
+function renderDashboard(data) {
+  const appointments = data?.appointments ?? {};
+  const income = data?.income ?? {};
+  const customers = data?.customers ?? {};
+  const topServices = Array.isArray(data?.topServices) ? data.topServices : [];
+
+  if (dashboardAppointmentsToday) dashboardAppointmentsToday.textContent = String(numberOrZero(appointments.today));
+  if (dashboardAppointmentsWeek) dashboardAppointmentsWeek.textContent = String(numberOrZero(appointments.week));
+  if (dashboardAppointmentsMonth) dashboardAppointmentsMonth.textContent = String(numberOrZero(appointments.month));
+  if (dashboardIncomeToday) dashboardIncomeToday.textContent = formatCOP(income.today);
+  if (dashboardIncomeWeek) dashboardIncomeWeek.textContent = formatCOP(income.week);
+  if (dashboardIncomeMonth) dashboardIncomeMonth.textContent = formatCOP(income.month);
+  if (dashboardCustomersTotal) dashboardCustomersTotal.textContent = String(numberOrZero(customers.total));
+  if (dashboardCustomersNew) dashboardCustomersNew.textContent = String(numberOrZero(customers.newThisMonth));
+  if (dashboardCancelled) {
+    const cancelled = numberOrZero(appointments.cancelled);
+    dashboardCancelled.textContent = cancelled ? `${cancelled} ${cancelled === 1 ? "cancelada" : "canceladas"} este mes` : "Sin cancelaciones este mes";
+  }
+  if (dashboardDate) dashboardDate.textContent = isDateValue(data?.date) ? formatLongDate(data.date) : "";
+
+  if (topServices.length) {
+    dashboardTopServices.replaceChildren(...topServices.slice(0, 5).map((service) => {
+      const row = document.createElement("div");
+      row.className = "dashboard-service-row";
+      const name = document.createElement("strong");
+      name.textContent = String(service.name ?? "Servicio");
+      const detail = document.createElement("span");
+      detail.textContent = `${numberOrZero(service.count)} ${numberOrZero(service.count) === 1 ? "cita" : "citas"}`;
+      const value = document.createElement("span");
+      value.className = "dashboard-service-income";
+      value.textContent = formatCOP(service.income);
+      row.append(name, detail, value);
+      return row;
+    }));
+    if (dashboardServicesCount) dashboardServicesCount.textContent = `${topServices.length} ${topServices.length === 1 ? "servicio" : "servicios"}`;
+  } else {
+    dashboardTopServices.replaceChildren(textBlock("Aún no hay servicios con citas este mes.", "platform-message"));
+    if (dashboardServicesCount) dashboardServicesCount.textContent = "";
+  }
+
+  const noActivity = numberOrZero(appointments.today) === 0
+    && numberOrZero(appointments.week) === 0
+    && numberOrZero(appointments.month) === 0
+    && numberOrZero(customers.total) === 0
+    && topServices.length === 0;
+  if (dashboardEmpty) {
+    dashboardEmpty.hidden = !noActivity;
+    dashboardEmpty.dataset.visible = noActivity ? "1" : "";
+  }
+  if (dashboardRetry) {
+    dashboardRetry.hidden = true;
+    dashboardRetry.dataset.visible = "";
+  }
+  if (dashboardStatus) {
+    dashboardStatus.textContent = "";
+    dashboardStatus.className = "form-status dashboard-status";
+  }
+}
+
+function renderDashboardError(message) {
+  for (const node of [dashboardAppointmentsToday, dashboardAppointmentsWeek, dashboardAppointmentsMonth, dashboardIncomeToday, dashboardIncomeWeek, dashboardIncomeMonth, dashboardCustomersTotal, dashboardCustomersNew]) {
+    if (node) node.textContent = "—";
+  }
+  if (dashboardCancelled) dashboardCancelled.textContent = "—";
+  if (dashboardTopServices) dashboardTopServices.replaceChildren(textBlock("No pudimos cargar los servicios del mes.", "platform-message"));
+  if (dashboardStatus) {
+    dashboardStatus.textContent = message;
+    dashboardStatus.className = "form-status is-error dashboard-status";
+  }
+  if (dashboardEmpty) {
+    dashboardEmpty.hidden = true;
+    dashboardEmpty.dataset.visible = "";
+  }
+  if (dashboardRetry) {
+    dashboardRetry.hidden = false;
+    dashboardRetry.dataset.visible = "1";
+  }
+  if (dashboardServicesCount) dashboardServicesCount.textContent = "";
+}
+
+function refreshDashboardAfterChange() {
+  if (state.tenant && state.view === "resumen") loadDashboard();
+}
+
+// ---------------------------------------------------------------------------
+// Perfil del negocio
+// ---------------------------------------------------------------------------
+
+profileForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveProfile();
+});
+
+for (const field of [profileDescriptionInput, profileAddressInput, profilePhoneInput, profileInstagramInput, profileFacebookInput, profileTikTokInput, profileWhatsAppInput, profileWebsiteInput]) {
+  field.addEventListener("input", () => {
+    state.profileDirty = true;
+    if (field === profileDescriptionInput) updateProfileDescriptionCount();
+    renderProfilePreview();
+    if (profileError) profileError.textContent = "";
+  });
+}
+profileDescriptionInput.addEventListener("input", updateProfileDescriptionCount);
+
+function updateProfileDescriptionCount() {
+  if (profileDescriptionCount) profileDescriptionCount.textContent = String(profileDescriptionInput.value.length);
+}
+
+function renderProfile(force = false) {
+  const tenant = state.context?.tenant;
+  if (!tenant) return;
+  if (state.profileDirty && !force) {
+    renderProfilePreview();
+    return;
+  }
+  const social = tenant.socialLinks ?? {};
+  profileDescriptionInput.value = typeof tenant.description === "string" ? tenant.description : "";
+  profileAddressInput.value = typeof tenant.address === "string" ? tenant.address : "";
+  profilePhoneInput.value = typeof tenant.phone === "string" ? tenant.phone : "";
+  profileInstagramInput.value = typeof social.instagram === "string" ? social.instagram : "";
+  profileFacebookInput.value = typeof social.facebook === "string" ? social.facebook : "";
+  profileTikTokInput.value = typeof social.tiktok === "string" ? social.tiktok : "";
+  profileWhatsAppInput.value = typeof social.whatsapp === "string" ? social.whatsapp : "";
+  profileWebsiteInput.value = typeof social.website === "string" ? social.website : "";
+  state.profileDirty = false;
+  updateProfileDescriptionCount();
+  if (profileError) profileError.textContent = "";
+  if (profileMessage) profileMessage.textContent = "";
+  if (profileStatusBadge) {
+    profileStatusBadge.textContent = "Perfil listo";
+    profileStatusBadge.className = "config-status is-ready";
+  }
+  renderProfilePreview();
+}
+
+function socialLinkItems() {
+  return [
+    { key: "instagram", label: "Instagram", value: profileInstagramInput.value.trim() },
+    { key: "facebook", label: "Facebook", value: profileFacebookInput.value.trim() },
+    { key: "tiktok", label: "TikTok", value: profileTikTokInput.value.trim() },
+    { key: "whatsapp", label: "WhatsApp", value: profileWhatsAppInput.value.trim() },
+    { key: "website", label: "Sitio web", value: profileWebsiteInput.value.trim() },
+  ].filter((item) => item.value);
+}
+
+function renderProfilePreview() {
+  if (!profilePreview) return;
+  const card = document.createElement("div");
+  card.className = "profile-preview-body";
+  const name = document.createElement("strong");
+  name.className = "profile-preview-name";
+  name.textContent = state.tenant?.name ?? "Tu negocio";
+  card.append(name);
+
+  const description = profileDescriptionInput.value.trim();
+  const descriptionNode = document.createElement("p");
+  descriptionNode.className = description ? "profile-preview-description" : "profile-preview-description is-placeholder";
+  descriptionNode.textContent = description || "Aquí aparecerá tu descripción para los clientes.";
+  card.append(descriptionNode);
+
+  const contact = document.createElement("div");
+  contact.className = "profile-preview-contact";
+  const address = profileAddressInput.value.trim();
+  const phone = profilePhoneInput.value.trim();
+  if (address) {
+    const line = document.createElement("span");
+    line.textContent = `⌖ ${address}`;
+    contact.append(line);
+  }
+  if (phone) {
+    const line = document.createElement("span");
+    line.textContent = `☎ ${phone}`;
+    contact.append(line);
+  }
+  if (contact.children.length) card.append(contact);
+
+  const links = socialLinkItems();
+  const socialList = document.createElement("div");
+  socialList.className = "profile-preview-social";
+  if (links.length) {
+    for (const item of links) {
+      const chip = document.createElement("span");
+      chip.textContent = item.label;
+      socialList.append(chip);
+    }
+  } else {
+    const empty = document.createElement("span");
+    empty.className = "profile-preview-social-empty";
+    empty.textContent = "Sin redes conectadas todavía.";
+    socialList.append(empty);
+  }
+  card.append(socialList);
+  profilePreview.replaceChildren(card);
+}
+
+async function saveProfile() {
+  if (!state.tenant || state.profileSaving) return;
+  if (profileError) profileError.textContent = "";
+  if (profileMessage) profileMessage.textContent = "";
+
+  const description = profileDescriptionInput.value.trim();
+  const address = profileAddressInput.value.trim();
+  const phone = profilePhoneInput.value.trim();
+  const socialLinks = {
+    instagram: profileInstagramInput.value.trim(),
+    facebook: profileFacebookInput.value.trim(),
+    tiktok: profileTikTokInput.value.trim(),
+    whatsapp: profileWhatsAppInput.value.trim(),
+    website: profileWebsiteInput.value.trim(),
+  };
+
+  if (description.length > 300) {
+    profileError.textContent = "La descripción no puede superar los 300 caracteres.";
+    profileDescriptionInput.focus();
+    return;
+  }
+  if (address.length > 200) {
+    profileError.textContent = "La dirección no puede superar los 200 caracteres.";
+    profileAddressInput.focus();
+    return;
+  }
+  if (phone.length > 30 || (phone && !/^[0-9+()\- ]+$/.test(phone))) {
+    profileError.textContent = "El teléfono solo admite números, espacios, +, - y paréntesis (máximo 30).";
+    profilePhoneInput.focus();
+    return;
+  }
+  for (const key of ["instagram", "facebook", "tiktok", "website"]) {
+    const value = socialLinks[key];
+    if (value.length > 120) {
+      profileError.textContent = "Cada red social admite máximo 120 caracteres.";
+      return;
+    }
+    if (value && !/^https:\/\//i.test(value)) {
+      profileError.textContent = `La red ${key === "website" ? "sitio web" : key} debe empezar por https://.`;
+      return;
+    }
+  }
+  if (socialLinks.whatsapp.length > 120) {
+    profileError.textContent = "WhatsApp admite máximo 120 caracteres.";
+    return;
+  }
+  if (socialLinks.whatsapp && !/^\d{7,15}$/.test(socialLinks.whatsapp.replace(/\D+/g, ""))) {
+    profileError.textContent = "WhatsApp debe ser un número de 7 a 15 dígitos.";
+    return;
+  }
+
+  const tenantId = state.tenant.tenantId;
+  state.profileSaving = true;
+  setProfileBusy(true);
+  try {
+    await updateTenant(tenantId, { description, address, phone, socialLinks });
+    const context = await getTenantContext(tenantId);
+    if (state.tenant?.tenantId !== tenantId) return;
+    state.context = context;
+    state.profileDirty = false;
+    renderProfile(true);
+    if (profileStatusBadge) {
+      profileStatusBadge.textContent = "Guardado";
+      profileStatusBadge.className = "config-status is-ready";
+    }
+    if (profileMessage) {
+      profileMessage.textContent = "Perfil guardado y contexto actualizado.";
+      profileMessage.className = "form-status is-ok";
+    }
+    showToast("Perfil del negocio guardado.");
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    if (profileError) profileError.textContent = messageForError(error);
+    if (profileStatusBadge) {
+      profileStatusBadge.textContent = "Error";
+      profileStatusBadge.className = "config-status is-error";
+    }
+  } finally {
+    state.profileSaving = false;
+    setProfileBusy(false);
+  }
+}
+
+function setProfileBusy(busy) {
+  for (const field of [profileDescriptionInput, profileAddressInput, profilePhoneInput, profileInstagramInput, profileFacebookInput, profileTikTokInput, profileWhatsAppInput, profileWebsiteInput]) {
+    field.disabled = busy;
+  }
+  profileSaveButton.disabled = busy;
+  profileSaveButton.textContent = busy ? "Guardando…" : "Guardar perfil";
+}
+
+// ---------------------------------------------------------------------------
+// Plataforma (administrador de ALAIA)
+// ---------------------------------------------------------------------------
+
+window.addEventListener("alaia:tenant-suspended", () => showTenantSuspended());
+if (suspendedChangeTenantButton) suspendedChangeTenantButton.addEventListener("click", () => openTenantPicker());
+
+function showTenantSuspended() {
+  state.tenantSuspended = true;
+  if (tenantSuspendedBlock) tenantSuspendedBlock.hidden = false;
+  const pageWrap = document.getElementById("page-wrap");
+  if (pageWrap) pageWrap.hidden = true;
+}
+
+function hideTenantSuspended() {
+  state.tenantSuspended = false;
+  if (tenantSuspendedBlock) tenantSuspendedBlock.hidden = true;
+  const pageWrap = document.getElementById("page-wrap");
+  if (pageWrap) pageWrap.hidden = false;
+}
+
+function setPlatformStatus(message, tone) {
+  if (!platformStatus) return;
+  platformStatus.textContent = message;
+  platformStatus.className = `form-status is-${tone}`;
+}
+
+function renderPlatformSummary(data) {
+  const tenants = data?.tenants ?? {};
+  const cards = [
+    { label: "Negocios totales", value: tenants.total },
+    { label: "Activos", value: tenants.active },
+    { label: "Suspendidos", value: tenants.suspended },
+    { label: "En prueba", value: tenants.trial },
+    { label: "Citas últimos 7 días", value: data?.appointmentsLast7Days },
+    { label: "Clientes totales", value: data?.customersTotal },
+    { label: "Mensajes IA (30 días)", value: data?.agentMessagesLast30Days },
+  ];
+  platformSummary.replaceChildren(...cards.map((card) => {
+    const article = document.createElement("article");
+    article.className = "platform-summary-card";
+    const label = document.createElement("span");
+    label.className = "platform-summary-label";
+    label.textContent = card.label;
+    const value = document.createElement("strong");
+    value.className = "platform-summary-value";
+    value.textContent = String(numberOrZero(card.value));
+    article.append(label, value);
+    return article;
+  }));
+}
+
+async function loadPlatformSummary() {
+  if (!state.isPlatformAdmin) return;
+  const seq = ++state.platformSummarySeq;
+  try {
+    const data = await getPlatformSummary();
+    if (seq !== state.platformSummarySeq) return;
+    state.platformSummaryData = data;
+    renderPlatformSummary(data);
+  } catch (error) {
+    if (seq !== state.platformSummarySeq) return;
+    await handlePlatformError(error, "summary");
+  }
+}
+
+function setPlatformLoading() {
+  if (!platformTenantsBody) return;
+  platformTenantsBody.replaceChildren();
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = 9;
+  cell.className = "platform-message";
+  cell.textContent = "Cargando negocios…";
+  row.append(cell);
+  platformTenantsBody.append(row);
+  platformEmpty.hidden = true;
+  platformTenantsCount.textContent = "";
+  if (platformStatus) setPlatformStatus("Cargando…", "loading");
+}
+
+async function loadPlatformTenants() {
+  if (!state.isPlatformAdmin) return;
+  const seq = ++state.platformSeq;
+  setPlatformLoading();
+  try {
+    const data = await listPlatformTenants({ query: state.platformQuery, status: state.platformStatusFilter });
+    if (seq !== state.platformSeq) return;
+    state.platformTenants = Array.isArray(data?.tenants) ? data.tenants : [];
+    renderPlatformTenants();
+    setSyncStatus("online");
+  } catch (error) {
+    if (seq !== state.platformSeq) return;
+    await handlePlatformError(error, "list");
+  }
+}
+
+async function loadPlatformDashboard() {
+  if (!state.isPlatformAdmin) return;
+  await Promise.all([loadPlatformSummary(), loadPlatformTenants()]);
+}
+
+function renderPlatformError(message) {
+  if (!platformTenantsBody) return;
+  platformTenantsBody.replaceChildren();
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = 9;
+  cell.className = "platform-message is-error";
+  cell.textContent = message;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "secondary-button";
+  retry.dataset.retryPlatform = "1";
+  retry.textContent = "Reintentar";
+  cell.append(retry);
+  row.append(cell);
+  platformTenantsBody.append(row);
+  platformEmpty.hidden = true;
+  platformTenantsCount.textContent = "";
+}
+
+async function handlePlatformError(error, context) {
+  if (isUnauthorized(error)) {
+    await forceSignOut(messageForError(error));
+    return;
+  }
+  if (error.code === "not_platform_admin") {
+    state.isPlatformAdmin = false;
+    updatePlatformVisibility();
+    hidePlatformView();
+    setPlatformStatus(messageForError(error), "error");
+    return;
+  }
+  const message = messageForError(error);
+  if (context === "detail") {
+    platformDetailError.textContent = message;
+    return;
+  }
+  setPlatformStatus(message, "error");
+  renderPlatformError(message);
+}
+
+function hidePlatformView() {
+  if (platformView) platformView.hidden = true;
+  if (state.view === "plataforma") setView("resumen");
+}
+
+function platformPlanLabel(plan) {
+  if (plan === "basico") return "Básico";
+  if (plan === "pro") return "Pro";
+  return "Trial";
+}
+
+function renderPlatformTenants() {
+  const tenants = state.platformTenants;
+  platformTenantsBody.innerHTML = tenants.map((tenant) => {
+    const counts = tenant.counts ?? {};
+    const usage = tenant.usage ?? {};
+    const suspended = tenant.status === "suspended";
+    const name = String(tenant.name ?? "");
+    return `<tr>
+      <td><strong>${escapeHtml(name)}</strong><span class="platform-slug">${escapeHtml(tenant.slug ?? "")}</span></td>
+      <td>${escapeHtml(SECTOR_LABELS[tenant.sector] ?? tenant.sector ?? "—")}</td>
+      <td class="platform-owner">${escapeHtml(tenant.ownerEmail ?? "—")}</td>
+      <td><span class="platform-chip">${escapeHtml(platformPlanLabel(tenant.plan))}</span></td>
+      <td><span class="status ${suspended ? "status-cancelled" : "status-upcoming"}">${suspended ? "Suspendido" : "Activo"}</span></td>
+      <td>${numberOrZero(counts.appointments)}</td>
+      <td>${numberOrZero(counts.customers)}</td>
+      <td>${numberOrZero(usage.agentMessages)}</td>
+      <td><button class="row-shift" type="button" data-platform-tenant-id="${escapeHtml(tenant.tenantId)}" aria-label="Ver el detalle de ${escapeHtml(name)}">Ver detalle</button></td>
+    </tr>`;
+  }).join("");
+  platformEmpty.hidden = tenants.length > 0;
+  platformTenantsCount.textContent = `${tenants.length} ${tenants.length === 1 ? "negocio" : "negocios"}`;
+  setPlatformStatus("", "idle");
+}
+
+platformSearchInput.addEventListener("input", () => {
+  clearTimeout(state.platformSearchTimer);
+  state.platformSearchTimer = setTimeout(() => {
+    state.platformQuery = platformSearchInput.value.trim();
+    loadPlatformTenants();
+  }, 250);
+});
+
+platformStatusFilter.addEventListener("change", () => {
+  state.platformStatusFilter = platformStatusFilter.value;
+  loadPlatformTenants();
+});
+
+platformTenantsBody.addEventListener("click", (event) => {
+  const retry = event.target.closest("[data-retry-platform]");
+  if (retry) {
+    loadPlatformDashboard();
+    return;
+  }
+  const button = event.target.closest("[data-platform-tenant-id]");
+  if (button) openPlatformDetail(button.dataset.platformTenantId);
+});
+
+platformNotesInput.addEventListener("input", () => {
+  platformNotesCount.textContent = String(platformNotesInput.value.length);
+});
+
+closePlatformDetailButton.addEventListener("click", () => platformDetailDialog.close());
+platformDetailDialog.addEventListener("close", () => {
+  state.platformDetailId = null;
+  state.platformDetailData = null;
+});
+
+async function openPlatformDetail(tenantId) {
+  if (!tenantId || !platformDetailDialog) return;
+  state.platformDetailId = tenantId;
+  const seq = (state.platformDetailSeq = (state.platformDetailSeq ?? 0) + 1);
+  platformDetailTitle.textContent = "Negocio";
+  platformDetailStatus.textContent = "Cargando…";
+  platformDetailStatus.className = "status status-upcoming";
+  platformDetailMeta.textContent = "";
+  platformDetailInfo.replaceChildren(textBlock("Cargando detalle…", "platform-message"));
+  platformDetailMembers.replaceChildren(textBlock("Cargando miembros…", "platform-message"));
+  platformDetailActivity.replaceChildren(textBlock("Cargando actividad…", "platform-message"));
+  platformDetailMessage.textContent = "";
+  platformDetailError.textContent = "";
+  platformPlanSelect.disabled = true;
+  platformNotesInput.disabled = true;
+  platformNotesCount.textContent = "0";
+  platformSavePlanButton.disabled = true;
+  platformSaveNotesButton.disabled = true;
+  platformToggleStatusButton.disabled = true;
+  if (!platformDetailDialog.open) platformDetailDialog.showModal();
+
+  try {
+    const data = await getPlatformTenant(tenantId);
+    if (seq !== state.platformDetailSeq || !platformDetailDialog.open) return;
+    const tenant = data?.tenant ?? null;
+    if (!tenant) throw new Error("sin detalle");
+    const summary = state.platformTenants.find((item) => item.tenantId === tenantId) ?? {};
+    const merged = {
+      ...summary,
+      ...tenant,
+      counts: tenant.counts ?? summary.counts,
+      usage: tenant.usage ?? summary.usage,
+      ownerEmail: tenant.ownerEmail ?? summary.ownerEmail,
+    };
+    state.platformDetailData = merged;
+    renderPlatformDetail(merged);
+  } catch (error) {
+    if (seq !== state.platformDetailSeq) return;
+    if (isUnauthorized(error)) {
+      platformDetailDialog.close();
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    await handlePlatformError(error, "detail");
+  }
+}
+
+function renderPlatformDetail(tenant) {
+  const suspended = tenant.status === "suspended";
+  platformDetailTitle.textContent = tenant.name ?? "Negocio";
+  platformDetailStatus.textContent = suspended ? "Suspendido" : "Activo";
+  platformDetailStatus.className = `status ${suspended ? "status-cancelled" : "status-upcoming"}`;
+  platformDetailMeta.textContent = `${SECTOR_LABELS[tenant.sector] ?? tenant.sector ?? "—"} · ${tenant.slug ?? "—"} · ${tenant.timeZone ?? "—"}`;
+
+  const info = document.createElement("div");
+  info.className = "customer-info-lines";
+  info.append(
+    platformInfoLine("Dueño", tenant.ownerEmail ?? "—"),
+    platformInfoLine("Plan", platformPlanLabel(tenant.plan)),
+    platformInfoLine("Creado", formatMediumDateFromValue(tenant.createdAt) || "—"),
+    platformInfoLine("Citas", String(numberOrZero(tenant.counts?.appointments))),
+    platformInfoLine("Clientes", String(numberOrZero(tenant.counts?.customers))),
+    platformInfoLine("Miembros", String(numberOrZero(tenant.counts?.members ?? tenant.members?.length))),
+    platformInfoLine("Mensajes IA", String(numberOrZero(tenant.usage?.agentMessages))),
+  );
+  platformDetailInfo.replaceChildren(info);
+
+  const members = Array.isArray(tenant.members) ? tenant.members : [];
+  if (!members.length) {
+    platformDetailMembers.replaceChildren(textBlock("Sin miembros registrados.", "platform-message"));
+  } else {
+    platformDetailMembers.replaceChildren(...members.map((member) => {
+      const row = document.createElement("div");
+      row.className = "platform-member";
+      const email = document.createElement("span");
+      email.textContent = member.email ?? member.uid ?? "Miembro";
+      const role = document.createElement("span");
+      role.textContent = ROLE_LABELS[member.role] ?? member.role ?? "Miembro";
+      row.append(email, role);
+      return row;
+    }));
+  }
+
+  const activity = Array.isArray(tenant.recentActivity) ? tenant.recentActivity : [];
+  if (!activity.length) {
+    platformDetailActivity.replaceChildren(textBlock("Sin actividad reciente.", "platform-message"));
+  } else {
+    platformDetailActivity.replaceChildren(...activity.map((item) => {
+      const row = document.createElement("div");
+      row.className = "platform-activity-item";
+      const label = document.createElement("span");
+      label.textContent = platformActivityLabel(item);
+      const when = document.createElement("span");
+      when.textContent = formatActivityDate(item?.at ?? item?.createdAt ?? item?.timestamp);
+      row.append(label, when);
+      return row;
+    }));
+  }
+
+  const plan = ["trial", "basico", "pro"].includes(tenant.plan) ? tenant.plan : "trial";
+  platformPlanSelect.value = plan;
+  platformPlanSelect.disabled = false;
+  platformNotesInput.value = typeof tenant.notes === "string" ? tenant.notes : "";
+  platformNotesInput.disabled = false;
+  platformNotesCount.textContent = String(platformNotesInput.value.length);
+  platformSavePlanButton.disabled = false;
+  platformSaveNotesButton.disabled = false;
+  platformToggleStatusButton.disabled = false;
+  platformToggleStatusButton.textContent = suspended ? "Reactivar" : "Suspender";
+  platformDetailMessage.textContent = "";
+  platformDetailError.textContent = "";
+}
+
+function platformInfoLine(labelText, valueText) {
+  const line = document.createElement("div");
+  line.className = "customer-info-line";
+  const label = document.createElement("span");
+  label.className = "customer-info-label";
+  label.textContent = labelText;
+  const value = document.createElement("span");
+  value.className = "customer-info-value";
+  value.textContent = valueText;
+  line.append(label, value);
+  return line;
+}
+
+function platformActivityLabel(item) {
+  if (!item) return "Actividad";
+  if (typeof item === "string") return item;
+  if (item.type === "appointment") {
+    return [item.customerName, item.serviceName, item.startsAtLocal].filter(Boolean).join(" · ") || "Cita";
+  }
+  const labels = { created: "Cita creada", cancelled: "Cita cancelada", rescheduled: "Cita reprogramada", login: "Ingreso", config: "Configuración" };
+  if (item.type && labels[item.type]) return labels[item.type];
+  return item.description ?? item.label ?? item.type ?? item.action ?? "Actividad";
+}
+
+function formatActivityDate(value) {
+  if (!value) return "";
+  const date = new Date(typeof value === "object" && value.seconds ? value.seconds * 1000 : value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: businessTimeZone() }).format(date);
+}
+
+async function refreshPlatformData() {
+  await Promise.all([loadPlatformSummary(), loadPlatformTenants()]);
+}
+
+platformSavePlanButton.addEventListener("click", async () => {
+  const tenant = state.platformDetailData;
+  if (!tenant) return;
+  const plan = platformPlanSelect.value;
+  platformSavePlanButton.disabled = true;
+  platformDetailError.textContent = "";
+  try {
+    const data = await updatePlatformTenant(tenant.tenantId, { plan });
+    if (data?.tenant) {
+      state.platformDetailData = data.tenant;
+      renderPlatformDetail(data.tenant);
+    }
+    platformDetailMessage.textContent = "Plan actualizado.";
+    await refreshPlatformData();
+  } catch (error) {
+    await handlePlatformError(error, "detail");
+  } finally {
+    platformSavePlanButton.disabled = !state.platformDetailData;
+  }
+});
+
+platformSaveNotesButton.addEventListener("click", async () => {
+  const tenant = state.platformDetailData;
+  if (!tenant) return;
+  const notes = platformNotesInput.value.slice(0, 300);
+  platformSaveNotesButton.disabled = true;
+  platformDetailError.textContent = "";
+  try {
+    const data = await updatePlatformTenant(tenant.tenantId, { notes });
+    if (data?.tenant) {
+      state.platformDetailData = data.tenant;
+      renderPlatformDetail(data.tenant);
+    }
+    platformDetailMessage.textContent = "Notas guardadas.";
+    await refreshPlatformData();
+  } catch (error) {
+    await handlePlatformError(error, "detail");
+  } finally {
+    platformSaveNotesButton.disabled = !state.platformDetailData;
+  }
+});
+
+platformToggleStatusButton.addEventListener("click", async () => {
+  const tenant = state.platformDetailData;
+  if (!tenant) return;
+  const suspend = tenant.status !== "suspended";
+  const verb = suspend ? "suspender" : "reactivar";
+  const confirmed = window.confirm(`¿Seguro que quieres ${verb} «${tenant.name}»?`);
+  if (!confirmed) return;
+  platformToggleStatusButton.disabled = true;
+  platformDetailError.textContent = "";
+  try {
+    await updatePlatformTenant(tenant.tenantId, { status: suspend ? "suspended" : "active" });
+    showToast(`Negocio «${tenant.name}» ${suspend ? "suspendido" : "reactivado"}.`);
+    platformDetailDialog.close();
+    await refreshPlatformData();
+  } catch (error) {
+    await handlePlatformError(error, "detail");
+    platformToggleStatusButton.disabled = false;
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Configuración del agente (Asistente IA)
 // ---------------------------------------------------------------------------
 
@@ -3265,6 +4216,7 @@ rescheduleForm.addEventListener("submit", async (event) => {
       agendaDateInput.value = savedDate;
     }
     await loadDay(state.selectedDate);
+    refreshDashboardAfterChange();
   } catch (error) {
     if (isUnauthorized(error)) {
       rescheduleDialog.close();
@@ -3453,6 +4405,7 @@ appointmentForm.addEventListener("submit", async (event) => {
     } else {
       await loadDay(state.selectedDate);
     }
+    refreshDashboardAfterChange();
   } catch (error) {
     if (isUnauthorized(error)) {
       appointmentDialog.close();
@@ -3659,5 +4612,67 @@ function escapeHtml(value) {
 // ---------------------------------------------------------------------------
 // Inicio
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Tema claro / oscuro / automático
+// ---------------------------------------------------------------------------
+
+const THEME_STORAGE_KEY = "alaia.theme";
+const themeMediaQuery = typeof window.matchMedia === "function"
+  ? window.matchMedia("(prefers-color-scheme: dark)")
+  : null;
+const themeOptions = Array.from(document.querySelectorAll(".theme-option[data-theme-choice]"));
+const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+let themeChoice = readThemeChoice();
+
+function readThemeChoice() {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === "light" || saved === "dark") return saved;
+  } catch {
+    // localStorage puede estar bloqueado; seguimos con automático.
+  }
+  return "auto";
+}
+
+function resolveTheme(choice) {
+  if (choice === "light" || choice === "dark") return choice;
+  return themeMediaQuery?.matches ? "dark" : "light";
+}
+
+function applyTheme(choice, { persist = true } = {}) {
+  themeChoice = choice === "light" || choice === "dark" ? choice : "auto";
+  const resolved = resolveTheme(themeChoice);
+  document.documentElement.setAttribute("data-theme", resolved);
+  document.documentElement.setAttribute("data-theme-choice", themeChoice);
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, themeChoice);
+    } catch {
+      // Sin persistencia si el navegador bloquea localStorage.
+    }
+  }
+  if (themeColorMeta) themeColorMeta.setAttribute("content", resolved === "dark" ? "#0f1a18" : "#f5f7f6");
+  for (const button of themeOptions) {
+    button.setAttribute("aria-pressed", String(button.dataset.themeChoice === themeChoice));
+  }
+}
+
+for (const button of themeOptions) {
+  button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));
+}
+
+if (themeMediaQuery) {
+  const onSystemThemeChange = () => {
+    if (themeChoice === "auto") applyTheme("auto", { persist: false });
+  };
+  if (typeof themeMediaQuery.addEventListener === "function") {
+    themeMediaQuery.addEventListener("change", onSystemThemeChange);
+  } else if (typeof themeMediaQuery.addListener === "function") {
+    themeMediaQuery.addListener(onSystemThemeChange);
+  }
+}
+
+applyTheme(themeChoice, { persist: false });
 
 setAuthMode("signin");

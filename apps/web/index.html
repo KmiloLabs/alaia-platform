@@ -7,6 +7,21 @@
     <meta name="description" content="Alaia ayuda a organizar las citas y el día de tu negocio." />
     <title>Alaia — Tu negocio, en orden</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='26' fill='%230f766e'/%3E%3Ctext x='50' y='70' font-size='62' font-family='Georgia,serif' text-anchor='middle' fill='white'%3Ea%3C/text%3E%3C/svg%3E" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("alaia.theme");
+          var choice = saved === "light" || saved === "dark" ? saved : "auto";
+          var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme = choice === "auto" ? (prefersDark ? "dark" : "light") : choice;
+          document.documentElement.setAttribute("data-theme", theme);
+          document.documentElement.setAttribute("data-theme-choice", choice);
+        } catch (error) {
+          document.documentElement.setAttribute("data-theme", "light");
+          document.documentElement.setAttribute("data-theme-choice", "auto");
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -137,6 +152,7 @@
           <button class="nav-item" data-view="clientes"><span class="nav-icon" aria-hidden="true">♙</span><span>Clientes</span></button>
           <button class="nav-item" data-view="equipo" data-future="Equipo"><span class="nav-icon" aria-hidden="true">♧</span><span>Equipo</span></button>
           <button class="nav-item" data-view="servicios"><span class="nav-icon" aria-hidden="true">◇</span><span>Servicios</span></button>
+          <button class="nav-item" data-view="plataforma" id="platform-nav" hidden><span class="nav-icon" aria-hidden="true">▤</span><span>Plataforma</span></button>
         </nav>
 
         <div class="sidebar-bottom">
@@ -161,8 +177,13 @@
 
       <main class="main-content">
         <header class="topbar">
-          <div class="breadcrumb"><span>Mi negocio</span><span class="breadcrumb-separator">/</span><strong id="current-section">Resumen</strong></div>
+          <div class="breadcrumb"><span id="breadcrumb-root">Mi negocio</span><span class="breadcrumb-separator">/</span><strong id="current-section">Resumen</strong></div>
           <div class="topbar-actions">
+            <div class="theme-switch" role="group" aria-label="Tema del panel">
+              <button class="theme-option" type="button" data-theme-choice="light" aria-pressed="false" aria-label="Tema claro" title="Tema claro"><span aria-hidden="true">☀</span></button>
+              <button class="theme-option" type="button" data-theme-choice="dark" aria-pressed="false" aria-label="Tema oscuro" title="Tema oscuro"><span aria-hidden="true">☾</span></button>
+              <button class="theme-option" type="button" data-theme-choice="auto" aria-pressed="false" aria-label="Tema automático (sigue al sistema)" title="Tema automático"><span aria-hidden="true">◐</span></button>
+            </div>
             <span class="sample-badge" id="sync-status"><span class="sample-dot" id="sync-dot"></span><span id="sync-text">Conectando…</span></span>
             <button class="icon-button account-button" id="open-account" type="button" aria-label="Cuenta y sesión" title="Cuenta y sesión"><span class="profile-avatar" id="account-avatar" aria-hidden="true">A</span></button>
             <button class="icon-button notification-button" aria-label="Notificaciones" data-toast="No tienes notificaciones nuevas.">
@@ -171,6 +192,12 @@
             </button>
           </div>
         </header>
+
+        <div class="tenant-suspended" id="tenant-suspended" role="alert" hidden>
+          <span class="tenant-suspended-icon" aria-hidden="true">!</span>
+          <div><strong>Tu cuenta está suspendida.</strong><p>Contacta a ALAIA para reactivar tu negocio.</p></div>
+          <button class="secondary-button" id="suspended-change-tenant" type="button">Cambiar de negocio</button>
+        </div>
 
         <div class="page-wrap" id="page-wrap">
           <section class="welcome-row">
@@ -184,7 +211,7 @@
             </button>
           </section>
 
-          <section class="metric-grid" aria-label="Resumen del día seleccionado">
+          <section class="metric-grid" id="legacy-metrics" aria-label="Resumen del día seleccionado" hidden>
             <article class="metric-card metric-featured">
               <div class="metric-top"><span class="metric-icon calendar-icon" aria-hidden="true">▦</span><span class="metric-caption">DÍA SELECCIONADO</span></div>
               <p class="metric-value" id="appointments-total">0</p>
@@ -211,6 +238,63 @@
               <div class="metric-foot"><span class="trend-text" id="clients-foot">del día elegido</span></div>
             </article>
           </section>
+
+          <section class="dashboard-grid" id="dashboard-grid" aria-label="Resumen del negocio" hidden>
+            <article class="dashboard-card">
+              <span class="dashboard-label">Citas hoy</span>
+              <strong class="dashboard-value" id="dashboard-appointments-today">—</strong>
+              <span class="dashboard-foot" id="dashboard-cancelled">— canceladas este mes</span>
+            </article>
+            <article class="dashboard-card">
+              <span class="dashboard-label">Citas esta semana</span>
+              <strong class="dashboard-value" id="dashboard-appointments-week">—</strong>
+              <span class="dashboard-foot">lunes a domingo</span>
+            </article>
+            <article class="dashboard-card">
+              <span class="dashboard-label">Citas este mes</span>
+              <strong class="dashboard-value" id="dashboard-appointments-month">—</strong>
+              <span class="dashboard-foot" id="dashboard-date">—</span>
+            </article>
+            <article class="dashboard-card dashboard-card-money">
+              <span class="dashboard-label">Ingresos hoy</span>
+              <strong class="dashboard-value dashboard-money" id="dashboard-income-today">—</strong>
+              <span class="dashboard-foot">citas activas</span>
+            </article>
+            <article class="dashboard-card dashboard-card-money">
+              <span class="dashboard-label">Ingresos esta semana</span>
+              <strong class="dashboard-value dashboard-money" id="dashboard-income-week">—</strong>
+              <span class="dashboard-foot">citas activas</span>
+            </article>
+            <article class="dashboard-card dashboard-card-money">
+              <span class="dashboard-label">Ingresos este mes</span>
+              <strong class="dashboard-value dashboard-money" id="dashboard-income-month">—</strong>
+              <span class="dashboard-foot">citas activas</span>
+            </article>
+            <article class="dashboard-card">
+              <span class="dashboard-label">Clientes totales</span>
+              <strong class="dashboard-value" id="dashboard-customers-total">—</strong>
+              <span class="dashboard-foot">en tu lista</span>
+            </article>
+            <article class="dashboard-card">
+              <span class="dashboard-label">Clientes nuevos del mes</span>
+              <strong class="dashboard-value" id="dashboard-customers-new">—</strong>
+              <span class="dashboard-foot">este mes</span>
+            </article>
+          </section>
+          <p class="form-status dashboard-status" id="dashboard-status" role="status" aria-live="polite"></p>
+          <div class="dashboard-empty" id="dashboard-empty" hidden>
+            <strong>Aún no hay actividad este mes</strong>
+            <span>Crea citas, clientes y servicios para empezar a ver tus números aquí.</span>
+          </div>
+          <button class="secondary-button dashboard-retry" id="dashboard-retry" type="button" hidden>Reintentar</button>
+
+          <article class="panel dashboard-services" id="dashboard-services" aria-labelledby="dashboard-services-title" hidden>
+            <div class="panel-heading compact-heading">
+              <div><p class="eyebrow">ESTE MES</p><h2 id="dashboard-services-title">Servicios más pedidos</h2></div>
+              <span class="services-count" id="dashboard-services-count"></span>
+            </div>
+            <div class="dashboard-services-list" id="dashboard-top-services" aria-live="polite"></div>
+          </article>
 
           <section class="content-grid">
             <article class="panel agenda-panel">
@@ -273,6 +357,45 @@
                   </div>
                 </div>
               </form>
+            </article>
+
+            <article class="panel profile-panel" aria-labelledby="profile-title">
+              <div class="panel-heading">
+                <div><p class="eyebrow">PERFIL DEL NEGOCIO</p><h2 id="profile-title">Tu ficha pública</h2></div>
+                <span class="config-status" id="profile-status-badge">Cargando…</span>
+              </div>
+              <p class="config-intro">Así te verán tus clientes cuando compartas tu negocio. Estos datos también alimentan a tu asistente.</p>
+              <div class="profile-grid">
+                <form id="profile-form" class="profile-form">
+                  <label for="profile-description">Descripción</label>
+                  <textarea id="profile-description" rows="3" maxlength="300" placeholder="Ej. Barbería con estilo, en el centro de Bogotá."></textarea>
+                  <div class="config-counter"><span id="profile-description-count">0</span>/300 caracteres</div>
+                  <div class="form-pair">
+                    <div><label for="profile-address">Dirección</label><input id="profile-address" maxlength="200" placeholder="Ej. Calle 45 #12-30, Bogotá" /></div>
+                    <div><label for="profile-phone">Teléfono</label><input id="profile-phone" maxlength="30" placeholder="Ej. 6012345678" /></div>
+                  </div>
+                  <p class="profile-subtitle">Redes sociales</p>
+                  <div class="form-pair">
+                    <div><label for="social-instagram">Instagram</label><input id="social-instagram" maxlength="120" placeholder="https://instagram.com/tunegocio" /></div>
+                    <div><label for="social-facebook">Facebook</label><input id="social-facebook" maxlength="120" placeholder="https://facebook.com/tunegocio" /></div>
+                  </div>
+                  <div class="form-pair">
+                    <div><label for="social-tiktok">TikTok</label><input id="social-tiktok" maxlength="120" placeholder="https://tiktok.com/@tunegocio" /></div>
+                    <div><label for="social-whatsapp">WhatsApp</label><input id="social-whatsapp" maxlength="120" placeholder="Ej. 3001234567" /></div>
+                  </div>
+                  <label for="social-website">Sitio web</label>
+                  <input id="social-website" maxlength="120" placeholder="https://tunegocio.com" />
+                  <p class="form-error" id="profile-error" role="alert" aria-live="assertive"></p>
+                  <div class="dialog-actions profile-actions">
+                    <p class="form-status" id="profile-message" role="status" aria-live="polite"></p>
+                    <button class="primary-button" id="profile-save" type="submit">Guardar perfil</button>
+                  </div>
+                </form>
+                <aside class="profile-preview" aria-label="Vista previa de tu ficha pública">
+                  <p class="eyebrow">VISTA PREVIA</p>
+                  <div class="profile-preview-card" id="profile-preview"></div>
+                </aside>
+              </div>
             </article>
 
             <div class="config-grid">
@@ -393,6 +516,43 @@
                 <strong>Aún no tienes clientes</strong>
                 <span>Agrega tu primer cliente o créalo al agendar una cita.</span>
                 <button class="primary-button" id="new-customer-empty" type="button">Crear mi primer cliente</button>
+              </div>
+            </article>
+          </section>
+
+          <section class="platform-view" id="platform-view" aria-labelledby="platform-title" hidden>
+            <div class="platform-summary" id="platform-summary" aria-label="Resumen de la plataforma"></div>
+            <article class="panel platform-panel">
+              <div class="panel-heading">
+                <div><p class="eyebrow">NEGOCIOS</p><h2 id="platform-title">Negocios registrados</h2></div>
+                <span class="services-count" id="platform-tenants-count"></span>
+              </div>
+              <div class="platform-filters">
+                <div>
+                  <label for="platform-search">Buscar</label>
+                  <input id="platform-search" type="search" maxlength="40" placeholder="Nombre, slug o correo del dueño" autocomplete="off" />
+                </div>
+                <div>
+                  <label for="platform-status-filter">Estado</label>
+                  <select id="platform-status-filter">
+                    <option value="">Todos</option>
+                    <option value="active">Activos</option>
+                    <option value="suspended">Suspendidos</option>
+                  </select>
+                </div>
+              </div>
+              <p class="form-status" id="platform-status" role="status" aria-live="polite"></p>
+              <div class="platform-table-wrap">
+                <table class="platform-table">
+                  <thead>
+                    <tr><th>Negocio</th><th>Sector</th><th>Dueño</th><th>Plan</th><th>Estado</th><th>Citas</th><th>Clientes</th><th>Mensajes IA</th><th><span class="visually-hidden">Acciones</span></th></tr>
+                  </thead>
+                  <tbody id="platform-tenants-body"></tbody>
+                </table>
+              </div>
+              <div class="platform-empty" id="platform-empty" hidden>
+                <strong>No hay negocios que coincidan</strong>
+                <span>Prueba con otro nombre, slug, correo o filtro de estado.</span>
               </div>
             </article>
           </section>
@@ -537,6 +697,41 @@
         </div>
       </div>
       <div class="dialog-actions"><button class="secondary-button" id="close-customer-detail-button" type="button">Cerrar</button></div>
+    </dialog>
+
+    <dialog class="appointment-dialog platform-dialog" id="platform-detail-dialog" aria-labelledby="platform-detail-title">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">PLATAFORMA</p><h2 id="platform-detail-title">Negocio</h2></div>
+        <div class="customer-detail-head">
+          <span class="status status-upcoming" id="platform-detail-status">Activo</span>
+          <button class="dialog-close" id="close-platform-detail" type="button" aria-label="Cerrar">×</button>
+        </div>
+      </div>
+      <p class="dialog-note" id="platform-detail-meta">—</p>
+      <p class="form-status" id="platform-detail-message" role="status" aria-live="polite"></p>
+      <p class="form-error" id="platform-detail-error" role="alert" aria-live="assertive"></p>
+      <div class="platform-detail-grid">
+        <div class="platform-detail-info" id="platform-detail-info"></div>
+        <div class="platform-detail-members"><p class="eyebrow">MIEMBROS</p><div id="platform-detail-members"></div></div>
+      </div>
+      <div class="platform-actions">
+        <div>
+          <label for="platform-plan">Plan</label>
+          <select id="platform-plan">
+            <option value="trial">Trial</option>
+            <option value="basico">Básico</option>
+            <option value="pro">Pro</option>
+          </select>
+        </div>
+        <button class="secondary-button" id="platform-save-plan" type="button">Guardar plan</button>
+      </div>
+      <label for="platform-notes">Notas del administrador<textarea id="platform-notes" rows="3" maxlength="300" placeholder="Ej. Contactado para renovación"></textarea></label>
+      <div class="config-counter"><span id="platform-notes-count">0</span>/300 caracteres</div>
+      <div class="dialog-actions platform-detail-actions">
+        <button class="secondary-button" id="platform-save-notes" type="button">Guardar notas</button>
+        <button class="row-cancel" id="platform-toggle-status" type="button">Suspender</button>
+      </div>
+      <div class="platform-activity"><p class="eyebrow">ACTIVIDAD RECIENTE</p><div id="platform-detail-activity"></div></div>
     </dialog>
 
     <dialog class="appointment-dialog professional-dialog" id="professional-dialog" aria-labelledby="professional-dialog-title">

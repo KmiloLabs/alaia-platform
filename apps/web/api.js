@@ -31,6 +31,15 @@ const ERROR_MESSAGES = {
   invalid_customer_notes: "Las notas del cliente no pueden superar los 300 caracteres.",
   customer_phone_taken: "Ese teléfono ya está registrado en otro cliente de tu negocio.",
   customer_not_found: "No encontramos ese cliente en tu negocio.",
+  not_platform_admin: "Tu cuenta no tiene acceso al panel de plataforma de ALAIA.",
+  tenant_suspended: "Tu cuenta está suspendida. Contacta a ALAIA.",
+  invalid_status: "El estado indicado no es válido.",
+  invalid_plan: "El plan indicado no es válido.",
+  invalid_notes: "Las notas no pueden superar los 300 caracteres.",
+  invalid_description: "La descripción no puede superar los 300 caracteres.",
+  invalid_address: "La dirección no puede superar los 200 caracteres.",
+  invalid_phone: "El teléfono del negocio no es válido.",
+  invalid_social_link: "Revisa las redes: usa https:// o un número de WhatsApp válido.",
   invalid_sector: "Selecciona un tipo de negocio válido.",
   invalid_timezone: "La zona horaria no es válida.",
   appointment_conflict: "Ese horario se cruza con otra cita del negocio. Elige otra hora.",
@@ -130,6 +139,9 @@ async function request(path, { method = "GET", body } = {}) {
   if (!response.ok) {
     const code = payload?.error?.code ?? `http_${response.status}`;
     const message = payload?.error?.message ?? `La API respondió ${response.status}.`;
+    if (code === "tenant_suspended" && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("alaia:tenant-suspended", { detail: { message } }));
+    }
     throw new ApiError(response.status, code, message);
   }
 
@@ -138,6 +150,33 @@ async function request(path, { method = "GET", body } = {}) {
 
 export function listTenants() {
   return request("/api/v1/me/tenants");
+}
+
+export function getMe() {
+  return request("/api/v1/me");
+}
+
+export function getPlatformSummary() {
+  return request("/api/v1/platform/summary");
+}
+
+export function listPlatformTenants({ query = "", status = "" } = {}) {
+  const params = new URLSearchParams();
+  if (query) params.set("query", query);
+  if (status) params.set("status", status);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return request(`/api/v1/platform/tenants${suffix}`);
+}
+
+export function getPlatformTenant(tenantId) {
+  return request(`/api/v1/platform/tenants/${encodeURIComponent(tenantId)}`);
+}
+
+export function updatePlatformTenant(tenantId, changes) {
+  return request(`/api/v1/platform/tenants/${encodeURIComponent(tenantId)}`, {
+    method: "PATCH",
+    body: changes,
+  });
 }
 
 export function createTenant({ name, sector, timeZone }) {
@@ -149,6 +188,13 @@ export function createTenant({ name, sector, timeZone }) {
 
 export function getTenantContext(tenantId) {
   return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/context`);
+}
+
+export function getDashboard(tenantId, date) {
+  const params = new URLSearchParams();
+  if (date) params.set("date", date);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/dashboard${suffix}`);
 }
 
 export function updateTenant(tenantId, changes) {
