@@ -51,6 +51,8 @@ El proveedor `mock` (solo desarrollo) se habilita con `AGENT_ENABLE_MOCK=true` y
 
 - `docs/corte-agenda-panel-real.md`: contrato del corte de agenda (rutas, reglas, criterios de aceptación).
 - `docs/corte-agente-configurable.md`: contrato del agente (proveedores, configuración por negocio, herramientas).
+- `docs/decision-whatsapp.md`: por qué ALAIA usa WhatsApp Cloud API oficial y Selene sigue con Evolution.
+- `docs/auditoria-documento-maestro.md`: estado real del código frente al documento maestro, riesgos y plan revisado.
 - `docs/decision-whatsapp.md`: por qué Alaia usa WhatsApp Cloud API oficial y no Evolution API.
 - `docs/agente-recepcion-n8n.md`: qué se reutiliza del recepcionista IA de n8n y cómo se conecta a Alaia.
 - `docs/arquitectura.md`: arquitectura, seguridad, costos y escalabilidad.
