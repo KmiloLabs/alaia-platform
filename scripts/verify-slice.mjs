@@ -360,6 +360,53 @@ async function main() {
   const crossServices = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, { token: userB.idToken });
   check("B no puede ver los servicios de A", [403, 404].includes(crossServices.status), `HTTP ${crossServices.status}`);
 
+  section("13. Clientes con ficha e historial");
+  const customerCreated = await api(`/api/v1/tenants/${tenantA.tenantId}/customers`, {
+    method: "POST", token: userA.idToken, body: { name: "Camila Rojas", phone: "3001234567", notes: "Prefiere corte con máquina 2." },
+  });
+  const customer = customerCreated.json?.customer ?? {};
+  const customerId = customer.customerId ?? customer.id;
+  check("A crea un cliente con teléfono", customerCreated.status === 201 && customer.phone === "3001234567", `HTTP ${customerCreated.status} ${customer.name ?? ""}`);
+
+  const byName = await api(`/api/v1/tenants/${tenantA.tenantId}/customers?query=Camila`, { token: userA.idToken });
+  const byPhone = await api(`/api/v1/tenants/${tenantA.tenantId}/customers?query=3001234567`, { token: userA.idToken });
+  check("Se busca por nombre y por teléfono", (byName.json?.customers ?? []).length > 0 && (byPhone.json?.customers ?? []).length > 0, `nombre=${(byName.json?.customers ?? []).length} teléfono=${(byPhone.json?.customers ?? []).length}`);
+
+  const duplicatePhone = await api(`/api/v1/tenants/${tenantA.tenantId}/customers`, {
+    method: "POST", token: userA.idToken, body: { name: "Otra Camila", phone: "300 123 4567" },
+  });
+  check("Un teléfono repetido responde 409", duplicatePhone.status === 409 && duplicatePhone.json?.error?.code === "customer_phone_taken", `HTTP ${duplicatePhone.status}`);
+
+  const badPhone = await api(`/api/v1/tenants/${tenantA.tenantId}/customers`, {
+    method: "POST", token: userA.idToken, body: { name: "Sin teléfono válido", phone: "12" },
+  });
+  check("Un teléfono inválido responde 400", badPhone.status === 400 && badPhone.json?.error?.code === "invalid_customer_phone", `HTTP ${badPhone.status} ${badPhone.json?.error?.code ?? ""}`);
+
+  const linkedAppointment = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerId, serviceName: "Corte clásico", startsAt: "2030-05-14T11:00", durationMinutes: 45, priceCOP: 55000 },
+  });
+  const linked = linkedAppointment.json?.appointment ?? {};
+  check("La cita queda vinculada al cliente", linkedAppointment.status === 201 && linked.customerId === customerId && linked.customerName === "Camila Rojas", `customerId=${linked.customerId}`);
+
+  const detail = await api(`/api/v1/tenants/${tenantA.tenantId}/customers/${customerId}`, { token: userA.idToken });
+  const history = detail.json?.appointments ?? [];
+  check("La ficha del cliente trae su historial", detail.status === 200 && history.some((item) => item.appointmentId === linked.appointmentId || item.id === linked.appointmentId), `${history.length} cita(s)`);
+
+  const crossCustomer = await api(`/api/v1/tenants/${tenantA.tenantId}/customers`, { token: userB.idToken });
+  check("B no puede ver los clientes de A", [403, 404].includes(crossCustomer.status), `HTTP ${crossCustomer.status}`);
+
+  const foreignAppointment = await api(`/api/v1/tenants/${tenantB.tenantId}/appointments`, {
+    method: "POST", token: userB.idToken,
+    body: { customerId, serviceName: "Corte", startsAt: "2030-05-15T11:00", durationMinutes: 30, priceCOP: 0 },
+  });
+  check("No se puede usar un cliente de otro negocio", foreignAppointment.status === 404 && foreignAppointment.json?.error?.code === "customer_not_found", `HTTP ${foreignAppointment.status} ${foreignAppointment.json?.error?.code ?? ""}`);
+
+  const customerDeleted = await api(`/api/v1/tenants/${tenantA.tenantId}/customers/${customerId}`, { method: "DELETE", token: userA.idToken });
+  const activeList = await api(`/api/v1/tenants/${tenantA.tenantId}/customers`, { token: userA.idToken });
+  const inactiveList = await api(`/api/v1/tenants/${tenantA.tenantId}/customers?includeInactive=1`, { token: userA.idToken });
+  check("Desactivar un cliente lo saca de la lista", customerDeleted.status === 200 && (customerDeleted.json?.customer?.active === false) && !(activeList.json?.customers ?? []).some((item) => item.name === "Camila Rojas"), `activos=${(activeList.json?.customers ?? []).length} con inactivos=${(inactiveList.json?.customers ?? []).length}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {

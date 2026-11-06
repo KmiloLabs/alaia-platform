@@ -17,6 +17,8 @@ import {
   validateAppointmentRange,
   validateRescheduleInput,
 } from "./appointment-validation.js";
+import { getCustomer } from "./customer-catalog.js";
+import { customerRepository } from "./customer-repository.js";
 
 const MAX_APPOINTMENT_DURATION_MS = 480 * 60 * 1000;
 const FALLBACK_TIME_ZONE = "America/Bogota";
@@ -87,7 +89,28 @@ export async function getAvailability({ tenant, query, now = new Date() }) {
 }
 
 export async function createAppointment({ tenantId, timeZone, actorUid, body }) {
-  const validation = validateAppointmentInput(body, timeZone);
+  const rawBody = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+
+  // customerId opcional: el cliente debe pertenecer al negocio y sus datos
+  // (nombre y teléfono) mandan sobre lo que envíe el cuerpo.
+  const customerIdInput = typeof rawBody.customerId === "string" ? rawBody.customerId.trim() : "";
+  let customer = null;
+  if (customerIdInput !== "") {
+    customer = await getCustomer({ tenantId, customerId: customerIdInput, repository: customerRepository });
+    if (!customer) {
+      return {
+        ok: false,
+        status: 404,
+        code: "customer_not_found",
+        message: "No encontramos ese cliente en el negocio.",
+      };
+    }
+  }
+  const effectiveBody = customer
+    ? { ...rawBody, customerName: customer.name, customerPhone: customer.phone || null }
+    : rawBody;
+
+  const validation = validateAppointmentInput(effectiveBody, timeZone);
   if (!validation.ok) return { ok: false, status: 400, code: validation.code, message: validation.message };
 
   const input = validation.value;
@@ -122,6 +145,7 @@ export async function createAppointment({ tenantId, timeZone, actorUid, body }) 
 
     transaction.create(appointmentRef, {
       tenantId,
+      customerId: customer?.customerId ?? null,
       customerName: input.customerName,
       customerPhone: input.customerPhone,
       serviceName: input.serviceName,
@@ -310,6 +334,7 @@ function appointmentNotFound() {
 export function serializeAppointment(appointmentId, data) {
   return {
     appointmentId,
+    customerId: data?.customerId ?? null,
     customerName: data?.customerName ?? null,
     customerPhone: data?.customerPhone ?? null,
     serviceName: data?.serviceName ?? null,

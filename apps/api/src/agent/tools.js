@@ -11,17 +11,19 @@ import {
   parseLocalDateTime,
   utcToLocalDate,
 } from "../timezone.js";
+import { normalizeCustomerPhone } from "../customer-catalog.js";
 
 const MAX_AGENDA_RESULTS = 20;
 const MAX_AVAILABILITY_RESULTS = 12;
 const MAX_SERVICE_RESULTS = 20;
+const MAX_CUSTOMER_RESULTS = 10;
 const DEFAULT_DURATION_MINUTES = 45;
 const FALLBACK_TIME_ZONE = "America/Bogota";
 const APPOINTMENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
-// Las dependencias reales (servicio de agenda y catálogo con Firestore) se
-// cargan de forma perezosa para que las pruebas unitarias puedan inyectar
-// dobles sin tocar Firebase. En producción executeTool no recibe deps.
+// Las dependencias reales (servicio de agenda, catálogos y clientes con
+// Firestore) se cargan de forma perezosa para que las pruebas unitarias puedan
+// inyectar dobles sin tocar Firebase. En producción executeTool no recibe deps.
 let defaultDepsPromise = null;
 async function loadDefaultDeps() {
   if (!defaultDepsPromise) {
@@ -29,24 +31,44 @@ async function loadDefaultDeps() {
       import("../appointment-service.js"),
       import("../service-catalog.js"),
       import("../service-repository.js"),
-    ]).then(([agenda, catalog, repository]) => ({
-      getAvailability: agenda.getAvailability,
-      listAppointments: agenda.listAppointments,
-      createAppointment: agenda.createAppointment,
-      rescheduleAppointment: agenda.rescheduleAppointment,
-      cancelAppointment: agenda.cancelAppointment,
-      listActiveServices: ({ tenantId, query }) => catalog.listActiveServices({
-        tenantId,
-        query,
-        repository: repository.serviceRepository,
-      }),
-      getActiveService: ({ tenantId, serviceId }) => catalog.getActiveService({
-        tenantId,
-        serviceId,
-        repository: repository.serviceRepository,
-      }),
-      now: () => new Date(),
-    }));
+      import("../customer-catalog.js"),
+      import("../customer-repository.js"),
+    ]).then(([agenda, catalog, repository, customers, customerRepositoryModule]) => {
+      const customerRepo = customerRepositoryModule.customerRepository;
+      return {
+        getAvailability: agenda.getAvailability,
+        listAppointments: agenda.listAppointments,
+        createAppointment: agenda.createAppointment,
+        rescheduleAppointment: agenda.rescheduleAppointment,
+        cancelAppointment: agenda.cancelAppointment,
+        listActiveServices: ({ tenantId, query }) => catalog.listActiveServices({
+          tenantId,
+          query,
+          repository: repository.serviceRepository,
+        }),
+        getActiveService: ({ tenantId, serviceId }) => catalog.getActiveService({
+          tenantId,
+          serviceId,
+          repository: repository.serviceRepository,
+        }),
+        searchCustomers: ({ tenantId, query }) => customers.searchActiveCustomers({
+          tenantId,
+          query,
+          repository: customerRepo,
+        }),
+        findCustomerByPhone: ({ tenantId, phone }) => customers.findCustomerByPhone({
+          tenantId,
+          phone,
+          repository: customerRepo,
+        }),
+        createCustomer: ({ tenantId, body }) => customers.createCustomer({
+          tenantId,
+          body,
+          repository: customerRepo,
+        }),
+        now: () => new Date(),
+      };
+    });
   }
   return defaultDepsPromise;
 }
@@ -93,22 +115,34 @@ export const AGENT_TOOLS = Object.freeze([
     },
   },
   {
-    name: "crear_cita",
-    description: "Crea una cita. Solo después de que el cliente confirme nombre, servicio y horario. Prefiere serviceId del catálogo.",
+    name: "buscar_cliente",
+    description: "Busca clientes activos del negocio por nombre o teléfono. Úsala cuando el cliente diga que ya ha venido o mencione un teléfono.",
     parameters: {
       type: "object",
       properties: {
-        customerName: { type: "string", description: "Nombre del cliente (2-80 caracteres)." },
+        query: { type: "string", description: "Nombre o teléfono a buscar (máximo 40 caracteres)." },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "crear_cita",
+    description: "Crea una cita. Solo después de que el cliente confirme nombre, servicio y horario. Prefiere serviceId del catálogo y customerPhone para vincular al cliente.",
+    parameters: {
+      type: "object",
+      properties: {
+        customerName: { type: "string", description: "Nombre del cliente (2-80 caracteres). Obligatorio si no se envía customerPhone." },
+        customerPhone: { type: "string", description: "Teléfono del cliente. Si viene, se reutiliza o crea el cliente y la cita queda vinculada." },
         startsAt: { type: "string", description: "Inicio en hora local del negocio AAAA-MM-DDTHH:mm." },
         serviceId: { type: "string", description: "ID de un servicio activo del catálogo. Si viene, el backend fija nombre, duración y precio." },
         serviceName: { type: "string", description: "Servicio en texto libre. Obligatorio solo si no se envía serviceId." },
         durationMinutes: { type: "integer", description: "Duración en minutos (5-480). Se ignora si viene serviceId." },
         priceCOP: { type: "integer", description: "Precio en COP (0-10000000). Se ignora si viene serviceId." },
-        customerPhone: { type: "string", description: "Teléfono del cliente. Opcional." },
         notes: { type: "string", description: "Notas breves. Opcional." },
         clientRequestId: { type: "string", description: "Clave de idempotencia. Opcional." },
       },
-      required: ["customerName", "startsAt"],
+      required: ["startsAt"],
       additionalProperties: false,
     },
   },
@@ -170,6 +204,8 @@ export async function executeTool(name, rawArguments, context, deps) {
         return await consultarAgenda(args, context, resolvedDeps);
       case "consultar_servicios":
         return await consultarServicios(args, context, resolvedDeps);
+      case "buscar_cliente":
+        return await buscarCliente(args, context, resolvedDeps);
       case "crear_cita":
         return await crearCita(args, context, resolvedDeps);
       case "reprogramar_cita":
@@ -258,11 +294,28 @@ async function consultarServicios(args, context, deps) {
   return { ok: true, data: { count: services.length, services } };
 }
 
+async function buscarCliente(args, context, deps) {
+  const query = requiredString(args.query, { min: 1, max: 40, field: "query" });
+  if (query instanceof ToolArgumentError) return query.toResult();
+
+  const result = await deps.searchCustomers({ tenantId: context.tenant.id, query });
+  const customers = (result?.customers ?? []).slice(0, MAX_CUSTOMER_RESULTS).map((customer) => ({
+    id: customer.customerId,
+    name: customer.name,
+    phone: customer.phone,
+  }));
+  return { ok: true, data: { count: customers.length, customers } };
+}
+
 async function crearCita(args, context, deps) {
-  const customerName = requiredString(args.customerName, { min: 2, max: 80, field: "customerName" });
-  if (customerName instanceof ToolArgumentError) return customerName.toResult();
   const startsAt = requiredLocalDateTime(args.startsAt, "startsAt");
   if (startsAt instanceof ToolArgumentError) return startsAt.toResult();
+
+  const customerNameInput = optionalString(args.customerName, 80);
+  if (customerNameInput instanceof ToolArgumentError) return customerNameInput.toResult();
+  const rawPhone = optionalString(args.customerPhone, 40);
+  if (rawPhone instanceof ToolArgumentError) return rawPhone.toResult();
+
   const serviceId = optionalString(args.serviceId, 128);
   if (serviceId instanceof ToolArgumentError) return serviceId.toResult();
 
@@ -294,8 +347,36 @@ async function crearCita(args, context, deps) {
     priceCOP = priceResult;
   }
 
-  const customerPhone = optionalString(args.customerPhone, 40);
-  if (customerPhone instanceof ToolArgumentError) return customerPhone.toResult();
+  // Cliente: con teléfono se normaliza, se reutiliza por teléfono o se crea.
+  let customer = null;
+  if (rawPhone) {
+    const phone = normalizeCustomerPhone(rawPhone);
+    if (!phone) return toolError("invalid_customer_phone", "El teléfono debe tener entre 7 y 15 dígitos.");
+    customer = await deps.findCustomerByPhone({ tenantId: context.tenant.id, phone });
+    if (!customer) {
+      const creation = await deps.createCustomer({
+        tenantId: context.tenant.id,
+        body: { name: customerNameInput || "Cliente", phone },
+      });
+      if (!creation?.ok) {
+        return toolError(creation?.code ?? "invalid_customer_phone", creation?.message ?? "No se pudo crear el cliente.");
+      }
+      customer = creation.customer;
+    }
+  }
+
+  let customerName;
+  if (customer) {
+    customerName = customer.name;
+  } else if (customerNameInput !== null) {
+    if (customerNameInput.length < 2) {
+      return toolError("invalid_arguments", "customerName debe tener entre 2 y 80 caracteres.");
+    }
+    customerName = customerNameInput;
+  } else {
+    return toolError("invalid_arguments", "Falta customerName o customerPhone.");
+  }
+
   const notes = optionalString(args.notes, 500);
   if (notes instanceof ToolArgumentError) return notes.toResult();
   const explicitRequestId = optionalString(args.clientRequestId, 200);
@@ -309,12 +390,13 @@ async function crearCita(args, context, deps) {
     timeZone: resolveTenantTimeZone(context.tenant),
     actorUid: context.actorUid,
     body: {
+      customerId: customer?.customerId ?? undefined,
       customerName,
       serviceName,
       startsAt,
       durationMinutes,
       priceCOP,
-      customerPhone: customerPhone || null,
+      customerPhone: customer ? (customer.phone || null) : null,
       notes: notes ?? "",
       clientRequestId,
     },

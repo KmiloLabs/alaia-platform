@@ -9,21 +9,26 @@ import {
   cancelAppointment as cancelAppointmentRequest,
   createAppointment as createAppointmentRequest,
   createClientRequestId,
+  createCustomer,
   createService,
   createTenant,
+  deactivateCustomer,
   deactivateService,
   getAgentConfig,
+  getCustomer,
   getTenantContext,
   isTenantAccessError,
   isUnauthorized,
   listAppointments,
   listAvailability,
+  listCustomers,
   listServices,
   listTenants,
   messageForError,
   rescheduleAppointment as rescheduleAppointmentRequest,
   saveAgentConfig,
   sendAgentMessage,
+  updateCustomer,
   updateService,
   updateTenant,
 } from "./api.js";
@@ -231,6 +236,45 @@ const closeServiceDialogButton = $("#close-service-dialog");
 const cancelServiceDialogButton = $("#cancel-service-dialog");
 const saveServiceButton = $("#save-service");
 
+const customersView = $("#customers-view");
+const customersList = $("#customers-list");
+const customersEmpty = $("#customers-empty");
+const customersStatus = $("#customers-status");
+const customersCount = $("#customers-count");
+const customersSearchInput = $("#customers-search-input");
+const customersShowInactive = $("#customers-show-inactive");
+const newCustomerButton = $("#new-customer-button");
+const newCustomerEmptyButton = $("#new-customer-empty");
+const customerDialog = $("#customer-dialog");
+const customerForm = $("#customer-form");
+const customerDialogTitle = $("#customer-dialog-title");
+const customerDialogNote = $("#customer-dialog-note");
+const customerNameInput = $("#customer-name");
+const customerPhoneInput = $("#customer-phone");
+const customerEmailInput = $("#customer-email");
+const customerNotesInput = $("#customer-notes");
+const customerNotesCount = $("#customer-notes-count");
+const customerError = $("#customer-error");
+const closeCustomerDialogButton = $("#close-customer-dialog");
+const cancelCustomerDialogButton = $("#cancel-customer-dialog");
+const saveCustomerButton = $("#save-customer");
+const customerDetailDialog = $("#customer-detail-dialog");
+const customerDetailTitle = $("#customer-detail-title");
+const customerDetailStatus = $("#customer-detail-status");
+const customerDetailInfo = $("#customer-detail-info");
+const customerHistoryList = $("#customer-history-list");
+const editCustomerButton = $("#edit-customer-button");
+const deactivateCustomerButton = $("#deactivate-customer-button");
+const closeCustomerDetailButton = $("#close-customer-detail");
+const closeCustomerDetailFooter = $("#close-customer-detail-button");
+
+const appointmentCustomerSearch = $("#appointment-customer-search");
+const appointmentCustomerSuggestions = $("#appointment-customer-suggestions");
+const appointmentCustomerSelected = $("#appointment-customer-selected");
+const appointmentCustomerHint = $("#appointment-customer-hint");
+const appointmentCustomerPhone = $("#appointment-customer-phone");
+const appointmentCustomerSave = $("#appointment-customer-save");
+
 const rescheduleDialog = $("#reschedule-dialog");
 const rescheduleForm = $("#reschedule-form");
 const rescheduleAvatar = $("#reschedule-avatar");
@@ -264,6 +308,8 @@ const agentTestForm = $("#agent-test-form");
 const agentTestMessage = $("#agent-test-message");
 const agentTestStatus = $("#agent-test-status");
 const agentTestButton = $("#agent-test-button");
+const agentNewConversationButton = $("#agent-new-conversation");
+const agentConversationStatus = $("#agent-conversation-status");
 const agentResult = $("#agent-result");
 const agentResultAction = $("#agent-result-action");
 const agentResultReply = $("#agent-result-reply");
@@ -300,6 +346,8 @@ const state = {
   agentLoading: false,
   agentSaving: false,
   agentTesting: false,
+  agentConversationId: null,
+  agentConversationMessages: 0,
   services: [],
   servicesTenantId: null,
   servicesLoaded: false,
@@ -310,6 +358,24 @@ const state = {
   scheduleSeq: 0,
   scheduleSaving: false,
   serviceCatalogAvailable: false,
+  customers: [],
+  customersTenantId: null,
+  customersLoaded: false,
+  customersLoadSeq: 0,
+  customersQuery: "",
+  customersIncludeInactive: false,
+  customersSearchTimer: null,
+  customersTotal: 0,
+  customerSaving: false,
+  customerTargetId: null,
+  customerDetailId: null,
+  customerDetailSeq: 0,
+  customerDetailCustomer: null,
+  appointmentCustomerId: null,
+  appointmentCustomerSeq: 0,
+  appointmentCustomerTimer: null,
+  appointmentCustomerFilling: false,
+  appointmentSuggestions: [],
 };
 
 let authMode = "signin";
@@ -384,9 +450,18 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
     state.servicesTenantId = null;
     state.servicesLoaded = false;
     state.servicesLoadSeq += 1;
+    state.customers = [];
+    state.customersTenantId = null;
+    state.customersLoaded = false;
+    state.customersLoadSeq += 1;
+    state.customerDetailId = null;
+    state.customerDetailSeq += 1;
+    state.appointmentCustomerId = null;
+    state.appointmentCustomerSeq += 1;
     state.scheduleSeq += 1;
     writeRememberedTenant(tenantId);
     state.selectedDate = state.selectedDate ?? todayValue();
+    resetAgentConversation();
     renderTenantUi();
     showScreen("panel");
     setView(state.view);
@@ -428,12 +503,23 @@ function handleSignedOut() {
   state.agentConfig = null;
   state.agentTenantId = null;
   state.agentLoadSeq += 1;
+  resetAgentConversation();
   state.services = [];
   state.servicesTenantId = null;
   state.servicesLoaded = false;
   state.servicesLoadSeq += 1;
+  state.customers = [];
+  state.customersTenantId = null;
+  state.customersLoaded = false;
+  state.customersLoadSeq += 1;
+  state.customerDetailId = null;
+  state.customerDetailSeq += 1;
+  state.appointmentCustomerId = null;
+  state.appointmentCustomerSeq += 1;
   state.scheduleSeq += 1;
   if (serviceDialog.open) serviceDialog.close();
+  if (customerDialog.open) customerDialog.close();
+  if (customerDetailDialog.open) customerDetailDialog.close();
   authForm.reset();
   clearAuthError();
   setAuthBusy(false);
@@ -1070,7 +1156,7 @@ agendaToggle.addEventListener("click", () => {
 });
 
 function setView(view) {
-  state.view = ["agenda", "configuracion", "servicios"].includes(view) ? view : "resumen";
+  state.view = ["agenda", "configuracion", "servicios", "clientes"].includes(view) ? view : "resumen";
   document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     const isActive = item.dataset.view === state.view;
     item.classList.toggle("is-active", isActive);
@@ -1078,7 +1164,7 @@ function setView(view) {
     else item.removeAttribute("aria-current");
   });
 
-  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios" };
+  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios", clientes: "Clientes" };
   currentSection.textContent = sectionLabels[state.view];
 
   const metricGrid = document.querySelector(".metric-grid");
@@ -1087,13 +1173,15 @@ function setView(view) {
   const isAgenda = state.view === "agenda";
   const isConfig = state.view === "configuracion";
   const isServices = state.view === "servicios";
+  const isCustomers = state.view === "clientes";
 
-  if (metricGrid) metricGrid.hidden = isAgenda || isConfig || isServices;
-  if (contentGrid) contentGrid.hidden = isConfig || isServices;
+  if (metricGrid) metricGrid.hidden = isAgenda || isConfig || isServices || isCustomers;
+  if (contentGrid) contentGrid.hidden = isConfig || isServices || isCustomers;
   if (tipCard) tipCard.hidden = isAgenda;
   if (configView) configView.hidden = !isConfig;
   if (servicesView) servicesView.hidden = !isServices;
-  newAppointmentButton.hidden = isConfig || isServices;
+  if (customersView) customersView.hidden = !isCustomers;
+  newAppointmentButton.hidden = isConfig || isServices || isCustomers;
   agendaToggle.textContent = isAgenda ? "Ver resumen →" : "Ver agenda →";
 
   renderHeader();
@@ -1102,6 +1190,7 @@ function setView(view) {
     loadAgentConfig();
   }
   if (isServices) loadServices();
+  if (isCustomers) loadCustomers({ force: true });
 }
 
 function renderHeader() {
@@ -1115,6 +1204,12 @@ function renderHeader() {
     todayLabel.textContent = "TU CATÁLOGO";
     setPageTitle("Servicios");
     pageSubtitle.textContent = "Precios y duraciones reales; la agenda y tu asistente usarán estos datos.";
+    return;
+  }
+  if (state.view === "clientes") {
+    todayLabel.textContent = "TU GENTE";
+    setPageTitle("Clientes");
+    pageSubtitle.textContent = "Quiénes son, cómo contactarlos y todo lo que han venido a tu negocio.";
     return;
   }
   if (!state.selectedDate) return;
@@ -1808,6 +1903,666 @@ appointmentServiceSelect.addEventListener("change", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Clientes
+// ---------------------------------------------------------------------------
+
+newCustomerButton.addEventListener("click", () => openCustomerDialog(null));
+newCustomerEmptyButton.addEventListener("click", () => openCustomerDialog(null));
+
+customersShowInactive.addEventListener("change", () => {
+  state.customersIncludeInactive = customersShowInactive.checked;
+  loadCustomers({ force: true });
+});
+
+customersSearchInput.addEventListener("input", () => {
+  clearTimeout(state.customersSearchTimer);
+  state.customersSearchTimer = setTimeout(() => {
+    state.customersQuery = customersSearchInput.value.trim();
+    loadCustomers({ force: true });
+  }, 250);
+});
+
+customersList.addEventListener("click", async (event) => {
+  const retry = event.target.closest("[data-retry-customers]");
+  if (retry) {
+    loadCustomers({ force: true });
+    return;
+  }
+  const viewButton = event.target.closest("[data-view-customer-id]");
+  if (viewButton) {
+    openCustomerDetail(viewButton.dataset.viewCustomerId);
+    return;
+  }
+  const editButton = event.target.closest("[data-edit-customer-id]");
+  if (editButton) {
+    const customer = state.customers.find((item) => item.id === editButton.dataset.editCustomerId);
+    if (customer) openCustomerDialog(customer);
+    return;
+  }
+  const deactivateButton = event.target.closest("[data-deactivate-customer-id]");
+  if (deactivateButton && !deactivateButton.disabled) {
+    const customer = state.customers.find((item) => item.id === deactivateButton.dataset.deactivateCustomerId);
+    if (customer) await deactivateCustomerItem(customer, deactivateButton);
+  }
+});
+
+customerNotesInput.addEventListener("input", () => {
+  customerNotesCount.textContent = String(customerNotesInput.value.length);
+});
+closeCustomerDialogButton.addEventListener("click", () => customerDialog.close());
+cancelCustomerDialogButton.addEventListener("click", () => customerDialog.close());
+customerDialog.addEventListener("close", () => {
+  state.customerTargetId = null;
+});
+closeCustomerDetailButton.addEventListener("click", () => customerDetailDialog.close());
+closeCustomerDetailFooter.addEventListener("click", () => customerDetailDialog.close());
+
+editCustomerButton.addEventListener("click", () => {
+  const customer = state.customerDetailCustomer;
+  if (customer) openCustomerDialog(customer);
+});
+
+deactivateCustomerButton.addEventListener("click", async () => {
+  const customer = state.customerDetailCustomer;
+  if (!customer) return;
+  const confirmed = window.confirm(`¿Desactivar a «${customer.name}»? Dejará de aparecer en la lista y en el buscador de citas.`);
+  if (!confirmed) return;
+  deactivateCustomerButton.disabled = true;
+  deactivateCustomerButton.textContent = "Desactivando…";
+  try {
+    await deactivateCustomer(state.tenant.tenantId, customer.id);
+    state.customersLoaded = false;
+    showToast(`Cliente «${customer.name}» desactivado.`);
+    await loadCustomers({ force: true });
+    await openCustomerDetail(customer.id);
+    setCustomersStatus("Cliente desactivado.", "ok");
+  } catch (error) {
+    await handleCustomerError(error);
+  } finally {
+    deactivateCustomerButton.disabled = false;
+    deactivateCustomerButton.textContent = "Desactivar";
+  }
+});
+
+async function loadCustomers({ force = false } = {}) {
+  if (!state.tenant) return null;
+  const tenantId = state.tenant.tenantId;
+  if (!force && state.customersLoaded && state.customersTenantId === tenantId) {
+    renderCustomers();
+    return state.customers;
+  }
+
+  const loadSeq = ++state.customersLoadSeq;
+  setCustomersLoading();
+
+  try {
+    const data = await listCustomers(tenantId, {
+      query: state.customersQuery,
+      includeInactive: state.customersIncludeInactive,
+    });
+    if (loadSeq !== state.customersLoadSeq || state.tenant?.tenantId !== tenantId) return null;
+    state.customers = Array.isArray(data?.customers) ? data.customers : [];
+    state.customersTotal = Number.isFinite(Number(data?.total)) ? Number(data.total) : state.customers.length;
+    state.customersTenantId = tenantId;
+    state.customersLoaded = true;
+    renderCustomers();
+    return state.customers;
+  } catch (error) {
+    if (loadSeq !== state.customersLoadSeq) return null;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return null;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return null;
+    }
+    renderCustomersError(messageForError(error));
+    return null;
+  }
+}
+
+function setCustomersLoading() {
+  customersList.setAttribute("aria-busy", "true");
+  customersList.replaceChildren();
+  const message = document.createElement("p");
+  message.className = "customers-message";
+  message.textContent = "Cargando clientes…";
+  customersList.append(message);
+  customersEmpty.hidden = true;
+  customersCount.textContent = "";
+  setCustomersStatus("Cargando…", "loading");
+}
+
+function renderCustomers() {
+  const query = state.customersQuery;
+  customersList.setAttribute("aria-busy", "false");
+  customersList.innerHTML = state.customers.map((customer, index) => customerRowHtml(customer, index)).join("");
+
+  customersEmpty.hidden = state.customers.length > 0 || Boolean(query);
+  if (!state.customers.length && query) {
+    const message = document.createElement("p");
+    message.className = "customers-message";
+    message.textContent = `No encontramos clientes con «${query}».`;
+    customersList.append(message);
+  }
+
+  const total = state.customersTotal || state.customers.length;
+  customersCount.textContent = `${total} ${total === 1 ? "cliente" : "clientes"}`;
+  setCustomersStatus("", "idle");
+}
+
+function renderCustomersError(message) {
+  customersList.setAttribute("aria-busy", "false");
+  customersList.replaceChildren();
+  const text = document.createElement("p");
+  text.className = "customers-message is-error";
+  text.textContent = message;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "secondary-button";
+  retry.dataset.retryCustomers = "1";
+  retry.textContent = "Reintentar";
+  customersList.append(text, retry);
+  customersEmpty.hidden = true;
+  customersCount.textContent = "";
+  setCustomersStatus("Error al cargar clientes", "error");
+}
+
+function customerRowHtml(customer, index) {
+  const name = String(customer.name ?? "");
+  const phone = String(customer.phone ?? "").trim();
+  const email = String(customer.email ?? "").trim();
+  const inactive = customer.active === false;
+  const contactParts = [phone || "Sin teléfono"];
+  if (email) contactParts.push(email);
+  const viewLabel = `Ver la ficha de ${name || "este cliente"}`;
+  const editLabel = `Editar a ${name || "este cliente"}`;
+  const deactivateLabel = `Desactivar a ${name || "este cliente"}`;
+  const actions = inactive
+    ? `<div class="row-actions"><button class="row-shift" type="button" data-view-customer-id="${escapeHtml(customer.id)}" aria-label="${escapeHtml(viewLabel)}">Ver ficha</button></div>`
+    : `<div class="row-actions"><button class="row-shift" type="button" data-view-customer-id="${escapeHtml(customer.id)}" aria-label="${escapeHtml(viewLabel)}">Ver ficha</button><button class="row-shift" type="button" data-edit-customer-id="${escapeHtml(customer.id)}" aria-label="${escapeHtml(editLabel)}">Editar</button><button class="row-cancel" type="button" data-deactivate-customer-id="${escapeHtml(customer.id)}" aria-label="${escapeHtml(deactivateLabel)}">Desactivar</button></div>`;
+
+  return `
+    <article class="customer-row${inactive ? " is-inactive" : ""}">
+      <div class="customer-main">
+        <span class="client-avatar ${AVATAR_STYLES[index % AVATAR_STYLES.length]}">${escapeHtml(initialsOf(name))}</span>
+        <div class="customer-copy"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(contactParts.join(" · "))}</span></div>
+      </div>
+      <span class="status ${inactive ? "status-cancelled" : "status-upcoming"}">${inactive ? "Inactivo" : "Activo"}</span>
+      ${actions}
+    </article>`;
+}
+
+function openCustomerDialog(customer) {
+  if (!state.tenant || customerDialog.open) return;
+  state.customerTargetId = customer?.id ?? null;
+  const editing = Boolean(customer);
+
+  customerDialogTitle.textContent = editing ? "Editar cliente" : "Nuevo cliente";
+  customerDialogNote.textContent = editing
+    ? "Los cambios se usarán en las próximas citas; el historial conserva el nombre de cada cita."
+    : "Así podrás reconocerlo cuando vuelva.";
+  customerNameInput.value = customer?.name ?? "";
+  customerPhoneInput.value = customer?.phone ?? "";
+  customerEmailInput.value = customer?.email ?? "";
+  customerNotesInput.value = customer?.notes ?? "";
+  customerNotesCount.textContent = String(customerNotesInput.value.length);
+  customerError.textContent = "";
+  setCustomerBusy(false);
+  customerDialog.showModal();
+  customerNameInput.focus();
+}
+
+function setCustomerBusy(busy) {
+  state.customerSaving = busy;
+  for (const field of [customerNameInput, customerPhoneInput, customerEmailInput, customerNotesInput]) {
+    field.disabled = busy;
+  }
+  saveCustomerButton.disabled = busy;
+  saveCustomerButton.textContent = busy ? "Guardando…" : "Guardar cliente";
+  closeCustomerDialogButton.disabled = busy;
+  cancelCustomerDialogButton.disabled = busy;
+}
+
+customerForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  customerError.textContent = "";
+  if (!state.tenant || state.customerSaving) return;
+
+  const name = customerNameInput.value.trim();
+  const phone = normalizePhoneDigits(customerPhoneInput.value);
+  const email = customerEmailInput.value.trim();
+  const notes = customerNotesInput.value.trim();
+  const phoneWasEmpty = customerPhoneInput.value.trim().length === 0;
+
+  if (name.length < 2 || name.length > 80) {
+    customerError.textContent = "El nombre del cliente debe tener entre 2 y 80 caracteres.";
+    customerNameInput.focus();
+    return;
+  }
+  if (!phoneWasEmpty && (phone.length < 7 || phone.length > 15)) {
+    customerError.textContent = "El teléfono debe tener entre 7 y 15 dígitos.";
+    customerPhoneInput.focus();
+    return;
+  }
+  if (email && (email.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    customerError.textContent = "El correo del cliente no es válido.";
+    customerEmailInput.focus();
+    return;
+  }
+  if (notes.length > 300) {
+    customerError.textContent = "Las notas del cliente no pueden superar los 300 caracteres.";
+    return;
+  }
+
+  const tenantId = state.tenant.tenantId;
+  state.customerSaving = true;
+  setCustomerBusy(true);
+
+  try {
+    const payload = { name, phone, email, notes };
+    let saved;
+    if (state.customerTargetId) saved = await updateCustomer(tenantId, state.customerTargetId, payload);
+    else saved = await createCustomer(tenantId, payload);
+    if (state.tenant?.tenantId !== tenantId) return;
+    state.customersLoaded = false;
+    const savedCustomer = saved?.customer ?? null;
+    customerDialog.close();
+    showToast(state.customerTargetId ? "Cliente actualizado." : "Cliente creado.");
+    await loadCustomers({ force: true });
+    setCustomersStatus(state.customerTargetId ? "Cliente actualizado." : "Cliente creado.", "ok");
+    if (customerDetailDialog.open && savedCustomer?.id) await openCustomerDetail(savedCustomer.id);
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      customerDialog.close();
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      customerDialog.close();
+      await handleTenantUnavailable(error);
+      return;
+    }
+    customerError.textContent = messageForError(error);
+  } finally {
+    setCustomerBusy(false);
+  }
+});
+
+async function deactivateCustomerItem(customer, button) {
+  const tenantId = state.tenant?.tenantId;
+  if (!tenantId) return;
+  const confirmed = window.confirm(`¿Desactivar a «${customer.name}»? Dejará de aparecer en la lista y en el buscador de citas.`);
+  if (!confirmed) return;
+
+  button.disabled = true;
+  button.textContent = "Desactivando…";
+  try {
+    await deactivateCustomer(tenantId, customer.id);
+    state.customersLoaded = false;
+    showToast(`Cliente «${customer.name}» desactivado.`);
+    await loadCustomers({ force: true });
+    setCustomersStatus("Cliente desactivado.", "ok");
+  } catch (error) {
+    await handleCustomerError(error);
+    button.disabled = false;
+    button.textContent = "Desactivar";
+  }
+}
+
+async function handleCustomerError(error) {
+  if (isUnauthorized(error)) {
+    await forceSignOut(messageForError(error));
+    return;
+  }
+  if (isTenantAccessError(error)) {
+    await handleTenantUnavailable(error);
+    return;
+  }
+  showToast(messageForError(error));
+}
+
+async function openCustomerDetail(customerId) {
+  const tenantId = state.tenant?.tenantId;
+  if (!tenantId || !customerId) return;
+  state.customerDetailId = customerId;
+  const seq = ++state.customerDetailSeq;
+
+  customerDetailTitle.textContent = "Cliente";
+  customerDetailStatus.textContent = "Cargando…";
+  customerDetailStatus.className = "status status-upcoming";
+  customerDetailInfo.replaceChildren(textBlock("Cargando ficha…", "customers-message"));
+  customerHistoryList.replaceChildren(textBlock("Cargando historial…", "customers-message"));
+  editCustomerButton.disabled = true;
+  deactivateCustomerButton.disabled = true;
+  if (!customerDetailDialog.open) customerDetailDialog.showModal();
+
+  try {
+    const data = await getCustomer(tenantId, customerId);
+    if (seq !== state.customerDetailSeq || state.tenant?.tenantId !== tenantId) return;
+    state.customerDetailCustomer = data?.customer ?? null;
+    renderCustomerDetail(data?.customer ?? null, Array.isArray(data?.appointments) ? data.appointments : []);
+  } catch (error) {
+    if (seq !== state.customerDetailSeq) return;
+    if (isUnauthorized(error)) {
+      customerDetailDialog.close();
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      customerDetailDialog.close();
+      await handleTenantUnavailable(error);
+      return;
+    }
+    state.customerDetailCustomer = null;
+    customerDetailInfo.replaceChildren(textBlock(messageForError(error), "customers-message is-error"));
+    customerHistoryList.replaceChildren(textBlock("No pudimos cargar el historial.", "customers-message"));
+    customerDetailStatus.textContent = "Error";
+    customerDetailStatus.className = "status status-cancelled";
+  }
+}
+
+function renderCustomerDetail(customer, appointments) {
+  if (!customer) {
+    customerDetailInfo.replaceChildren(textBlock("No encontramos este cliente.", "customers-message is-error"));
+    customerHistoryList.replaceChildren(textBlock("Sin historial.", "customers-message"));
+    return;
+  }
+
+  customerDetailTitle.textContent = customer.name ?? "Cliente";
+  const inactive = customer.active === false;
+  customerDetailStatus.textContent = inactive ? "Inactivo" : "Activo";
+  customerDetailStatus.className = `status ${inactive ? "status-cancelled" : "status-upcoming"}`;
+  editCustomerButton.disabled = false;
+  deactivateCustomerButton.disabled = inactive;
+  deactivateCustomerButton.textContent = inactive ? "Desactivado" : "Desactivar";
+
+  const info = document.createElement("div");
+  info.className = "customer-info-lines";
+  info.append(
+    detailLine("Teléfono", customer.phone || "Sin teléfono", customer.phone ? `tel:${customer.phone}` : null),
+    detailLine("Correo", customer.email || "Sin correo", customer.email ? `mailto:${customer.email}` : null),
+  );
+  if (customer.notes) {
+    const notes = document.createElement("p");
+    notes.className = "customer-notes";
+    notes.textContent = customer.notes;
+    info.append(notes);
+  }
+  const since = formatMediumDateFromValue(customer.createdAt);
+  if (since) info.append(detailLine("Cliente desde", since, null));
+  customerDetailInfo.replaceChildren(info);
+
+  if (!appointments.length) {
+    customerHistoryList.replaceChildren(textBlock("Este cliente todavía no tiene citas. Agenda una y aparecerá aquí.", "customers-empty-history"));
+    return;
+  }
+
+  const rows = appointments.map((appointment) => {
+    const local = String(appointment.startsAtLocal ?? "");
+    const date = local.slice(0, 10);
+    const score = appointment.status === "cancelled" ? "status-cancelled" : "status-upcoming";
+    const label = appointment.status === "cancelled" ? "Cancelada" : "Programada";
+    const row = document.createElement("div");
+    row.className = `history-row${appointment.status === "cancelled" ? " is-cancelled" : ""}`;
+    const when = document.createElement("div");
+    when.className = "history-when";
+    const day = document.createElement("strong");
+    day.textContent = isDateValue(date) ? formatHistoryDate(date) : "Fecha desconocida";
+    const hour = document.createElement("span");
+    hour.textContent = formatAppointmentTime(appointment);
+    when.append(day, hour);
+    const main = document.createElement("div");
+    main.className = "history-main";
+    const service = document.createElement("strong");
+    service.textContent = String(appointment.serviceName ?? "Servicio");
+    const price = document.createElement("span");
+    price.textContent = formatCOP(appointment.priceCOP);
+    main.append(service, price);
+    const status = document.createElement("span");
+    status.className = `status ${score}`;
+    status.textContent = label;
+    row.append(when, main, status);
+    return row;
+  });
+  customerHistoryList.replaceChildren(...rows);
+}
+
+function detailLine(labelText, valueText, href) {
+  const line = document.createElement("div");
+  line.className = "customer-info-line";
+  const label = document.createElement("span");
+  label.className = "customer-info-label";
+  label.textContent = labelText;
+  const value = href ? document.createElement("a") : document.createElement("span");
+  value.className = "customer-info-value";
+  value.textContent = valueText;
+  if (href) value.href = href;
+  line.append(label, value);
+  return line;
+}
+
+function textBlock(message, className) {
+  const paragraph = document.createElement("p");
+  paragraph.className = className;
+  paragraph.textContent = message;
+  return paragraph;
+}
+
+function setCustomersStatus(message, tone) {
+  customersStatus.textContent = message;
+  customersStatus.className = `form-status is-${tone}`;
+}
+
+function normalizePhoneDigits(value) {
+  return String(value ?? "").replace(/\D+/g, "");
+}
+
+function formatMediumDateFromValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "long", year: "numeric", timeZone: businessTimeZone() }).format(date);
+}
+
+function formatHistoryDate(dateValue) {
+  const parts = new Intl.DateTimeFormat("es-CO", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).formatToParts(new Date(`${dateValue}T12:00:00Z`));
+  const values = {};
+  for (const part of parts) {
+    if (part.type !== "literal") values[part.type] = part.value;
+  }
+  return `${values.day ?? ""} ${values.month ?? ""} ${values.year ?? ""}`.trim();
+}
+
+// ---------------------------------------------------------------------------
+// Clientes en el diálogo de nueva cita
+// ---------------------------------------------------------------------------
+
+appointmentCustomerSearch.addEventListener("input", () => {
+  const query = appointmentCustomerSearch.value.trim();
+  clearTimeout(state.appointmentCustomerTimer);
+  if (!query) {
+    hideCustomerSuggestions();
+    return;
+  }
+  state.appointmentCustomerTimer = setTimeout(() => searchCustomersForAppointment(query), 250);
+});
+
+appointmentCustomerSearch.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") hideCustomerSuggestions();
+});
+
+appointmentCustomerSelected.addEventListener("click", (event) => {
+  if (event.target.closest("[data-unlink-customer]")) unlinkAppointmentCustomer();
+});
+
+appointmentClient.addEventListener("input", () => {
+  if (!state.appointmentCustomerFilling && state.appointmentCustomerId) unlinkAppointmentCustomer({ keepFields: true });
+});
+
+appointmentCustomerPhone.addEventListener("input", () => {
+  if (!state.appointmentCustomerFilling && state.appointmentCustomerId) unlinkAppointmentCustomer({ keepFields: true });
+});
+
+appointmentCustomerSuggestions.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-pick-customer-id]");
+  if (!button) return;
+  const customer = state.appointmentSuggestions?.find((item) => item.id === button.dataset.pickCustomerId);
+  if (customer) selectCustomerForAppointment(customer);
+});
+
+function resetAppointmentCustomer() {
+  state.appointmentCustomerId = null;
+  state.appointmentCustomerFilling = true;
+  appointmentCustomerSearch.value = "";
+  appointmentClient.value = "";
+  appointmentCustomerPhone.value = "";
+  appointmentCustomerSave.checked = true;
+  appointmentCustomerSave.disabled = false;
+  const saveOption = appointmentCustomerSave.closest(".customer-save-option");
+  if (saveOption) saveOption.hidden = false;
+  appointmentCustomerSearch.disabled = false;
+  appointmentCustomerSelected.hidden = true;
+  appointmentCustomerSelected.replaceChildren();
+  appointmentCustomerHint.textContent = "Busca un cliente guardado o escribe uno nuevo abajo.";
+  state.appointmentCustomerFilling = false;
+  hideCustomerSuggestions();
+}
+
+async function searchCustomersForAppointment(query) {
+  const tenantId = state.tenant?.tenantId;
+  if (!tenantId) return;
+  const seq = ++state.appointmentCustomerSeq;
+
+  try {
+    const data = await listCustomers(tenantId, { query });
+    if (seq !== state.appointmentCustomerSeq || !appointmentDialog.open) return;
+    state.appointmentSuggestions = Array.isArray(data?.customers) ? data.customers : [];
+    renderCustomerSuggestions(state.appointmentSuggestions);
+  } catch (error) {
+    if (seq !== state.appointmentCustomerSeq || !appointmentDialog.open) return;
+    if (isUnauthorized(error) || isTenantAccessError(error)) return;
+    hideCustomerSuggestions();
+    appointmentCustomerHint.textContent = "No pudimos buscar clientes; puedes escribir el nombre a mano.";
+  }
+}
+
+function renderCustomerSuggestions(customers) {
+  appointmentCustomerSuggestions.replaceChildren();
+  if (!customers.length) {
+    const empty = document.createElement("p");
+    empty.className = "customer-suggestion-empty";
+    empty.textContent = "Sin coincidencias. Escribe el nombre y se guardará como cliente nuevo.";
+    appointmentCustomerSuggestions.append(empty);
+    appointmentCustomerSuggestions.hidden = false;
+    return;
+  }
+
+  const buttons = customers.slice(0, 6).map((customer) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "customer-suggestion";
+    button.dataset.pickCustomerId = customer.id;
+    button.setAttribute("role", "option");
+    const name = document.createElement("strong");
+    name.textContent = customer.name ?? "Cliente";
+    const phone = document.createElement("span");
+    phone.textContent = customer.phone || "Sin teléfono";
+    button.append(name, phone);
+    return button;
+  });
+  appointmentCustomerSuggestions.replaceChildren(...buttons);
+  appointmentCustomerSuggestions.hidden = false;
+}
+
+function hideCustomerSuggestions() {
+  appointmentCustomerSuggestions.hidden = true;
+  appointmentCustomerSuggestions.replaceChildren();
+  state.appointmentSuggestions = [];
+}
+
+function selectCustomerForAppointment(customer) {
+  state.appointmentCustomerFilling = true;
+  state.appointmentCustomerId = customer.id;
+  appointmentClient.value = customer.name ?? "";
+  appointmentCustomerPhone.value = customer.phone ?? "";
+  appointmentCustomerSearch.value = customer.phone || customer.name || "";
+  state.appointmentCustomerFilling = false;
+
+  appointmentCustomerSelected.replaceChildren();
+  const label = document.createElement("span");
+  label.textContent = `Cliente vinculado: ${customer.name ?? "Cliente"}${customer.phone ? ` · ${customer.phone}` : ""}`;
+  const unlink = document.createElement("button");
+  unlink.type = "button";
+  unlink.className = "text-button";
+  unlink.dataset.unlinkCustomer = "1";
+  unlink.textContent = "Quitar vínculo";
+  appointmentCustomerSelected.append(label, unlink);
+  appointmentCustomerSelected.hidden = false;
+
+  appointmentCustomerSave.checked = false;
+  appointmentCustomerSave.disabled = true;
+  const saveOption = appointmentCustomerSave.closest(".customer-save-option");
+  if (saveOption) saveOption.hidden = true;
+  appointmentCustomerHint.textContent = "La cita se vinculará a este cliente.";
+  hideCustomerSuggestions();
+}
+
+function unlinkAppointmentCustomer({ keepFields = false } = {}) {
+  state.appointmentCustomerId = null;
+  appointmentCustomerSelected.hidden = true;
+  appointmentCustomerSelected.replaceChildren();
+  appointmentCustomerSave.disabled = false;
+  appointmentCustomerSave.checked = true;
+  const saveOption = appointmentCustomerSave.closest(".customer-save-option");
+  if (saveOption) saveOption.hidden = false;
+  if (!keepFields) appointmentCustomerSearch.value = "";
+  appointmentCustomerHint.textContent = keepFields
+    ? "Si guardas, se creará un cliente nuevo con este nombre y teléfono."
+    : "Busca un cliente guardado o escribe uno nuevo abajo.";
+}
+
+async function resolveAppointmentCustomer(tenantId, customerName) {
+  if (state.appointmentCustomerId) return state.appointmentCustomerId;
+  if (!appointmentCustomerSave.checked) return null;
+
+  const phone = appointmentCustomerPhone.value.trim();
+  try {
+    const created = await createCustomer(tenantId, { name: customerName, phone, email: "", notes: "" });
+    const customerId = created?.customer?.id ?? null;
+    state.appointmentCustomerId = customerId;
+    return customerId;
+  } catch (error) {
+    if (error?.code === "customer_phone_taken" && phone) {
+      const found = await findCustomerByPhone(tenantId, phone);
+      if (found) {
+        state.appointmentCustomerId = found.id;
+        return found.id;
+      }
+    }
+    throw error;
+  }
+}
+
+async function findCustomerByPhone(tenantId, phone) {
+  const digits = normalizePhoneDigits(phone);
+  if (!digits) return null;
+  try {
+    const data = await listCustomers(tenantId, { query: digits });
+    const found = (data?.customers ?? []).find((customer) => normalizePhoneDigits(customer.phone) === digits);
+    return found ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Configuración del agente (Asistente IA)
 // ---------------------------------------------------------------------------
 
@@ -1971,6 +2726,7 @@ function applyAgentBusyState() {
   agentSaveButton.textContent = state.agentSaving ? "Guardando…" : "Guardar configuración";
   agentTestButton.disabled = disabled;
   agentTestButton.textContent = state.agentTesting ? "Probando…" : "Probar agente";
+  agentNewConversationButton.disabled = state.agentTesting;
   agentTestMessage.disabled = disabled;
 }
 
@@ -2012,6 +2768,27 @@ function resetAgentResult() {
   agentResultTools.textContent = "—";
 }
 
+function resetAgentConversation({ announce = false } = {}) {
+  state.agentConversationId = null;
+  state.agentConversationMessages = 0;
+  resetAgentResult();
+  clearAgentTestStatus();
+  renderAgentConversationStatus();
+  if (announce) showToast("Nueva conversación iniciada.");
+}
+
+function renderAgentConversationStatus() {
+  const count = state.agentConversationMessages;
+  agentConversationStatus.textContent = count
+    ? `${count} ${count === 1 ? "mensaje" : "mensajes"} en esta conversación`
+    : "Conversación nueva";
+}
+
+agentNewConversationButton.addEventListener("click", () => {
+  resetAgentConversation({ announce: true });
+  agentTestMessage.focus();
+});
+
 function renderAgentError(error) {
   agentUnavailableText.textContent = messageForError(error);
   agentUnavailable.hidden = false;
@@ -2033,6 +2810,9 @@ async function handleAgentError(error, target) {
   }
   const message = messageForError(error);
   if (target === "test") {
+    if (error.code === "conversation_not_found") {
+      resetAgentConversation();
+    }
     showAgentTestStatus(message, "error");
     if (error.code === "agent_not_configured") {
       agentUnavailableText.textContent = message;
@@ -2075,6 +2855,8 @@ agentForm.addEventListener("submit", async (event) => {
     setAgentStatus("Guardado", "ready");
     showAgentSaveStatus("Configuración guardada. El agente usará este proveedor y modelo.", "ok");
     showToast("Configuración del agente guardada.");
+    resetAgentConversation();
+    showAgentTestStatus("Configuración guardada. La siguiente prueba empieza una conversación nueva.", "ok");
   } catch (error) {
     await handleAgentError(error, "save");
   } finally {
@@ -2099,10 +2881,16 @@ agentTestForm.addEventListener("submit", async (event) => {
   applyAgentBusyState();
 
   try {
-    const data = await sendAgentMessage(tenantId, { message });
+    const data = await sendAgentMessage(tenantId, {
+      message,
+      conversationId: state.agentConversationId ?? undefined,
+    });
     if (state.tenant?.tenantId !== tenantId) return;
+    if (data?.conversationId) state.agentConversationId = data.conversationId;
+    state.agentConversationMessages += 2;
+    renderAgentConversationStatus();
     renderAgentResult(data);
-    showAgentTestStatus("Prueba completada.", "ok");
+    showAgentTestStatus(`Prueba completada · ${state.agentConversationMessages} mensajes en la conversación.`, "ok");
   } catch (error) {
     await handleAgentError(error, "test");
   } finally {
@@ -2112,9 +2900,10 @@ agentTestForm.addEventListener("submit", async (event) => {
 });
 
 function renderAgentResult(data) {
-  const action = String(data?.action ?? "");
+  const apiAction = String(data?.action ?? "");
+  const action = effectiveAgentAction(data);
   agentResultAction.textContent = AGENT_ACTION_LABELS[action] ?? (action || "Sin acción");
-  agentResultAction.title = action;
+  agentResultAction.title = action === apiAction ? apiAction : `API: ${apiAction} · herramienta ejecutada`;
   agentResultReply.textContent = String(data?.reply ?? "El agente no devolvió texto.");
   const model = data?.model ?? {};
   agentResultModel.textContent = model.provider || model.model
@@ -2129,6 +2918,22 @@ function renderAgentResult(data) {
     }).join(", ")
     : "Ninguna";
   agentResult.hidden = false;
+}
+
+// La API puede devolver action "responder" aunque una herramienta con efecto se
+// haya ejecutado. Para la insignia usamos la herramienta real; el title conserva
+// la acción literal de la API.
+function effectiveAgentAction(data) {
+  const rawAction = String(data?.action ?? "");
+  const toolCalls = Array.isArray(data?.toolCalls) ? data.toolCalls : [];
+  const toolOk = (name) => toolCalls.some((call) => call?.name === name && call?.ok !== false);
+  if (rawAction === "responder") {
+    if (toolOk("crear_cita")) return "reservar";
+    if (toolOk("reprogramar_cita")) return "reprogramar";
+    if (toolOk("cancelar_cita")) return "cancelar";
+    if (toolOk("derivar_a_persona")) return "derivar";
+  }
+  return rawAction;
 }
 
 function hasConfiguredProvider(data) {
@@ -2519,6 +3324,7 @@ function openAppointmentDialog() {
   appointmentServiceSelect.disabled = true;
   appointmentServiceHint.textContent = "Cargando servicios del negocio…";
   state.serviceCatalogAvailable = false;
+  resetAppointmentCustomer();
   setDialogBusy(false);
   state.createRequestId = createClientRequestId();
   appointmentDialog.showModal();
@@ -2538,9 +3344,10 @@ appointmentDialog.addEventListener("close", () => {
 function setDialogBusy(busy) {
   saveAppointmentButton.disabled = busy;
   saveAppointmentButton.textContent = busy ? "Guardando…" : "Agregar cita";
-  for (const field of [appointmentClient, appointmentService, appointmentDate, appointmentTime, appointmentDuration, appointmentPrice]) {
+  for (const field of [appointmentClient, appointmentService, appointmentDate, appointmentTime, appointmentDuration, appointmentPrice, appointmentCustomerSearch, appointmentCustomerPhone]) {
     field.disabled = busy;
   }
+  appointmentCustomerSave.disabled = busy || Boolean(state.appointmentCustomerId);
   cancelDialogButton.disabled = busy;
   appointmentServiceSelect.disabled = busy || !state.serviceCatalogAvailable;
   setSlotChipsDisabled(appointmentSlotList, busy);
@@ -2586,10 +3393,43 @@ appointmentForm.addEventListener("submit", async (event) => {
   const tenantId = state.tenant?.tenantId;
   if (!tenantId) return;
 
+  const customerPhoneRaw = appointmentCustomerPhone.value.trim();
+  const customerPhoneDigits = normalizePhoneDigits(customerPhoneRaw);
+  if (customerPhoneRaw && (customerPhoneDigits.length < 7 || customerPhoneDigits.length > 15)) {
+    showDialogError("El teléfono del cliente debe tener entre 7 y 15 dígitos.");
+    appointmentCustomerPhone.focus();
+    return;
+  }
+
   setDialogBusy(true);
+  let customerId = state.appointmentCustomerId;
+  try {
+    customerId = await resolveAppointmentCustomer(tenantId, customerName);
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      appointmentDialog.close();
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      appointmentDialog.close();
+      await handleTenantUnavailable(error);
+      return;
+    }
+    showDialogError(
+      error?.code === "customer_phone_taken"
+        ? "Ese teléfono ya está registrado. Búscalo arriba para vincular al cliente o déjalo vacío para guardarlo sin ficha."
+        : messageForError(error),
+    );
+    setDialogBusy(false);
+    return;
+  }
+
   try {
     const result = await createAppointmentRequest(tenantId, {
       customerName,
+      customerPhone: customerPhoneDigits || null,
+      customerId: customerId ?? undefined,
       serviceName,
       startsAt: `${date}T${time}`,
       durationMinutes,

@@ -134,7 +134,7 @@
             <span class="nav-icon" aria-hidden="true">⌂</span><span>Resumen</span>
           </button>
           <button class="nav-item" data-view="agenda"><span class="nav-icon" aria-hidden="true">▦</span><span>Agenda</span><span class="nav-count" id="nav-count">0</span></button>
-          <button class="nav-item" data-view="clientes" data-future="Clientes"><span class="nav-icon" aria-hidden="true">♙</span><span>Clientes</span></button>
+          <button class="nav-item" data-view="clientes"><span class="nav-icon" aria-hidden="true">♙</span><span>Clientes</span></button>
           <button class="nav-item" data-view="equipo" data-future="Equipo"><span class="nav-icon" aria-hidden="true">♧</span><span>Equipo</span></button>
           <button class="nav-item" data-view="servicios"><span class="nav-icon" aria-hidden="true">◇</span><span>Servicios</span></button>
         </nav>
@@ -324,13 +324,15 @@
               <article class="panel agent-test-panel">
                 <div class="panel-heading compact-heading"><div><p class="eyebrow">PROBAR</p><h2>Conversación de prueba</h2></div></div>
                 <p class="config-intro">Envía un mensaje de prueba con la configuración guardada y revisa la respuesta, la acción y el modelo usado.</p>
+                <p class="agent-conversation-status" id="agent-conversation-status" role="status" aria-live="polite">Conversación nueva</p>
                 <form class="agent-test-form" id="agent-test-form">
                   <div>
                     <label for="agent-test-message">Mensaje de prueba</label>
                     <textarea id="agent-test-message" rows="3" maxlength="300">Hola, ¿tienen disponibilidad esta semana?</textarea>
                   </div>
                   <p class="form-status" id="agent-test-status" role="status" aria-live="polite"></p>
-                  <div class="dialog-actions config-actions">
+                  <div class="dialog-actions config-actions agent-test-actions">
+                    <button class="secondary-button" id="agent-new-conversation" type="button">Nueva conversación</button>
                     <button class="primary-button" id="agent-test-button" type="submit">Probar agente</button>
                   </div>
                 </form>
@@ -370,6 +372,31 @@
             </article>
           </section>
 
+          <section class="customers-view" id="customers-view" aria-labelledby="customers-title" hidden>
+            <article class="panel customers-panel">
+              <div class="panel-heading">
+                <div><p class="eyebrow">TUS CLIENTES</p><h2 id="customers-title">Clientes</h2></div>
+                <div class="customers-heading-actions">
+                  <span class="services-count" id="customers-count"></span>
+                  <label class="services-filter"><input type="checkbox" id="customers-show-inactive" /> Ver inactivos</label>
+                  <button class="primary-button" id="new-customer-button" type="button"><span class="plus-icon" aria-hidden="true">+</span> Nuevo cliente</button>
+                </div>
+              </div>
+              <p class="config-intro">Guarda a tus clientes para reconocerlos cuando vuelvan y ver su historial de citas.</p>
+              <div class="customers-search">
+                <label for="customers-search-input">Buscar por nombre o teléfono</label>
+                <input id="customers-search-input" type="search" maxlength="40" placeholder="Ej. Camila o 3001234567" autocomplete="off" />
+              </div>
+              <p class="form-status" id="customers-status" role="status" aria-live="polite"></p>
+              <div class="customers-list" id="customers-list" aria-busy="false"></div>
+              <div class="customers-empty" id="customers-empty" hidden>
+                <strong>Aún no tienes clientes</strong>
+                <span>Agrega tu primer cliente o créalo al agendar una cita.</span>
+                <button class="primary-button" id="new-customer-empty" type="button">Crear mi primer cliente</button>
+              </div>
+            </article>
+          </section>
+
           <footer class="page-footer"><span>Hecho para que tu negocio fluya.</span><span class="footer-brand">alaia<span class="brand-dot">.</span></span></footer>
         </div>
       </main>
@@ -379,7 +406,21 @@
       <form id="appointment-form">
         <div class="dialog-heading"><div><p class="eyebrow">AGENDA</p><h2 id="dialog-title">Crear una cita</h2></div><button class="dialog-close" id="close-dialog" type="button" aria-label="Cerrar">×</button></div>
         <p class="dialog-note">La cita se guarda en la agenda de tu negocio.</p>
-        <label for="appointment-client">Nombre del cliente<input id="appointment-client" name="client" autocomplete="name" placeholder="Ej. Mariana López" required minlength="2" maxlength="80" /></label>
+        <div class="customer-picker">
+          <label for="appointment-customer-search">Cliente</label>
+          <input id="appointment-customer-search" type="search" placeholder="Busca por nombre o teléfono" autocomplete="off" aria-describedby="appointment-customer-hint" aria-controls="appointment-customer-suggestions" />
+          <p class="field-hint" id="appointment-customer-hint">Busca un cliente guardado o escribe uno nuevo abajo.</p>
+          <div class="customer-suggestions" id="appointment-customer-suggestions" role="listbox" aria-label="Clientes encontrados" hidden></div>
+          <div class="customer-selected" id="appointment-customer-selected" aria-live="polite" hidden></div>
+        </div>
+        <div class="form-pair">
+          <label for="appointment-client">Nombre del cliente<input id="appointment-client" name="client" autocomplete="name" placeholder="Ej. Mariana López" required minlength="2" maxlength="80" /></label>
+          <div>
+            <label for="appointment-customer-phone">Teléfono (opcional)</label>
+            <input id="appointment-customer-phone" type="tel" autocomplete="tel" placeholder="Ej. 3001234567" maxlength="25" />
+            <label class="customer-save-option" for="appointment-customer-save"><input type="checkbox" id="appointment-customer-save" checked /> Guardar en mi lista de clientes</label>
+          </div>
+        </div>
         <div>
           <label for="appointment-service-select">Servicio del catálogo (opcional)</label>
           <select id="appointment-service-select" aria-describedby="appointment-service-hint"></select>
@@ -458,6 +499,44 @@
         <p class="form-error" id="service-error" role="alert" aria-live="assertive"></p>
         <div class="dialog-actions"><button class="secondary-button" id="cancel-service-dialog" type="button">Cancelar</button><button class="primary-button" id="save-service" type="submit">Crear servicio</button></div>
       </form>
+    </dialog>
+
+    <dialog class="appointment-dialog customer-dialog" id="customer-dialog" aria-labelledby="customer-dialog-title">
+      <form id="customer-form">
+        <div class="dialog-heading"><div><p class="eyebrow">CLIENTES</p><h2 id="customer-dialog-title">Nuevo cliente</h2></div><button class="dialog-close" id="close-customer-dialog" type="button" aria-label="Cerrar">×</button></div>
+        <p class="dialog-note" id="customer-dialog-note">Así podrás reconocerlo cuando vuelva.</p>
+        <label for="customer-name">Nombre<input id="customer-name" required minlength="2" maxlength="80" placeholder="Ej. Camila Rojas" autocomplete="name" /></label>
+        <div class="form-pair">
+          <label for="customer-phone">Teléfono (opcional)<input id="customer-phone" type="tel" autocomplete="tel" placeholder="Ej. 3001234567" maxlength="25" /></label>
+          <label for="customer-email">Correo (opcional)<input id="customer-email" type="email" autocomplete="email" placeholder="Ej. camila@correo.com" maxlength="120" /></label>
+        </div>
+        <label for="customer-notes">Notas (opcional)<textarea id="customer-notes" rows="3" maxlength="300" placeholder="Ej. Prefiere citas por la tarde"></textarea></label>
+        <div class="config-counter"><span id="customer-notes-count">0</span>/300 caracteres</div>
+        <p class="form-error" id="customer-error" role="alert" aria-live="assertive"></p>
+        <div class="dialog-actions"><button class="secondary-button" id="cancel-customer-dialog" type="button">Cancelar</button><button class="primary-button" id="save-customer" type="submit">Guardar cliente</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="appointment-dialog customer-detail-dialog" id="customer-detail-dialog" aria-labelledby="customer-detail-title">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">FICHA DEL CLIENTE</p><h2 id="customer-detail-title">Cliente</h2></div>
+        <div class="customer-detail-head">
+          <span class="status status-upcoming" id="customer-detail-status">Activo</span>
+          <button class="dialog-close" id="close-customer-detail" type="button" aria-label="Cerrar">×</button>
+        </div>
+      </div>
+      <div class="customer-detail-body">
+        <div class="customer-detail-info" id="customer-detail-info"></div>
+        <div class="customer-detail-actions">
+          <button class="secondary-button" id="edit-customer-button" type="button">Editar</button>
+          <button class="row-cancel" id="deactivate-customer-button" type="button">Desactivar</button>
+        </div>
+        <div class="customer-history">
+          <p class="eyebrow">HISTORIAL DE CITAS</p>
+          <div class="customer-history-list" id="customer-history-list" aria-live="polite"></div>
+        </div>
+      </div>
+      <div class="dialog-actions"><button class="secondary-button" id="close-customer-detail-button" type="button">Cerrar</button></div>
     </dialog>
 
     <dialog class="appointment-dialog professional-dialog" id="professional-dialog" aria-labelledby="professional-dialog-title">

@@ -101,3 +101,11 @@ test("la lista de servicios del prompt se limita a 15", () => {
   assert.match(prompt, /Servicio 14 — 30 min — \$1\.000/);
   assert.doesNotMatch(prompt, /Servicio 15 —/);
 });
+
+test("el prompt pide nombre y teléfono y prohíbe inventar datos del cliente", () => {
+  const prompt = buildAgentSystemPrompt({ tenant: TENANT, config: {} });
+  assert.match(prompt, /pide nombre y teléfono/i);
+  assert.match(prompt, /buscar_cliente/);
+  assert.match(prompt, /No inventes datos del cliente ni reutilices el teléfono de otra persona/);
+  assert.match(prompt, /customerPhone/);
+});

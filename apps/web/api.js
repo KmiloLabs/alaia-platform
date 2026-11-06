@@ -25,6 +25,12 @@ const ERROR_MESSAGES = {
   invalid_service_category: "La categoría no puede superar los 40 caracteres.",
   service_name_taken: "Ya existe un servicio con ese nombre en tu negocio.",
   service_not_found: "No encontramos ese servicio en tu negocio.",
+  invalid_customer_name: "El nombre del cliente debe tener entre 2 y 80 caracteres.",
+  invalid_customer_phone: "El teléfono debe tener entre 7 y 15 dígitos.",
+  invalid_customer_email: "El correo del cliente no es válido.",
+  invalid_customer_notes: "Las notas del cliente no pueden superar los 300 caracteres.",
+  customer_phone_taken: "Ese teléfono ya está registrado en otro cliente de tu negocio.",
+  customer_not_found: "No encontramos ese cliente en tu negocio.",
   invalid_sector: "Selecciona un tipo de negocio válido.",
   invalid_timezone: "La zona horaria no es válida.",
   appointment_conflict: "Ese horario se cruza con otra cita del negocio. Elige otra hora.",
@@ -37,6 +43,7 @@ const ERROR_MESSAGES = {
   invalid_message: "Escribe un mensaje de prueba antes de enviarlo.",
   agent_not_configured: "El agente no tiene proveedor configurado en el servidor. Añade la clave del proveedor en el archivo .env o activa AGENT_ENABLE_MOCK=true para probar.",
   agent_provider_error: "El proveedor de IA no respondió correctamente. Intenta de nuevo en unos minutos.",
+  conversation_not_found: "La conversación anterior ya no está disponible. Empezamos una conversación nueva.",
   tenant_lookup_failed: "No pudimos comprobar el acceso al negocio. Intenta de nuevo.",
   internal_error: "Ocurrió un error en el servidor. Intenta de nuevo.",
   network_error: `No pudimos conectar con la API (${API_BASE}). Revisa que el servidor esté activo.`,
@@ -57,8 +64,6 @@ export function isUnauthorized(error) {
 
 export function isTenantAccessError(error) {
   return error instanceof ApiError && (
-    error.status === 403 ||
-    error.status === 404 ||
     error.code === "tenant_not_found" ||
     error.code === "tenant_unavailable"
   );
@@ -201,9 +206,47 @@ export function createAppointment(tenantId, appointment) {
     notes: appointment.notes ?? "",
     clientRequestId: appointment.clientRequestId ?? createClientRequestId(),
   };
+  if (appointment.customerId) body.customerId = appointment.customerId;
   return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments`, {
     method: "POST",
     body,
+  });
+}
+
+export function listCustomers(tenantId, { query = "", includeInactive = false } = {}) {
+  const params = new URLSearchParams();
+  if (query) params.set("query", query);
+  if (includeInactive) params.set("includeInactive", "1");
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/customers${suffix}`);
+}
+
+export function getCustomer(tenantId, customerId) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/customers/${encodeURIComponent(customerId)}`);
+}
+
+export function createCustomer(tenantId, customer) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/customers`, {
+    method: "POST",
+    body: {
+      name: customer.name,
+      phone: customer.phone ?? "",
+      email: customer.email ?? "",
+      notes: customer.notes ?? "",
+    },
+  });
+}
+
+export function updateCustomer(tenantId, customerId, changes) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/customers/${encodeURIComponent(customerId)}`, {
+    method: "PATCH",
+    body: changes,
+  });
+}
+
+export function deactivateCustomer(tenantId, customerId) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/customers/${encodeURIComponent(customerId)}`, {
+    method: "DELETE",
   });
 }
 

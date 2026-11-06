@@ -13,7 +13,18 @@ const CONTEXT = { tenant: TENANT, actorUid: "uid-1", conversationId: "conv-1" };
 const NOW = new Date("2030-03-15T15:00:00.000Z"); // 10:00 en Bogotá
 
 function fakeDeps(overrides = {}) {
-  const calls = { availability: [], list: [], create: [], reschedule: [], cancel: [], services: [], getService: [] };
+  const calls = {
+    availability: [],
+    list: [],
+    create: [],
+    reschedule: [],
+    cancel: [],
+    services: [],
+    getService: [],
+    searchCustomers: [],
+    findCustomerByPhone: [],
+    createCustomer: [],
+  };
   const deps = {
     now: () => NOW,
     getAvailability: async (args) => {
@@ -75,6 +86,29 @@ function fakeDeps(overrides = {}) {
       if (args.serviceId !== "svc_activo") return null;
       return { serviceId: "svc_activo", name: "Corte del catálogo", durationMinutes: 60, priceCOP: 75000, active: true };
     },
+    searchCustomers: async (args) => {
+      calls.searchCustomers.push(args);
+      return {
+        ok: true,
+        customers: [
+          { customerId: "cus_1", name: "Camila Rojas", phone: "3001234567", active: true },
+          { customerId: "cus_2", name: "Óscar Pérez", phone: "3111111111", active: true },
+        ],
+      };
+    },
+    findCustomerByPhone: async (args) => {
+      calls.findCustomerByPhone.push(args);
+      if (args.phone !== "3001234567") return null;
+      return { customerId: "cus_1", name: "Camila Rojas", phone: "3001234567", active: true };
+    },
+    createCustomer: async (args) => {
+      calls.createCustomer.push(args);
+      return {
+        ok: true,
+        status: 201,
+        customer: { customerId: "cus_nuevo", name: args.body.name, phone: args.body.phone, active: true },
+      };
+    },
     ...overrides,
   };
   return { deps, calls };
@@ -85,6 +119,7 @@ test("se registran las herramientas del contrato", () => {
     "consultar_disponibilidad",
     "consultar_agenda",
     "consultar_servicios",
+    "buscar_cliente",
     "crear_cita",
     "reprogramar_cita",
     "cancelar_cita",
@@ -158,7 +193,8 @@ test("crear_cita usa el tenant del contexto e idempotencia derivada de la conver
   assert.equal(request.body.startsAt, "2030-03-20T10:00");
   assert.equal(request.body.durationMinutes, 45);
   assert.equal(request.body.priceCOP, 0);
-  assert.equal(request.body.customerPhone, "300 000 0000");
+  assert.equal(request.body.customerPhone, "3000000000");
+  assert.equal(request.body.customerId, "cus_nuevo");
   assert.equal(request.body.clientRequestId, "agent-conv-1-2030-03-20T10:00");
 });
 
@@ -327,4 +363,105 @@ test("crear_cita sin serviceId mantiene el comportamiento de texto libre", async
   assert.equal(calls.create[0].body.serviceName, "Servicio libre");
   assert.equal(calls.create[0].body.priceCOP, 0);
   assert.equal(calls.create[0].body.durationMinutes, 45);
+});
+
+test("buscar_cliente devuelve clientes con la query y el tenant de la ruta", async () => {
+  const { deps, calls } = fakeDeps();
+  const result = await executeTool("buscar_cliente", { query: "camila" }, CONTEXT, deps);
+
+  assert.equal(result.ok, true);
+  assert.equal(calls.searchCustomers[0].tenantId, "tenant-1");
+  assert.equal(calls.searchCustomers[0].query, "camila");
+  assert.equal(result.data.count, 2);
+  assert.deepEqual(result.data.customers[0], { id: "cus_1", name: "Camila Rojas", phone: "3001234567" });
+});
+
+test("buscar_cliente exige query y limita a 40 caracteres", async () => {
+  const { deps } = fakeDeps();
+  for (const args of [{}, { query: "" }, { query: "x".repeat(41) }]) {
+    const result = await executeTool("buscar_cliente", args, CONTEXT, deps);
+    assert.equal(result.ok, false, JSON.stringify(args));
+    assert.equal(result.error.code, "invalid_arguments");
+  }
+});
+
+test("crear_cita con teléfono nuevo crea el cliente y vincula la cita", async () => {
+  const { deps, calls } = fakeDeps();
+  const result = await executeTool("crear_cita", {
+    customerName: "Ana Pérez",
+    customerPhone: "300 999 8888",
+    serviceName: "Corte",
+    startsAt: "2030-03-20T10:00",
+  }, CONTEXT, deps);
+
+  assert.equal(result.ok, true);
+  assert.equal(calls.findCustomerByPhone[0].phone, "3009998888");
+  assert.equal(calls.createCustomer.length, 1);
+  assert.deepEqual(calls.createCustomer[0].body, { name: "Ana Pérez", phone: "3009998888" });
+  assert.equal(calls.create[0].body.customerId, "cus_nuevo");
+  assert.equal(calls.create[0].body.customerName, "Ana Pérez");
+  assert.equal(calls.create[0].body.customerPhone, "3009998888");
+});
+
+test("crear_cita con teléfono existente reutiliza el cliente sin crear otro", async () => {
+  const { deps, calls } = fakeDeps();
+  const result = await executeTool("crear_cita", {
+    customerName: "Nombre que no debe usarse",
+    customerPhone: "3001234567",
+    serviceName: "Corte",
+    startsAt: "2030-03-20T10:00",
+  }, CONTEXT, deps);
+
+  assert.equal(result.ok, true);
+  assert.equal(calls.createCustomer.length, 0);
+  assert.equal(calls.create[0].body.customerId, "cus_1");
+  assert.equal(calls.create[0].body.customerName, "Camila Rojas");
+  assert.equal(calls.create[0].body.customerPhone, "3001234567");
+});
+
+test("crear_cita con teléfono y sin nombre usa 'Cliente'", async () => {
+  const { deps, calls } = fakeDeps();
+  const result = await executeTool("crear_cita", {
+    customerPhone: "300 777 6666",
+    serviceName: "Corte",
+    startsAt: "2030-03-20T10:00",
+  }, CONTEXT, deps);
+
+  assert.equal(result.ok, true);
+  assert.equal(calls.createCustomer[0].body.name, "Cliente");
+  assert.equal(calls.create[0].body.customerId, "cus_nuevo");
+});
+
+test("crear_cita con teléfono inválido no crea nada", async () => {
+  const { deps, calls } = fakeDeps();
+  const result = await executeTool("crear_cita", {
+    customerName: "Ana",
+    customerPhone: "123",
+    serviceName: "Corte",
+    startsAt: "2030-03-20T10:00",
+  }, CONTEXT, deps);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "invalid_customer_phone");
+  assert.equal(calls.findCustomerByPhone.length, 0);
+  assert.equal(calls.createCustomer.length, 0);
+  assert.equal(calls.create.length, 0);
+});
+
+test("crear_cita propaga el error si el cliente no se puede crear", async () => {
+  const { deps } = fakeDeps({
+    createCustomer: async () => ({
+      ok: false,
+      status: 409,
+      code: "customer_phone_taken",
+      message: "Ya existe un cliente con ese teléfono en el negocio.",
+    }),
+  });
+  const result = await executeTool("crear_cita", {
+    customerPhone: "300 555 4444",
+    serviceName: "Corte",
+    startsAt: "2030-03-20T10:00",
+  }, CONTEXT, deps);
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "customer_phone_taken");
 });

@@ -2,6 +2,7 @@ import express from "express";
 import { tenantRoutes } from "./tenant-routes.js";
 import { appointmentRoutes } from "./appointment-routes.js";
 import { serviceRoutes } from "./service-routes.js";
+import { customerRoutes } from "./customer-routes.js";
 import { agentRoutes } from "./agent/routes.js";
 import { sendError } from "./http.js";
 
@@ -41,6 +42,7 @@ app.get("/health", (_req, res) => res.json({ status: "ok", service: "alaia-api" 
 app.use("/api/v1", tenantRoutes);
 app.use("/api/v1", appointmentRoutes);
 app.use("/api/v1", serviceRoutes);
+app.use("/api/v1", customerRoutes);
 app.use("/api/v1", agentRoutes);
 app.use((_req, res) => sendError(res, 404, "not_found", "No encontramos esa ruta."));
 app.use((error, _req, res, _next) => {
