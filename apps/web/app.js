@@ -202,6 +202,29 @@ const openPublicPage = $("#open-public-page");
 const publicPageQr = $("#public-page-qr");
 const publicPageQrNote = $("#public-page-qr-note");
 const publicPageStatus = $("#public-page-status");
+const whatsappChannelPanel = $("#whatsapp-channel-panel");
+const whatsappChannelStatus = $("#whatsapp-channel-status");
+const whatsappChannelState = $("#whatsapp-channel-state");
+const whatsappChannelNumber = $("#whatsapp-channel-number");
+const whatsappTestButton = $("#whatsapp-test-button");
+const whatsappChannelMessage = $("#whatsapp-channel-message");
+const whatsappChannelRetry = $("#whatsapp-channel-retry");
+const whatsappChatDialog = $("#whatsapp-chat-dialog");
+const whatsappChatHistory = $("#whatsapp-chat-history");
+const whatsappChatStatus = $("#whatsapp-chat-status");
+const whatsappChatTyping = $("#whatsapp-chat-typing");
+const whatsappChatForm = $("#whatsapp-chat-form");
+const whatsappChatInput = $("#whatsapp-chat-input");
+const whatsappChatSend = $("#whatsapp-chat-send");
+const whatsappNewConversation = $("#whatsapp-new-conversation");
+const closeWhatsappChat = $("#close-whatsapp-chat");
+const whatsappChatClose = $("#whatsapp-chat-close");
+const platformWhatsappCurrent = $("#platform-whatsapp-current");
+const platformWhatsappPhoneId = $("#platform-whatsapp-phone-id");
+const platformWhatsappDisplay = $("#platform-whatsapp-display");
+const platformWhatsappConnect = $("#platform-whatsapp-connect");
+const platformWhatsappDisconnect = $("#platform-whatsapp-disconnect");
+const platformWhatsappMessage = $("#platform-whatsapp-message");
 
 const tenantForm = $("#tenant-form");
 const tenantName = $("#tenant-name");
@@ -554,6 +577,13 @@ const state = {
   publicMode: false,
   publicSlug: null,
   publicData: null,
+  whatsappChannel: null,
+  whatsappChannelSeq: 0,
+  whatsappChannelLoading: false,
+  whatsappChatMessages: [],
+  whatsappChatBusy: false,
+  whatsappConversationId: null,
+  platformWhatsappSaving: false,
   publicService: null,
   publicSlots: [],
   publicSlotsSeq: 0,
@@ -1201,6 +1231,283 @@ copyPublicPage.addEventListener("click", async () => {
   }, 1800);
 });
 
+// ---------------------------------------------------------------------------
+// Canal de WhatsApp: estado y chat de prueba
+// ---------------------------------------------------------------------------
+
+function whatsappChannelDetails(data) {
+  const channel = data?.channel ?? data?.whatsapp ?? data ?? {};
+  const mode = String(channel.mode ?? data?.mode ?? "off");
+  const displayPhone = String(channel.displayPhone ?? channel.number ?? channel.phoneNumber ?? data?.displayPhone ?? "");
+  const phoneNumberId = String(channel.phoneNumberId ?? data?.phoneNumberId ?? "");
+  const connected = Boolean(channel.connected ?? channel.status === "active" ?? displayPhone ?? phoneNumberId);
+  return { mode, displayPhone, phoneNumberId, connected };
+}
+
+function setWhatsappChannelState(info) {
+  if (info.connected || info.displayPhone) {
+    whatsappChannelStatus.textContent = "Conectado";
+    whatsappChannelStatus.className = "config-status is-ready";
+    whatsappChannelState.textContent = "Conectado";
+    whatsappChannelNumber.textContent = info.displayPhone ? `Número: ${info.displayPhone}` : "";
+    return;
+  }
+  if (info.mode === "sandbox") {
+    whatsappChannelStatus.textContent = "Modo de prueba";
+    whatsappChannelStatus.className = "config-status is-warning";
+    whatsappChannelState.textContent = "Modo de prueba";
+    whatsappChannelNumber.textContent = "Los mensajes de prueba no se envían por WhatsApp.";
+    return;
+  }
+  whatsappChannelStatus.textContent = "No configurado";
+  whatsappChannelStatus.className = "config-status";
+  whatsappChannelState.textContent = "No configurado";
+  whatsappChannelNumber.textContent = "Conecta el número oficial desde plataforma.";
+}
+
+async function loadWhatsappChannel() {
+  if (!state.tenant) return;
+  const tenantId = state.tenant.tenantId;
+  const seq = ++state.whatsappChannelSeq;
+  state.whatsappChannelLoading = true;
+  whatsappChannelStatus.textContent = "Cargando…";
+  whatsappChannelStatus.className = "config-status is-loading";
+  whatsappChannelState.textContent = "—";
+  whatsappChannelNumber.textContent = "";
+  whatsappChannelMessage.textContent = "";
+  whatsappChannelRetry.hidden = true;
+  try {
+    const data = await getWhatsappChannel(tenantId);
+    if (seq !== state.whatsappChannelSeq || state.tenant?.tenantId !== tenantId) return;
+    state.whatsappChannel = data;
+    setWhatsappChannelState(whatsappChannelDetails(data));
+  } catch (error) {
+    if (seq !== state.whatsappChannelSeq) return;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    whatsappChannelStatus.textContent = "Error";
+    whatsappChannelStatus.className = "config-status is-error";
+    whatsappChannelState.textContent = "No pudimos cargar el canal";
+    whatsappChannelMessage.textContent = messageForError(error);
+    whatsappChannelMessage.className = "form-status is-error";
+    whatsappChannelRetry.hidden = false;
+  } finally {
+    if (seq === state.whatsappChannelSeq) state.whatsappChannelLoading = false;
+  }
+}
+
+function resetWhatsappChat() {
+  state.whatsappChatMessages = [];
+  state.whatsappConversationId = null;
+  state.whatsappChatBusy = false;
+  if (!whatsappChatHistory) return;
+  whatsappChatHistory.replaceChildren();
+  if (whatsappChatStatus) {
+    whatsappChatStatus.textContent = "";
+    whatsappChatStatus.className = "whatsapp-chat-status";
+  }
+  if (whatsappChatTyping) whatsappChatTyping.hidden = true;
+  if (whatsappChatSend) whatsappChatSend.disabled = false;
+}
+
+function renderWhatsappChat() {
+  if (!whatsappChatHistory) return;
+  if (!state.whatsappChatMessages.length) {
+    const empty = document.createElement("p");
+    empty.className = "whatsapp-chat-empty";
+    empty.textContent = "Escribe un mensaje como si fueras el cliente para probar el canal.";
+    whatsappChatHistory.replaceChildren(empty);
+    return;
+  }
+  whatsappChatHistory.replaceChildren(...state.whatsappChatMessages.map((message) => {
+    const bubble = document.createElement("div");
+    bubble.className = `whatsapp-bubble is-${message.role}`;
+    const text = document.createElement("p");
+    text.textContent = message.text;
+    bubble.append(text);
+    if (message.meta) {
+      const meta = document.createElement("small");
+      meta.textContent = message.meta;
+      bubble.append(meta);
+    }
+    return bubble;
+  }));
+  whatsappChatHistory.scrollTop = whatsappChatHistory.scrollHeight;
+}
+
+function openWhatsappChat() {
+  if (!whatsappChatDialog || whatsappChatDialog.open) return;
+  renderWhatsappChat();
+  whatsappChatDialog.showModal();
+  whatsappChatInput.focus();
+}
+
+function whatsappResponseMeta(data) {
+  const action = data?.action ? `Acción: ${data.action}` : "";
+  const toolCalls = Array.isArray(data?.toolCalls) ? data.toolCalls : [];
+  const tools = toolCalls.map((call) => call?.name ?? "herramienta").filter(Boolean);
+  const toolText = tools.length ? `Herramienta: ${tools.join(", ")}` : "";
+  const model = data?.model?.model ?? data?.model;
+  const modelText = model ? `Modelo: ${model}` : "";
+  return [action, toolText, modelText].filter(Boolean).join(" · ");
+}
+
+async function sendWhatsappTestMessage() {
+  if (!state.tenant || state.whatsappChatBusy) return;
+  const text = whatsappChatInput.value.trim();
+  if (!text) {
+    whatsappChatInput.focus();
+    return;
+  }
+  state.whatsappChatMessages.push({ role: "client", text });
+  whatsappChatInput.value = "";
+  renderWhatsappChat();
+  state.whatsappChatBusy = true;
+  whatsappChatSend.disabled = true;
+  whatsappChatTyping.hidden = false;
+  whatsappChatStatus.textContent = "Enviando al agente…";
+  whatsappChatStatus.className = "whatsapp-chat-status is-loading";
+  try {
+    const data = await testWhatsappMessage(state.tenant.tenantId, text);
+    if (data?.conversationId) state.whatsappConversationId = data.conversationId;
+    state.whatsappChatMessages.push({
+      role: "agent",
+      text: data?.reply || "El agente no devolvió una respuesta.",
+      meta: whatsappResponseMeta(data),
+    });
+    whatsappChatStatus.textContent = `Respuesta del agente · ${state.whatsappChatMessages.length} mensajes`;
+    whatsappChatStatus.className = "whatsapp-chat-status is-ok";
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    state.whatsappChatMessages.push({ role: "error", text: messageForError(error) });
+    whatsappChatStatus.textContent = "";
+    whatsappChatStatus.className = "whatsapp-chat-status";
+  } finally {
+    state.whatsappChatBusy = false;
+    whatsappChatSend.disabled = false;
+    whatsappChatTyping.hidden = true;
+    renderWhatsappChat();
+    whatsappChatInput.focus();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Plataforma: conectar número de WhatsApp
+// ---------------------------------------------------------------------------
+
+function platformWhatsappDetails(tenant) {
+  const raw = tenant?.whatsapp ?? tenant?.whatsappNumber ?? tenant?.channel?.whatsapp ?? null;
+  if (!raw) return null;
+  return {
+    phoneNumberId: String(raw.phoneNumberId ?? raw.id ?? ""),
+    displayPhone: String(raw.displayPhone ?? raw.number ?? ""),
+    active: raw.status !== "inactive",
+  };
+}
+
+function renderPlatformWhatsapp(tenant) {
+  if (!platformWhatsappCurrent) return;
+  const info = platformWhatsappDetails(tenant);
+  platformWhatsappMessage.textContent = "";
+  platformWhatsappMessage.className = "form-status";
+  if (!info || (!info.phoneNumberId && !info.displayPhone)) {
+    platformWhatsappCurrent.textContent = "Sin número conectado.";
+    platformWhatsappDisconnect.hidden = true;
+    platformWhatsappPhoneId.value = "";
+    platformWhatsappDisplay.value = "";
+    return;
+  }
+  platformWhatsappCurrent.textContent = info.displayPhone
+    ? `Conectado: ${info.displayPhone}${info.phoneNumberId ? ` · ${info.phoneNumberId}` : ""}`
+    : `Conectado: ${info.phoneNumberId}`;
+  platformWhatsappPhoneId.value = info.phoneNumberId;
+  platformWhatsappDisplay.value = info.displayPhone;
+  platformWhatsappDisconnect.hidden = false;
+}
+
+async function connectPlatformWhatsapp() {
+  const tenantId = state.platformDetailId;
+  const phoneNumberId = platformWhatsappPhoneId.value.trim();
+  if (!tenantId || !phoneNumberId) {
+    platformWhatsappMessage.textContent = "Escribe el phoneNumberId del número.";
+    platformWhatsappMessage.className = "form-status is-error";
+    platformWhatsappPhoneId.focus();
+    return;
+  }
+  state.platformWhatsappSaving = true;
+  platformWhatsappConnect.disabled = true;
+  platformWhatsappMessage.textContent = "Conectando…";
+  platformWhatsappMessage.className = "form-status is-loading";
+  try {
+    const data = await connectWhatsappNumber(tenantId, {
+      phoneNumberId,
+      displayPhone: platformWhatsappDisplay.value.trim(),
+    });
+    const channel = data?.whatsapp ?? data?.channel ?? data;
+    if (state.platformDetailData) state.platformDetailData.whatsapp = channel;
+    renderPlatformWhatsapp(state.platformDetailData);
+    platformWhatsappMessage.textContent = "Número conectado.";
+    platformWhatsappMessage.className = "form-status is-ok";
+  } catch (error) {
+    platformWhatsappMessage.textContent = messageForError(error);
+    platformWhatsappMessage.className = "form-status is-error";
+  } finally {
+    state.platformWhatsappSaving = false;
+    platformWhatsappConnect.disabled = false;
+  }
+}
+
+async function disconnectPlatformWhatsapp() {
+  const tenantId = state.platformDetailId;
+  if (!tenantId || !window.confirm("¿Desconectar el número de WhatsApp de este negocio?")) return;
+  state.platformWhatsappSaving = true;
+  platformWhatsappDisconnect.disabled = true;
+  platformWhatsappMessage.textContent = "Desconectando…";
+  platformWhatsappMessage.className = "form-status is-loading";
+  try {
+    await disconnectWhatsappNumber(tenantId);
+    if (state.platformDetailData) delete state.platformDetailData.whatsapp;
+    renderPlatformWhatsapp(state.platformDetailData);
+    platformWhatsappMessage.textContent = "Número desconectado.";
+    platformWhatsappMessage.className = "form-status is-ok";
+  } catch (error) {
+    platformWhatsappMessage.textContent = messageForError(error);
+    platformWhatsappMessage.className = "form-status is-error";
+  } finally {
+    state.platformWhatsappSaving = false;
+    platformWhatsappDisconnect.disabled = false;
+  }
+}
+
+whatsappTestButton.addEventListener("click", openWhatsappChat);
+whatsappChannelRetry.addEventListener("click", loadWhatsappChannel);
+closeWhatsappChat.addEventListener("click", () => whatsappChatDialog.close());
+whatsappChatClose.addEventListener("click", () => whatsappChatDialog.close());
+whatsappNewConversation.addEventListener("click", () => {
+  resetWhatsappChat();
+  renderWhatsappChat();
+  whatsappChatInput.focus();
+});
+whatsappChatForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await sendWhatsappTestMessage();
+});
+platformWhatsappConnect.addEventListener("click", connectPlatformWhatsapp);
+platformWhatsappDisconnect.addEventListener("click", disconnectPlatformWhatsapp);
+
 onAuthStateChanged(auth, (user) => {
   if (state.publicMode) return;
   if (state.inviteMode) {
@@ -1291,6 +1598,9 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
     state.professionalsTenantId = null;
     state.professionalsLoaded = false;
     state.professionalsLoadSeq += 1;
+    state.whatsappChannel = null;
+    state.whatsappChannelSeq += 1;
+    resetWhatsappChat();
     state.settlementTenantId = null;
     state.settlementData = null;
     state.settlementSeq += 1;
@@ -1356,6 +1666,8 @@ function handleSignedOut() {
   if (appointmentDialog.open) appointmentDialog.close();
   if (rescheduleDialog.open) rescheduleDialog.close();
   if (platformDetailDialog.open) platformDetailDialog.close();
+  if (whatsappChatDialog?.open) whatsappChatDialog.close();
+  resetWhatsappChat();
   state.platformQuery = "";
   state.platformStatusFilter = "";
   state.platformTenants = [];
@@ -2120,6 +2432,7 @@ function setView(view) {
   if (isConfig) {
     renderProfile();
     renderPublicPageCard();
+    loadWhatsappChannel();
     loadSchedule();
     loadAgentConfig();
   }
@@ -4590,6 +4903,7 @@ function renderPlatformDetail(tenant) {
   platformSaveNotesButton.disabled = false;
   platformToggleStatusButton.disabled = false;
   platformToggleStatusButton.textContent = suspended ? "Reactivar" : "Suspender";
+  renderPlatformWhatsapp(tenant);
   platformDetailMessage.textContent = "";
   platformDetailError.textContent = "";
 }

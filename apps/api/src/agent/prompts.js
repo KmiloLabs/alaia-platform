@@ -25,6 +25,7 @@ export function buildAgentSystemPrompt({ tenant, config, services = [], now = ne
     .slice(0, MAX_SERVICES_IN_PROMPT)
     .map(formatServiceLine)
     .filter(Boolean);
+  const contactLines = buildContactLines(tenant);
 
   return [
     `Eres el asistente de recepción de ${name} y atiendes a clientes por escrito.`,
@@ -32,6 +33,7 @@ export function buildAgentSystemPrompt({ tenant, config, services = [], now = ne
     `Fecha y hora actuales en el negocio: ${humanNow} (${currentLocal}; fecha local ${currentDate}).`,
     `Horario de atención: ${formatOpeningHours(openingHours)}.`,
     `Servicios activos: ${serviceLines.length > 0 ? serviceLines.join("; ") : "(sin servicios configurados)"}.`,
+    ...(contactLines.length > 0 ? [`Información del negocio: ${contactLines.join(" ")}`] : []),
     `Tono de atención: ${tone}.`,
     `Instrucciones del negocio: ${instructions}`,
     "Reglas:",
@@ -45,9 +47,28 @@ export function buildAgentSystemPrompt({ tenant, config, services = [], now = ne
     "- Antes de crear, reprogramar o cancelar una cita, pide confirmación explícita al cliente; ejecuta la acción solo cuando la haya confirmado en la conversación.",
     "- Si falta un dato (nombre, servicio, fecha, hora), pídelo antes de reservar.",
     "- No compartas identificadores técnicos, datos internos ni información de otros clientes.",
+    "- Si preguntan dónde queda el negocio, el teléfono o las redes, usa \"Información del negocio\"; si ese dato no está, di que lo confirmas con una persona y deriva.",
     "- Deriva a una persona con derivar_a_persona ante urgencias, quejas o temas fuera de alcance.",
     `- Responde SIEMPRE con un único objeto JSON válido, sin texto alrededor: {"reply": "texto para el cliente", "action": "${ALLOWED_ACTIONS}"}. No añadas claves adicionales.`,
   ].join("\n");
+}
+
+export function buildContactLines(tenant) {
+  const lines = [];
+  const address = typeof tenant?.address === "string" ? tenant.address.trim() : "";
+  const phone = typeof tenant?.phone === "string" ? tenant.phone.trim() : "";
+  const description = typeof tenant?.description === "string" ? tenant.description.trim() : "";
+  if (address) lines.push(`Dirección: ${address}.`);
+  if (phone) lines.push(`Teléfono: ${phone}.`);
+  if (description) lines.push(`Descripción: ${description}.`);
+  const social = tenant?.socialLinks && typeof tenant.socialLinks === "object" ? tenant.socialLinks : {};
+  const socialParts = [];
+  for (const key of ["instagram", "facebook", "tiktok", "whatsapp", "website"]) {
+    const value = typeof social[key] === "string" ? social[key].trim() : "";
+    if (value) socialParts.push(`${key}: ${value}`);
+  }
+  if (socialParts.length > 0) lines.push(`Redes: ${socialParts.join(", ")}.`);
+  return lines;
 }
 
 export function formatServiceLine(service) {

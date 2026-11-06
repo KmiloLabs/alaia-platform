@@ -57,9 +57,18 @@ export async function saveAgentConfig({ tenantId, actorUid, body, env = process.
   return { ok: true, config: validation.value };
 }
 
-export async function sendAgentMessage({ tenant, actorUid, body, env = process.env }) {
+export async function sendAgentMessage({
+  tenant,
+  actorUid,
+  body,
+  env = process.env,
+  channel = "panel",
+  customerPhone = null,
+  customerId = null,
+}) {
   const input = validateMessageInput(body);
   if (!input.ok) return input;
+  const resolvedChannel = channel === "whatsapp" ? "whatsapp" : "panel";
 
   const config = resolveAgentConfig(tenant, env);
   const providerResolution = await resolvePlatformProvider(config.provider, { env });
@@ -79,13 +88,13 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
       return error(404, "conversation_not_found", "No encontramos esa conversación en el negocio.");
     }
   } else {
-    conversationRef = conversationsRef.doc();
-    await conversationRef.set({
-      channel: "panel",
-      startedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      handoff: false,
-      model: { provider: config.provider, model: modelToUse },
+    conversationRef = await createConversationRef({
+      conversationsRef,
+      channel: resolvedChannel,
+      customerPhone,
+      customerId,
+      config,
+      modelToUse,
     });
   }
 
@@ -200,7 +209,7 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
     toolCalls,
   });
   await conversationRef.set({
-    channel: "panel",
+    channel: resolvedChannel,
     updatedAt: FieldValue.serverTimestamp(),
     handoff,
     lastAction: action,
@@ -220,8 +229,52 @@ export async function sendAgentMessage({ tenant, actorUid, body, env = process.e
   };
 }
 
-function validateMessageInput(body) {
-  const input = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+// WhatsApp reutiliza la conversación del cliente por teléfono para conservar el
+// historial; el panel sigue creando una conversación nueva por sesión.
+async function createConversationRef({ conversationsRef, channel, customerPhone, customerId, config, modelToUse }) {
+  if (channel === "whatsapp" && typeof customerPhone === "string" && customerPhone !== "") {
+    const existing = await findLatestWhatsappConversation(conversationsRef, customerPhone);
+    if (existing) return existing;
+  }
+
+  const ref = conversationsRef.doc();
+  await ref.set({
+    channel,
+    ...(channel === "whatsapp"
+      ? { customerPhone: customerPhone ?? null, customerId: customerId ?? null }
+      : {}),
+    startedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    handoff: false,
+    model: { provider: config.provider, model: modelToUse },
+  });
+  return ref;
+}
+
+async function findLatestWhatsappConversation(conversationsRef, customerPhone) {
+  const snapshot = await conversationsRef.where("customerPhone", "==", customerPhone).limit(25).get();
+  let latestRef = null;
+  let latestMillis = -1;
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    if (data.channel !== "whatsapp") continue;
+    const millis = timestampToMillis(data.updatedAt) ?? timestampToMillis(data.startedAt) ?? 0;
+    if (millis > latestMillis) {
+      latestMillis = millis;
+      latestRef = doc.ref;
+    }
+  }
+  return latestRef;
+}
+
+function timestampToMillis(value) {
+  if (!value) return null;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  return null;
+}
+
+function validateMessageInput(body) {  const input = body && typeof body === "object" && !Array.isArray(body) ? body : {};
   const message = typeof input.message === "string" ? input.message.trim() : "";
   if (message.length < 1 || message.length > MAX_MESSAGE_LENGTH) {
     return error(400, "invalid_message", `El mensaje debe tener entre 1 y ${MAX_MESSAGE_LENGTH} caracteres.`);

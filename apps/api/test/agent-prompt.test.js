@@ -109,3 +109,27 @@ test("el prompt pide nombre y teléfono y prohíbe inventar datos del cliente", 
   assert.match(prompt, /No inventes datos del cliente ni reutilices el teléfono de otra persona/);
   assert.match(prompt, /customerPhone/);
 });
+
+test("incluye dirección, teléfono y redes del negocio en el prompt", () => {
+  const prompt = buildAgentSystemPrompt({
+    tenant: {
+      ...TENANT,
+      description: "Barbería con estilo",
+      address: "Calle 45 #12-30, Medellín",
+      phone: "+57 604 123 4567",
+      socialLinks: { instagram: "https://instagram.com/barberia", whatsapp: "3001234567" },
+    },
+    config: { tone: "cercano" },
+    now: new Date("2030-03-15T15:00:00.000Z"),
+  });
+  assert.match(prompt, /Información del negocio/);
+  assert.match(prompt, /Calle 45 #12-30/);
+  assert.match(prompt, /\+57 604 123 4567/);
+  assert.match(prompt, /instagram/);
+});
+
+test("sin perfil no inventa la línea de contacto", () => {
+  const prompt = buildAgentSystemPrompt({ tenant: TENANT, config: {}, now: new Date("2030-03-15T15:00:00.000Z") });
+  assert.doesNotMatch(prompt, /Dirección:/);
+  assert.doesNotMatch(prompt, /Teléfono:/);
+});

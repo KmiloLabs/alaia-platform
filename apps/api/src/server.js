@@ -8,6 +8,7 @@ import { professionalRoutes } from "./professional-routes.js";
 import { settlementRoutes } from "./settlement-routes.js";
 import { invitationRoutes, publicInvitationRoutes } from "./invitation-routes.js";
 import { publicRoutes } from "./public-routes.js";
+import { whatsappRoutes, whatsappPlatformRoutes, whatsappWebhookRoutes } from "./whatsapp-routes.js";
 import { agentRoutes } from "./agent/routes.js";
 import { platformRoutes } from "./platform-routes.js";
 import { sendError } from "./http.js";
@@ -38,6 +39,8 @@ app.use((req, res, next) => {
   }
   return next();
 });
+// El webhook necesita el cuerpo CRUDO para verificar la firma: va antes de json.
+app.use("/api/v1", whatsappWebhookRoutes);
 app.use(express.json({ limit: "32kb", strict: true }));
 app.use("/api/v1", (_req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
@@ -57,6 +60,8 @@ app.use("/api/v1", dashboardRoutes);
 app.use("/api/v1", professionalRoutes);
 app.use("/api/v1", settlementRoutes);
 app.use("/api/v1", invitationRoutes);
+app.use("/api/v1", whatsappRoutes);
+app.use("/api/v1", whatsappPlatformRoutes);
 app.use("/api/v1", agentRoutes);
 app.use("/api/v1", platformRoutes);
 app.use((_req, res) => sendError(res, 404, "not_found", "No encontramos esa ruta."));

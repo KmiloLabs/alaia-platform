@@ -511,6 +511,25 @@
               </div>
             </article>
 
+            <article class="panel whatsapp-channel-panel" id="whatsapp-channel-panel" aria-labelledby="whatsapp-channel-title">
+              <div class="panel-heading">
+                <div><p class="eyebrow">CANAL DE WHATSAPP</p><h2 id="whatsapp-channel-title">Atiende por WhatsApp</h2></div>
+                <span class="config-status" id="whatsapp-channel-status">Cargando…</span>
+              </div>
+              <p class="config-intro">Cuando conectes tu número oficial, el asistente atiende por WhatsApp. Mientras tanto puedes probarlo desde el panel.</p>
+              <div class="whatsapp-channel-row">
+                <div>
+                  <p class="eyebrow">ESTADO DEL CANAL</p>
+                  <strong id="whatsapp-channel-state">—</strong>
+                  <span id="whatsapp-channel-number"></span>
+                </div>
+                <button class="primary-button" id="whatsapp-test-button" type="button">Probar el canal</button>
+              </div>
+              <p class="form-status" id="whatsapp-channel-message" role="status" aria-live="polite"></p>
+              <button class="secondary-button" id="whatsapp-channel-retry" type="button" hidden>Reintentar</button>
+              <p class="field-hint">En modo de prueba no se envían mensajes reales por WhatsApp.</p>
+            </article>
+
             <div class="config-grid">
               <article class="panel agent-config-panel">
                 <div class="panel-heading">
@@ -954,6 +973,19 @@
         </div>
         <button class="secondary-button" id="platform-save-plan" type="button">Guardar plan</button>
       </div>
+      <div class="platform-whatsapp" id="platform-whatsapp">
+        <p class="eyebrow">CANAL DE WHATSAPP</p>
+        <p class="field-hint" id="platform-whatsapp-current">Sin número conectado.</p>
+        <div class="form-pair">
+          <label for="platform-whatsapp-phone-id">phoneNumberId<input id="platform-whatsapp-phone-id" maxlength="80" placeholder="Ej. 1234567890" /></label>
+          <label for="platform-whatsapp-display">Número visible<input id="platform-whatsapp-display" maxlength="40" placeholder="Ej. +57 300 111 2222" /></label>
+        </div>
+        <div class="dialog-actions platform-whatsapp-actions">
+          <button class="primary-button" id="platform-whatsapp-connect" type="button">Conectar número</button>
+          <button class="row-cancel" id="platform-whatsapp-disconnect" type="button" hidden>Desconectar</button>
+        </div>
+        <p class="form-status" id="platform-whatsapp-message" role="status" aria-live="polite"></p>
+      </div>
       <label for="platform-notes">Notas del administrador<textarea id="platform-notes" rows="3" maxlength="300" placeholder="Ej. Contactado para renovación"></textarea></label>
       <div class="config-counter"><span id="platform-notes-count">0</span>/300 caracteres</div>
       <div class="dialog-actions platform-detail-actions">
@@ -961,6 +993,23 @@
         <button class="row-cancel" id="platform-toggle-status" type="button">Suspender</button>
       </div>
       <div class="platform-activity"><p class="eyebrow">ACTIVIDAD RECIENTE</p><div id="platform-detail-activity"></div></div>
+    </dialog>
+
+    <dialog class="appointment-dialog whatsapp-chat-dialog" id="whatsapp-chat-dialog" aria-labelledby="whatsapp-chat-title">
+      <div class="dialog-heading"><div><p class="eyebrow">CANAL DE WHATSAPP</p><h2 id="whatsapp-chat-title">Chat de prueba</h2></div><button class="dialog-close" id="close-whatsapp-chat" type="button" aria-label="Cerrar">×</button></div>
+      <p class="whatsapp-warning">Mensajes de prueba: no se envían por WhatsApp</p>
+      <div class="whatsapp-chat-status" id="whatsapp-chat-status" role="status" aria-live="polite"></div>
+      <div class="whatsapp-chat-history" id="whatsapp-chat-history" aria-live="polite"></div>
+      <p class="whatsapp-chat-typing" id="whatsapp-chat-typing" hidden>El agente está escribiendo…</p>
+      <form class="whatsapp-chat-form" id="whatsapp-chat-form">
+        <label class="visually-hidden" for="whatsapp-chat-input">Mensaje para el agente</label>
+        <input id="whatsapp-chat-input" type="text" maxlength="500" placeholder="Escribe como si fueras el cliente" autocomplete="off" />
+        <button class="primary-button" id="whatsapp-chat-send" type="submit">Enviar</button>
+      </form>
+      <div class="dialog-actions whatsapp-chat-actions">
+        <button class="secondary-button" id="whatsapp-new-conversation" type="button">Nueva conversación</button>
+        <button class="secondary-button" id="whatsapp-chat-close" type="button">Cerrar</button>
+      </div>
     </dialog>
 
     <dialog class="appointment-dialog professional-dialog" id="professional-dialog" aria-labelledby="professional-dialog-title">

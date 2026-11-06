@@ -771,6 +771,36 @@ async function main() {
     process.exit(1);
   }
   console.log(`Negocios de prueba: A=${tenantA.tenantId} B=${tenantB.tenantId}`);
+  await cleanupOwnTestData({
+    tenantIds: [tenantA.tenantId, tenantB.tenantId],
+    slugs: [tenantA.slug, tenantB.slug],
+    uids: [userA.uid, userB.uid, invitedUser?.uid].filter(Boolean),
+  });
+}
+
+// Borra SOLO los datos que creó esta verificación: nunca los negocios de otros.
+async function cleanupOwnTestData({ tenantIds, slugs, uids }) {
+  try {
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099";
+    process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8081";
+    const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || "demo-alaia";
+    const { applicationDefault, getApps, initializeApp } = await import("firebase-admin/app");
+    const { getFirestore } = await import("firebase-admin/firestore");
+    const { getAuth } = await import("firebase-admin/auth");
+    const app = getApps()[0] ?? initializeApp({ credential: applicationDefault(), projectId });
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    for (const tenantId of tenantIds) {
+      await db.recursiveDelete(db.collection("tenants").doc(tenantId));
+    }
+    for (const slug of slugs) {
+      if (slug) await db.collection("tenantSlugs").doc(slug).delete();
+    }
+    if (uids.length > 0) await auth.deleteUsers(uids);
+    console.log(`Datos de esta verificación borrados: ${tenantIds.length} negocio(s).`);
+  } catch (error) {
+    console.warn("No se pudieron borrar los datos de la verificación:", error?.message ?? error);
+  }
 }
 
 main().catch((error) => {

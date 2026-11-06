@@ -64,6 +64,9 @@ const ERROR_MESSAGES = {
   outside_business_hours: "Ese horario está fuera del horario del negocio.",
   too_many_requests: "Demasiados intentos. Espera un momento y vuelve a intentar.",
   public_tenant_not_found: "No encontramos ese negocio.",
+  invalid_phone_number_id: "El phoneNumberId no es válido.",
+  phone_number_taken: "Ese número ya está conectado a otro negocio.",
+  whatsapp_disabled: "El canal de WhatsApp no está activo en este entorno.",
   provider_not_found: "No encontramos ese proveedor de IA.",
   invalid_api_key: "La clave debe tener entre 8 y 200 caracteres.",
   invalid_models: "Escribe entre 1 y 10 modelos, separados por comas (máx. 64 caracteres cada uno).",
@@ -299,6 +302,30 @@ export function updateAppointmentStatus(tenantId, appointmentId, status) {
     `/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments/${encodeURIComponent(appointmentId)}/status`,
     { method: "POST", body: { status } },
   );
+}
+
+export function getWhatsappChannel(tenantId) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/channel/whatsapp`);
+}
+
+export function testWhatsappMessage(tenantId, text) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/channel/whatsapp/test`, {
+    method: "POST",
+    body: { text },
+  });
+}
+
+export function connectWhatsappNumber(tenantId, { phoneNumberId, displayPhone }) {
+  return request(`/api/v1/platform/tenants/${encodeURIComponent(tenantId)}/whatsapp`, {
+    method: "PUT",
+    body: { phoneNumberId, displayPhone },
+  });
+}
+
+export function disconnectWhatsappNumber(tenantId) {
+  return request(`/api/v1/platform/tenants/${encodeURIComponent(tenantId)}/whatsapp`, {
+    method: "DELETE",
+  });
 }
 
 export function getPublicTenant(slug) {
