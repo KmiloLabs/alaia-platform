@@ -1,6 +1,7 @@
 import { auth, db } from "./firebase.js";
 import { sendError } from "./http.js";
-import { isPlatformAdminEmail, resolveTenantStatus } from "./platform.js";
+import { isPlatformAdminEmail, resolveTenantPlan, resolveTenantStatus } from "./platform.js";
+import { isTrialExpired } from "./trial.js";
 
 export async function requireUser(req, res, next) {
   const authorization = req.get("authorization") ?? "";
@@ -49,6 +50,10 @@ export async function requireTenantMembership(req, res, next) {
     }
     if (tenantStatus !== "active" && !platformAdmin) {
       return sendError(res, 403, "tenant_unavailable", "El acceso a este negocio está pausado.");
+    }
+    // Prueba vencida sin plan: bloqueo total hasta que elija un plan.
+    if (!platformAdmin && resolveTenantPlan(tenant) === "trial" && isTrialExpired(tenant)) {
+      return sendError(res, 403, "tenant_trial_expired", "Tu periodo de prueba terminó. Elige un plan para seguir usando ALAIA.");
     }
     req.tenant = { id: tenantId, ...tenant, status: tenantStatus };
     req.membership = {

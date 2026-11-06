@@ -66,3 +66,11 @@ function toIsoString(value) {
   const millis = toMillis(value);
   return millis === null ? null : new Date(millis).toISOString();
 }
+
+// La prueba vence cuando la fecha de fin ya pasó. Negocios sin fecha (antiguos o
+// con plan de pago) nunca se consideran vencidos por esta regla.
+export function isTrialExpired(tenant, now = new Date()) {
+  const endMs = toMillis(tenant?.trialEndsAt);
+  if (endMs === null) return false;
+  return endMs <= now.getTime();
+}

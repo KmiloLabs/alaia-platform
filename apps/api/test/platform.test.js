@@ -142,3 +142,14 @@ test("constantes y validación del filtro de estado", () => {
   assert.equal(statusFilterIsValid("pausado"), false);
   assert.equal(normalizePlatformText("  Óscar  PÉREZ "), "oscar perez");
 });
+
+test("validateTenantAdminUpdate acepta trialDays y rechaza valores inválidos", () => {
+  const ok = validateTenantAdminUpdate({ trialDays: 7 });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.value.trialDays, 7);
+  for (const value of [-1, 366, 1.5, "7"]) {
+    const result = validateTenantAdminUpdate({ trialDays: value });
+    assert.equal(result.ok, false, `debería fallar con ${value}`);
+    assert.equal(result.code, "invalid_trial_days");
+  }
+});

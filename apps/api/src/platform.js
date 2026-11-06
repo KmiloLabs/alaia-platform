@@ -76,6 +76,13 @@ export function validateTenantAdminUpdate(body) {
     value.notes = notes;
   }
 
+  if (input.trialDays !== undefined) {
+    if (!Number.isInteger(input.trialDays) || input.trialDays < 0 || input.trialDays > 365) {
+      return invalid("invalid_trial_days", "Los días de prueba deben ser un entero entre 0 y 365.");
+    }
+    value.trialDays = input.trialDays;
+  }
+
   return { ok: true, value };
 }
 

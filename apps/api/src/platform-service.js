@@ -15,6 +15,7 @@ import {
   sumUsageLast30Days,
   validateTenantAdminUpdate,
 } from "./platform.js";
+import { trialEndsAtFromNow } from "./trial.js";
 import { serializeTrial } from "./trial.js";
 
 const TENANT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -160,6 +161,9 @@ export async function updatePlatformTenant({ tenantId, body, actorUid = null }) 
   if (validation.value.status !== undefined) update.status = validation.value.status;
   if (validation.value.plan !== undefined) update.plan = validation.value.plan;
   if (validation.value.notes !== undefined) update.notes = validation.value.notes;
+  if (validation.value.trialDays !== undefined) {
+    update.trialEndsAt = Timestamp.fromDate(trialEndsAtFromNow(validation.value.trialDays));
+  }
 
   await ref.set(update, { merge: true });
 

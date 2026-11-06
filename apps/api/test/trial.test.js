@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_TRIAL_DAYS,
   computeTrialDaysLeft,
+  isTrialExpired,
   resolveTrialDays,
   serializeTrial,
   trialEndsAtFromNow,
@@ -61,4 +62,13 @@ test("serializeTrial devuelve plan, fecha ISO y días (null sin fecha)", () => {
 
   const unknownPlan = serializeTrial({ plan: "pro" }, now);
   assert.equal(unknownPlan.plan, "pro");
+});
+
+test("isTrialExpired: vencida, vigente y sin fecha", () => {
+  const now = new Date("2026-11-06T12:00:00Z");
+  assert.equal(isTrialExpired({ trialEndsAt: new Date("2026-11-05T12:00:00Z") }, now), true);
+  assert.equal(isTrialExpired({ trialEndsAt: new Date("2026-11-06T12:00:00Z") }, now), true);
+  assert.equal(isTrialExpired({ trialEndsAt: new Date("2026-11-07T12:00:00Z") }, now), false);
+  assert.equal(isTrialExpired({}, now), false);
+  assert.equal(isTrialExpired({ trialEndsAt: null }, now), false);
 });

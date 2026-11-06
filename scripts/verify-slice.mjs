@@ -749,6 +749,20 @@ async function main() {
   const missingTenant = await api("/api/v1/public/tenants/no-existe-ese-slug");
   check("Un slug inexistente responde 404", missingTenant.status === 404 && missingTenant.json?.error?.code === "tenant_not_found", `HTTP ${missingTenant.status}`);
 
+  section("21. Bloqueo por prueba vencida");
+  const expiredTrial = await api(`/api/v1/platform/tenants/${tenantA.tenantId}`, { method: "PATCH", token: admin.idToken, body: { trialDays: 0 } });
+  check("El administrador puede vencer la prueba", expiredTrial.status === 200 && expiredTrial.json?.tenant?.trialDaysLeft === 0, `días=${expiredTrial.json?.tenant?.trialDaysLeft}`);
+
+  const blockedTrial = await api(`/api/v1/tenants/${tenantA.tenantId}/context`, { token: userA.idToken });
+  check("Con la prueba vencida el negocio queda bloqueado", blockedTrial.status === 403 && blockedTrial.json?.error?.code === "tenant_trial_expired", `HTTP ${blockedTrial.status} ${blockedTrial.json?.error?.code ?? ""}`);
+
+  const invalidTrialDays = await api(`/api/v1/platform/tenants/${tenantA.tenantId}`, { method: "PATCH", token: admin.idToken, body: { trialDays: 400 } });
+  check("Días de prueba inválidos responden 400", invalidTrialDays.status === 400 && invalidTrialDays.json?.error?.code === "invalid_trial_days", `HTTP ${invalidTrialDays.status}`);
+
+  const renewedTrial = await api(`/api/v1/platform/tenants/${tenantA.tenantId}`, { method: "PATCH", token: admin.idToken, body: { trialDays: 14 } });
+  const workingTrial = await api(`/api/v1/tenants/${tenantA.tenantId}/context`, { token: userA.idToken });
+  check("Al renovar la prueba el negocio vuelve a operar", renewedTrial.status === 200 && workingTrial.status === 200, `HTTP ${workingTrial.status}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {
