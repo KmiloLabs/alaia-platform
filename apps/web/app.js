@@ -297,6 +297,7 @@ const professionalAgendaList = $("#professional-agenda-list");
 const professionalAgendaStatus = $("#professional-agenda-status");
 const professionalAgendaEmpty = $("#professional-agenda-empty");
 const professionalAgendaCount = $("#professional-agenda-count");
+const professionalAgendaSelf = $("#professional-agenda-self");
 const invitationsList = $("#invitations-list");
 const invitationsStatus = $("#invitations-status");
 const invitationsCount = $("#invitations-count");
@@ -687,6 +688,7 @@ const state = {
   inviteAccepting: false,
   isProfessional: false,
   professionalAgenda: [],
+  professionalSelfName: "",
   professionalAgendaSeq: 0,
   professionalAgendaLoading: false,
   settlementTenantId: null,
@@ -1661,6 +1663,7 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
     renderDateUi();
     if (state.isProfessional) {
       await loadProfessionalAgenda(seq);
+  void loadProfessionalSelfName(seq);
     } else {
       await loadDay(state.selectedDate, seq);
       void loadProfessionals({ silent: true });
@@ -2488,7 +2491,10 @@ function setView(view) {
     loadInvitations();
     loadSettlementPreview();
   }
-  if (isProfessionalAgenda) loadProfessionalAgenda();
+  if (isProfessionalAgenda) {
+    loadProfessionalAgenda();
+    loadProfessionalSelfName();
+  }
   if (isPlatform) loadPlatformDashboard();
   if (state.view === "resumen") loadDashboard();
 }
@@ -6834,6 +6840,29 @@ const PROFESSIONAL_STATUS_LABELS = {
 
 function professionalAppointmentStatusLabel(status) {
   return PROFESSIONAL_STATUS_LABELS[status] ?? "Programada";
+}
+
+async function loadProfessionalSelfName(seq = state.sessionSeq) {
+  if (!state.tenant || !state.isProfessional) return;
+  const professionalId = state.context?.membership?.professionalId;
+  if (!professionalId) return;
+  try {
+    const data = await listProfessionals(state.tenant.tenantId, { includeInactive: true });
+    if (seq !== state.sessionSeq) return;
+    const list = Array.isArray(data?.professionals) ? data.professionals : [];
+    const self = list.find((item) => (item.professionalId ?? item.id) === professionalId);
+    state.professionalSelfName = typeof self?.name === "string" ? self.name : "";
+  } catch {
+    state.professionalSelfName = "";
+  }
+  renderProfessionalSelfName();
+}
+
+function renderProfessionalSelfName() {
+  if (!professionalAgendaSelf) return;
+  const name = state.professionalSelfName;
+  professionalAgendaSelf.textContent = name ? `Hola, ${name}` : "";
+  professionalAgendaSelf.hidden = !name;
 }
 
 async function loadProfessionalAgenda(seq = state.sessionSeq) {

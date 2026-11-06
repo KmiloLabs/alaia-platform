@@ -1211,3 +1211,4 @@ a.customer-info-value { color: var(--teal); }
 [data-theme="dark"] .date-overrides-empty { color: #98aca6; border-color: #334743; }
 [data-theme="dark"] .date-override-form label { color: #98aca6; }
 [data-theme="dark"] .date-override-form input, [data-theme="dark"] .date-override-form select { background: #1b2b28; border-color: #334743; color: var(--ink); }
+.professional-self { margin: 4px 0 0; color: var(--ink-soft); font-size: 12px; font-weight: 500; }
