@@ -237,7 +237,7 @@ const inviteDialogTitle = $("#invite-dialog-title");
 const inviteDialogNote = $("#invite-dialog-note");
 const inviteEmail = $("#invite-email");
 const invitePhone = $("#invite-phone");
-const inviteError = $("#invite-error");
+const inviteFormError = $("#invite-form-error");
 const inviteResult = $("#invite-result");
 const inviteLinkInput = $("#invite-link");
 const inviteCopyButton = $("#copy-invite-link");
@@ -510,12 +510,6 @@ const agentResultTools = $("#agent-result-tools");
 const toast = $("#toast");
 
 const state = {
-const initialInviteToken = parseInviteToken();
-if (initialInviteToken) {
-  state.inviteMode = true;
-  state.inviteToken = initialInviteToken;
-}
-
   inviteToken: null,
   user: null,
   tenants: [],
@@ -623,12 +617,182 @@ if (initialInviteToken) {
   tenantSuspended: false,
 };
 
+const initialInviteToken = parseInviteToken();
+if (initialInviteToken) {
+  state.inviteMode = true;
+  state.inviteToken = initialInviteToken;
+}
+
 let authMode = "signin";
 let toastTimer;
 
 // ---------------------------------------------------------------------------
 // Arranque de la sesión
 // ---------------------------------------------------------------------------
+
+function parseInviteToken() {
+  const hashMatch = window.location.hash.match(/(?:^|[#/])invite\/([^/?#]+)/);
+  if (hashMatch) return decodeURIComponent(hashMatch[1]);
+  const pathMatch = window.location.pathname.match(/\/invite\/([^/]+)\/?$/);
+  return pathMatch ? decodeURIComponent(pathMatch[1]) : "";
+}
+
+async function signInWithGoogle() {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  try {
+    // En el emulador de Firebase Auth, el popup muestra las cuentas de prueba.
+    // En producción hay que habilitar Google y configurar el cliente OAuth.
+    await signInWithPopup(auth, provider);
+  } catch (error) {
+    const popupCodes = ["auth/popup-blocked", "auth/popup-closed-by-user", "auth/cancelled-popup-request"];
+    if (popupCodes.includes(error?.code)) {
+      try {
+        await signInWithRedirect(auth, provider);
+        return;
+      } catch (redirectError) {
+        throw redirectError;
+      }
+    }
+    throw error;
+  }
+}
+
+function showInviteScreenError(message) {
+  inviteError.textContent = message;
+  inviteStatus.textContent = "";
+  inviteGoogle.hidden = true;
+  inviteAccept.hidden = true;
+}
+
+async function initializeInvite(token) {
+  if (!token) {
+    showInviteScreenError("El enlace de invitación no es válido.");
+    return;
+  }
+  showScreen("invite");
+  inviteTitle.textContent = "Únete al equipo";
+  inviteCopy.textContent = "Cargando la invitación…";
+  inviteDetails.replaceChildren();
+  inviteStatus.textContent = "";
+  inviteError.textContent = "";
+  inviteGoogle.hidden = true;
+  inviteAccept.hidden = true;
+  try {
+    const data = await getInvitation(token);
+    if (state.inviteToken !== token) return;
+    state.inviteData = data;
+    const tenantName = data?.tenant?.name ?? "el negocio";
+    const professionalName = data?.professional?.name ?? "el equipo";
+    inviteTitle.textContent = `${professionalName}, únete a ${tenantName}`;
+    inviteCopy.textContent = "Revisa los datos y acepta la invitación para entrar a tu agenda.";
+    const lines = [
+      ["Negocio", tenantName],
+      ["Profesional", professionalName],
+      ["Invitación para", data?.email || data?.phone || "esta cuenta"],
+    ];
+    if (data?.expiresAt) lines.push(["Vence", formatMediumDateFromValue(data.expiresAt) || "—"]);
+    inviteDetails.replaceChildren(...lines.map(([label, value]) => {
+      const row = document.createElement("div");
+      row.className = "invite-detail";
+      const key = document.createElement("span");
+      key.textContent = label;
+      const text = document.createElement("strong");
+      text.textContent = value;
+      row.append(key, text);
+      return row;
+    }));
+    if (data?.valid === false) {
+      showInviteScreenError("Esta invitación ya venció o fue utilizada. Pide una nueva al negocio.");
+      return;
+    }
+    const user = auth.currentUser;
+    if (user) {
+      inviteAccept.hidden = false;
+      inviteGoogle.hidden = true;
+      inviteStatus.textContent = `Sesión iniciada como ${user.email || user.displayName || "tu cuenta"}.`;
+    } else {
+      inviteGoogle.hidden = false;
+      inviteAccept.hidden = true;
+      inviteStatus.textContent = "Inicia sesión con Google para aceptar la invitación.";
+    }
+  } catch (error) {
+    if (error.code === "invitation_expired") {
+      showInviteScreenError(messageForError(error));
+    } else if (error.code === "invitation_not_found") {
+      showInviteScreenError(messageForError(error));
+    } else {
+      showInviteScreenError(messageForError(error));
+    }
+  }
+}
+
+async function handleInviteAuth(user) {
+  if (!state.inviteToken) return;
+  await initializeInvite(state.inviteToken);
+  if (!user) return;
+}
+
+async function acceptCurrentInvitation() {
+  if (!state.inviteToken || state.inviteAccepting) return;
+  if (!auth.currentUser) {
+    inviteError.textContent = "Inicia sesión con Google para aceptar la invitación.";
+    inviteGoogle.hidden = false;
+    return;
+  }
+  state.inviteAccepting = true;
+  inviteError.textContent = "";
+  inviteStatus.textContent = "Aceptando invitación…";
+  inviteAccept.disabled = true;
+  inviteGoogle.disabled = true;
+  try {
+    await acceptInvitation(state.inviteToken);
+    inviteStatus.textContent = "¡Listo! Ya haces parte del equipo. Abriendo tu agenda…";
+    setTimeout(() => {
+      window.location.assign("/");
+    }, 700);
+  } catch (error) {
+    if (error.code === "invitation_already_member") {
+      inviteError.textContent = "Ya haces parte de este negocio. Entra al panel para ver tu agenda.";
+      inviteStatus.textContent = "";
+    } else {
+      inviteError.textContent = messageForError(error);
+      inviteStatus.textContent = "";
+    }
+    inviteAccept.disabled = false;
+    inviteGoogle.disabled = false;
+  } finally {
+    state.inviteAccepting = false;
+  }
+}
+
+authGoogle.addEventListener("click", async () => {
+  clearAuthError();
+  authGoogle.disabled = true;
+  authGoogle.textContent = "Abriendo Google…";
+  try {
+    await signInWithGoogle();
+  } catch (error) {
+    showAuthError(authErrorMessage(error));
+  } finally {
+    authGoogle.disabled = false;
+    authGoogle.innerHTML = '<span class="google-mark" aria-hidden="true">G</span> Continuar con Google';
+  }
+});
+
+inviteGoogle.addEventListener("click", async () => {
+  inviteError.textContent = "";
+  inviteGoogle.disabled = true;
+  try {
+    await signInWithGoogle();
+  } catch (error) {
+    inviteError.textContent = authErrorMessage(error);
+  } finally {
+    inviteGoogle.disabled = false;
+  }
+});
+
+inviteAccept.addEventListener("click", acceptCurrentInvitation);
 
 onAuthStateChanged(auth, (user) => {
   if (state.inviteMode) {
@@ -5139,7 +5303,13 @@ function createProfessionalRow(professional) {
   edit.dataset.editProfessional = professionalRecordId(professional);
   edit.textContent = "Editar";
   edit.setAttribute("aria-label", `Editar a ${professional.name ?? "profesional"}`);
-  actions.append(edit);
+  const invite = document.createElement("button");
+  invite.type = "button";
+  invite.className = "row-shift";
+  invite.dataset.inviteProfessional = professionalRecordId(professional);
+  invite.textContent = "Invitar";
+  invite.setAttribute("aria-label", `Invitar a ${professional.name ?? "profesional"}`);
+  actions.append(edit, invite);
   if (!inactive) {
     const deactivate = document.createElement("button");
     deactivate.type = "button";
@@ -5459,6 +5629,12 @@ professionalsList.addEventListener("click", async (event) => {
     if (professional) openProfessionalDialog(professional);
     return;
   }
+  const invite = event.target.closest("[data-invite-professional]");
+  if (invite) {
+    const professional = findProfessional(invite.dataset.inviteProfessional);
+    if (professional) openInviteDialog(professional);
+    return;
+  }
   const reactivate = event.target.closest("[data-reactivate-professional]");
   if (reactivate) {
     const professional = findProfessional(reactivate.dataset.reactivateProfessional);
@@ -5625,6 +5801,595 @@ function formatAppointmentTime(appointment) {
   }
   return "—";
 }
+
+// ---------------------------------------------------------------------------
+// Agenda del profesional
+// ---------------------------------------------------------------------------
+
+const PROFESSIONAL_STATUS_LABELS = {
+  scheduled: "Programada",
+  completed: "Atendida",
+  no_show: "No asistió",
+  cancelled: "Cancelada",
+};
+
+function professionalAppointmentStatusLabel(status) {
+  return PROFESSIONAL_STATUS_LABELS[status] ?? "Programada";
+}
+
+async function loadProfessionalAgenda(seq = state.sessionSeq) {
+  if (!state.tenant || !state.isProfessional) return;
+  const tenantId = state.tenant.tenantId;
+  const loadSeq = ++state.professionalAgendaSeq;
+  const from = todayValue();
+  const to = addDays(from, 30);
+  state.professionalAgendaLoading = true;
+  professionalAgendaList.setAttribute("aria-busy", "true");
+  professionalAgendaList.replaceChildren(textBlock("Cargando tus citas…", "platform-message"));
+  professionalAgendaEmpty.hidden = true;
+  professionalAgendaStatus.textContent = "Cargando tus citas…";
+  professionalAgendaStatus.className = "form-status is-loading";
+  professionalAgendaCount.textContent = "";
+  try {
+    const data = await listAppointments(tenantId, { from, to });
+    if (seq !== state.sessionSeq || loadSeq !== state.professionalAgendaSeq || state.tenant?.tenantId !== tenantId) return;
+    let appointments = normalizeAppointments(data?.appointments);
+    const ownProfessionalId = state.context?.membership?.professionalId;
+    if (ownProfessionalId) {
+      appointments = appointments.filter((appointment) => appointment.professionalId === ownProfessionalId);
+    }
+    state.professionalAgenda = appointments;
+    renderProfessionalAgenda();
+  } catch (error) {
+    if (seq !== state.sessionSeq || loadSeq !== state.professionalAgendaSeq) return;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    professionalAgendaList.setAttribute("aria-busy", "false");
+    const wrap = document.createElement("div");
+    wrap.className = "provider-error";
+    const text = document.createElement("span");
+    text.textContent = messageForError(error);
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "secondary-button";
+    retry.dataset.retryProfessionalAgenda = "1";
+    retry.textContent = "Reintentar";
+    wrap.append(text, retry);
+    professionalAgendaList.replaceChildren(wrap);
+    professionalAgendaEmpty.hidden = true;
+    professionalAgendaStatus.textContent = messageForError(error);
+    professionalAgendaStatus.className = "form-status is-error";
+    professionalAgendaCount.textContent = "";
+  } finally {
+    if (loadSeq === state.professionalAgendaSeq) state.professionalAgendaLoading = false;
+  }
+}
+
+function renderProfessionalAgenda() {
+  const appointments = state.professionalAgenda;
+  professionalAgendaList.setAttribute("aria-busy", "false");
+  professionalAgendaStatus.textContent = "";
+  professionalAgendaStatus.className = "form-status";
+  if (!appointments.length) {
+    professionalAgendaList.replaceChildren();
+    professionalAgendaEmpty.hidden = false;
+    professionalAgendaCount.textContent = "0 citas";
+    return;
+  }
+  professionalAgendaEmpty.hidden = true;
+  professionalAgendaCount.textContent = `${appointments.length} ${appointments.length === 1 ? "cita" : "citas"}`;
+  const nodes = [];
+  let lastDate = "";
+  for (const appointment of appointments) {
+    const dateValue = String(appointment.startsAtLocal ?? "").slice(0, 10);
+    if (dateValue && dateValue !== lastDate) {
+      const heading = document.createElement("p");
+      heading.className = "professional-date-heading";
+      heading.textContent = dateValue === todayValue() ? `Hoy · ${formatLongDate(dateValue)}` : formatLongDate(dateValue);
+      nodes.push(heading);
+      lastDate = dateValue;
+    }
+    nodes.push(createProfessionalAppointment(appointment));
+  }
+  professionalAgendaList.replaceChildren(...nodes);
+}
+
+function createProfessionalAppointment(appointment) {
+  const card = document.createElement("article");
+  card.className = "professional-appointment";
+  card.dataset.professionalAppointmentId = appointment.appointmentId;
+
+  const time = document.createElement("div");
+  time.className = "professional-appointment-time";
+  const strong = document.createElement("strong");
+  strong.textContent = formatAppointmentTime(appointment);
+  const duration = document.createElement("span");
+  duration.textContent = `${numberOrZero(appointment.durationMinutes)} min`;
+  time.append(strong, duration);
+
+  const main = document.createElement("div");
+  main.className = "professional-appointment-main";
+  const customer = document.createElement("strong");
+  customer.textContent = String(appointment.customerName ?? "Cliente");
+  const detail = document.createElement("span");
+  detail.textContent = `${appointment.serviceName ?? "Servicio"} · ${formatCOP(appointment.priceCOP)}`;
+  main.append(customer, detail);
+
+  const status = document.createElement("span");
+  status.className = `status ${appointment.status === "completed" ? "status-done" : appointment.status === "no_show" ? "status-cancelled" : "status-upcoming"}`;
+  status.textContent = professionalAppointmentStatusLabel(appointment.status);
+
+  const actions = document.createElement("div");
+  actions.className = "professional-appointment-actions";
+  if (appointment.status === "scheduled" || !appointment.status) {
+    const complete = document.createElement("button");
+    complete.type = "button";
+    complete.className = "primary-button professional-status-button";
+    complete.dataset.appointmentStatus = "completed";
+    complete.dataset.professionalAppointmentId = appointment.appointmentId;
+    complete.textContent = "Atendida";
+    const noShow = document.createElement("button");
+    noShow.type = "button";
+    noShow.className = "secondary-button professional-status-button";
+    noShow.dataset.appointmentStatus = "no_show";
+    noShow.dataset.professionalAppointmentId = appointment.appointmentId;
+    noShow.textContent = "No asistió";
+    actions.append(complete, noShow);
+  }
+
+  card.append(time, main, status, actions);
+  return card;
+}
+
+professionalAgendaList.addEventListener("click", async (event) => {
+  const retry = event.target.closest("[data-retry-professional-agenda]");
+  if (retry) {
+    loadProfessionalAgenda();
+    return;
+  }
+  const button = event.target.closest("[data-appointment-status]");
+  if (!button) return;
+  const status = button.dataset.appointmentStatus;
+  const appointmentId = button.dataset.professionalAppointmentId;
+  if (!appointmentId || !state.tenant) return;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Guardando…";
+  try {
+    await updateAppointmentStatus(state.tenant.tenantId, appointmentId, status);
+    showToast(status === "completed" ? "Cita marcada como atendida." : "Cita marcada como no asistió.");
+    await loadProfessionalAgenda();
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    button.disabled = false;
+    button.textContent = originalText;
+    professionalAgendaStatus.textContent = messageForError(error);
+    professionalAgendaStatus.className = "form-status is-error";
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Invitaciones del equipo
+// ---------------------------------------------------------------------------
+
+function setInvitationsStatus(message, tone = "idle") {
+  invitationsStatus.textContent = message;
+  invitationsStatus.className = `form-status is-${tone}`;
+}
+
+function renderInvitationsError(message) {
+  invitationsList.setAttribute("aria-busy", "false");
+  const wrap = document.createElement("div");
+  wrap.className = "provider-error";
+  const text = document.createElement("span");
+  text.textContent = message;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "secondary-button";
+  retry.dataset.retryInvitations = "1";
+  retry.textContent = "Reintentar";
+  wrap.append(text, retry);
+  invitationsList.replaceChildren(wrap);
+  invitationsCount.textContent = "";
+  setInvitationsStatus(message, "error");
+}
+
+async function loadInvitations() {
+  if (!state.tenant) return;
+  const tenantId = state.tenant.tenantId;
+  const seq = ++state.invitationsLoadSeq;
+  state.invitationsLoading = true;
+  invitationsList.setAttribute("aria-busy", "true");
+  invitationsList.replaceChildren(textBlock("Cargando invitaciones…", "platform-message"));
+  try {
+    const data = await listInvitations(tenantId);
+    if (seq !== state.invitationsLoadSeq || state.tenant?.tenantId !== tenantId) return;
+    state.invitations = Array.isArray(data?.invitations) ? data.invitations : [];
+    state.invitationsLoaded = true;
+    renderInvitations();
+  } catch (error) {
+    if (seq !== state.invitationsLoadSeq) return;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    renderInvitationsError(messageForError(error));
+  } finally {
+    if (seq === state.invitationsLoadSeq) state.invitationsLoading = false;
+  }
+}
+
+function renderInvitations() {
+  invitationsList.setAttribute("aria-busy", "false");
+  const pending = state.invitations.filter((invitation) => invitation.status === "pending");
+  invitationsCount.textContent = `${pending.length} ${pending.length === 1 ? "pendiente" : "pendientes"}`;
+  if (!state.invitations.length) {
+    invitationsList.replaceChildren(textBlock("No hay invitaciones todavía. Usa «Invitar» en un profesional.", "platform-message"));
+    setInvitationsStatus("", "idle");
+    return;
+  }
+  invitationsList.replaceChildren(...state.invitations.map((invitation) => {
+    const row = document.createElement("article");
+    row.className = "invitation-row";
+    const main = document.createElement("div");
+    main.className = "invitation-main";
+    const title = document.createElement("strong");
+    title.textContent = String(invitation.professionalName ?? "Profesional");
+    const contact = document.createElement("span");
+    contact.textContent = [invitation.email, invitation.phone].filter(Boolean).join(" · ") || "Sin contacto";
+    const expiry = document.createElement("small");
+    expiry.textContent = invitation.status === "pending"
+      ? `Vence ${formatMediumDateFromValue(invitation.expiresAt) || "pronto"}`
+      : professionalInvitationStatusLabel(invitation.status);
+    main.append(title, contact, expiry);
+    const status = document.createElement("span");
+    status.className = `status ${invitation.status === "pending" ? "status-upcoming" : invitation.status === "accepted" ? "status-done" : "status-cancelled"}`;
+    status.textContent = professionalInvitationStatusLabel(invitation.status);
+    row.append(main, status);
+    if (invitation.status === "pending") {
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "row-cancel";
+      cancel.dataset.cancelInvitation = invitation.id;
+      cancel.textContent = "Cancelar";
+      row.append(cancel);
+    }
+    return row;
+  }));
+  setInvitationsStatus("", "idle");
+}
+
+function professionalInvitationStatusLabel(status) {
+  if (status === "accepted") return "Aceptada";
+  if (status === "cancelled") return "Cancelada";
+  if (status === "expired") return "Vencida";
+  return "Pendiente";
+}
+
+function openInviteDialog(professional) {
+  if (!state.tenant || inviteDialog.open) return;
+  state.inviteProfessional = professional;
+  inviteDialogTitle.textContent = `Invitar a ${professional.name ?? "profesional"}`;
+  inviteDialogNote.textContent = "Genera un enlace para que entre con Google y vea solo su agenda.";
+  inviteForm.reset();
+  inviteEmail.value = professional.email ?? "";
+  invitePhone.value = professional.phone ?? "";
+  inviteError.textContent = "";
+  inviteFormError.textContent = "";
+  inviteResultStatus.textContent = "";
+  inviteResult.hidden = true;
+  state.inviteLink = "";
+  inviteDialog.showModal();
+  inviteEmail.focus();
+}
+
+async function generateInvitationFromDialog() {
+  if (!state.inviteProfessional || !state.tenant || state.inviteSubmitting) return;
+  inviteFormError.textContent = "";
+  inviteResultStatus.textContent = "";
+  const email = inviteEmail.value.trim();
+  const phoneRaw = invitePhone.value.trim();
+  const phoneDigits = normalizePhoneDigits(phoneRaw);
+  if (!email && !phoneDigits) {
+    inviteFormError.textContent = "Indica al menos un correo o un teléfono.";
+    return;
+  }
+  if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120)) {
+    inviteFormError.textContent = "El correo no es válido.";
+    return;
+  }
+  if (phoneRaw && (phoneDigits.length < 7 || phoneDigits.length > 15)) {
+    inviteFormError.textContent = "El teléfono debe tener entre 7 y 15 dígitos.";
+    return;
+  }
+  state.inviteSubmitting = true;
+  inviteSubmit.disabled = true;
+  inviteSubmit.textContent = "Generando…";
+  try {
+    const data = await createInvitation(state.tenant.tenantId, {
+      professionalId: professionalRecordId(state.inviteProfessional),
+      email,
+      phone: phoneDigits,
+    });
+    const invitation = data?.invitation ?? {};
+    state.inviteLink = String(invitation.link ?? "");
+    inviteLinkInput.value = state.inviteLink;
+    inviteResult.hidden = false;
+    inviteResultStatus.textContent = "Invitación creada. Este enlace ya no se volverá a mostrar.";
+    inviteResultStatus.className = "form-status is-ok";
+    inviteShareWhatsApp.href = `https://wa.me/?text=${encodeURIComponent(`Hola, únete al equipo de ${state.tenant.name}. Abre este enlace: ${state.inviteLink}`)}`;
+    inviteSendEmail.hidden = !email;
+    if (email) {
+      inviteSendEmail.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(`Invitación a ${state.tenant.name}`)}&body=${encodeURIComponent(`Hola, únete al equipo de ${state.tenant.name}. Abre este enlace: ${state.inviteLink}`)}`;
+    }
+    drawInvitationQr(state.inviteLink);
+    await loadInvitations();
+    showToast("Invitación creada.");
+  } catch (error) {
+    inviteFormError.textContent = messageForError(error);
+  } finally {
+    state.inviteSubmitting = false;
+    inviteSubmit.disabled = false;
+    inviteSubmit.textContent = "Generar invitación";
+  }
+}
+
+function fallbackInvitationQr() {
+  if (!inviteQrCanvas) return;
+  const canvas = inviteQrCanvas;
+  const context = canvas.getContext("2d");
+  const size = canvas.width;
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, size, size);
+  context.fillStyle = "#94a39f";
+  context.font = "12px system-ui, sans-serif";
+  context.textAlign = "center";
+  context.fillText("QR no disponible", size / 2, size / 2 - 6);
+  context.fillText("Usa el enlace copiable", size / 2, size / 2 + 12);
+  if (inviteQrNote) inviteQrNote.hidden = false;
+}
+
+// Generador QR mínimo (versión 6-M, byte mode) para el enlace de invitación.
+// Sin dependencias: cubre enlaces de hasta 106 bytes; si el enlace es más largo,
+// el diálogo muestra el enlace copiable como respaldo.
+function generateQrMatrix(text) {
+  const bytes = new TextEncoder().encode(String(text));
+  if (!bytes.length || bytes.length > 106) return null;
+  const size = 41;
+  const dataCodewords = 108;
+  const eccPerBlock = 16;
+  const blockData = 27;
+  const blocks = 4;
+  const exp = new Array(512);
+  const log = new Array(256);
+  let value = 1;
+  for (let i = 0; i < 255; i += 1) {
+    exp[i] = value;
+    log[value] = i;
+    value <<= 1;
+    if (value & 0x100) value ^= 0x11d;
+  }
+  for (let i = 255; i < 512; i += 1) exp[i] = exp[i - 255];
+  const multiply = (a, b) => (a === 0 || b === 0 ? 0 : exp[log[a] + log[b]]);
+  const generator = (() => {
+    let polynomial = [1];
+    for (let i = 0; i < eccPerBlock; i += 1) {
+      const next = new Array(polynomial.length + 1).fill(0);
+      for (let j = 0; j < polynomial.length; j += 1) {
+        next[j] ^= multiply(polynomial[j], exp[i]);
+        next[j + 1] ^= polynomial[j];
+      }
+      polynomial = next;
+    }
+    return polynomial.slice(0, -1).reverse();
+  })();
+  const remainder = (data) => {
+    const result = new Array(eccPerBlock).fill(0);
+    for (const byte of data) {
+      const factor = byte ^ result[0];
+      result.shift();
+      result.push(0);
+      for (let i = 0; i < eccPerBlock; i += 1) result[i] ^= multiply(generator[i], factor);
+    }
+    return result;
+  };
+
+  const bits = [];
+  const push = (number, length) => {
+    for (let i = length - 1; i >= 0; i -= 1) bits.push((number >>> i) & 1);
+  };
+  push(4, 4);
+  push(bytes.length, 8);
+  for (const byte of bytes) push(byte, 8);
+  push(0, Math.min(4, dataCodewords * 8 - bits.length));
+  while (bits.length % 8 !== 0) bits.push(0);
+  const dataBytes = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    let byte = 0;
+    for (let j = 0; j < 8; j += 1) byte = (byte << 1) | bits[i + j];
+    dataBytes.push(byte);
+  }
+  while (dataBytes.length < dataCodewords) dataBytes.push(dataBytes.length % 2 === 0 ? 0xec : 0x11);
+  const blockList = [];
+  for (let i = 0; i < blocks; i += 1) {
+    const data = dataBytes.slice(i * blockData, (i + 1) * blockData);
+    blockList.push({ data, ecc: remainder(data) });
+  }
+  const codewords = [];
+  for (let i = 0; i < blockData; i += 1) {
+    for (const block of blockList) codewords.push(block.data[i]);
+  }
+  for (let i = 0; i < eccPerBlock; i += 1) {
+    for (const block of blockList) codewords.push(block.ecc[i]);
+  }
+  const dataBits = [];
+  for (const byte of codewords) {
+    for (let i = 7; i >= 0; i -= 1) dataBits.push((byte >>> i) & 1);
+  }
+
+  const modules = Array.from({ length: size }, () => new Array(size).fill(false));
+  const isFunction = Array.from({ length: size }, () => new Array(size).fill(false));
+  const setFunction = (x, y, dark) => {
+    if (x < 0 || y < 0 || x >= size || y >= size) return;
+    modules[y][x] = Boolean(dark);
+    isFunction[y][x] = true;
+  };
+  const drawFinder = (cx, cy) => {
+    for (let dy = -4; dy <= 4; dy += 1) {
+      for (let dx = -4; dx <= 4; dx += 1) {
+        const distance = Math.max(Math.abs(dx), Math.abs(dy));
+        setFunction(cx + dx, cy + dy, distance !== 2 && distance !== 4);
+      }
+    }
+  };
+  for (let i = 0; i < size; i += 1) {
+    setFunction(6, i, i % 2 === 0);
+    setFunction(i, 6, i % 2 === 0);
+  }
+  drawFinder(3, 3);
+  drawFinder(size - 4, 3);
+  drawFinder(3, size - 4);
+  for (let dy = -2; dy <= 2; dy += 1) {
+    for (let dx = -2; dx <= 2; dx += 1) {
+      setFunction(34 + dx, 34 + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+    }
+  }
+  const drawFormat = (mask) => {
+    let rem = 0;
+    for (let i = 0; i < 10; i += 1) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+    const formatBits = 0x5412 ^ (rem | (mask << 10));
+    const bit = (i) => ((formatBits >>> i) & 1) !== 0;
+    for (let i = 0; i <= 5; i += 1) setFunction(8, i, bit(i));
+    setFunction(8, 7, bit(6));
+    setFunction(8, 8, bit(7));
+    setFunction(7, 8, bit(8));
+    for (let i = 9; i < 15; i += 1) setFunction(14 - i, 8, bit(i));
+    for (let i = 0; i < 8; i += 1) setFunction(size - 1 - i, 8, bit(i));
+    for (let i = 8; i < 15; i += 1) setFunction(8, size - 15 + i, bit(i));
+    setFunction(8, size - 8, true);
+  };
+  drawFormat(0);
+
+  let bitIndex = 0;
+  for (let right = size - 1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    for (let vertical = 0; vertical < size; vertical += 1) {
+      for (let offset = 0; offset < 2; offset += 1) {
+        const x = right - offset;
+        const upward = ((right + 1) & 2) === 0;
+        const y = upward ? size - 1 - vertical : vertical;
+        if (!isFunction[y][x]) {
+          modules[y][x] = bitIndex < dataBits.length && dataBits[bitIndex] === 1;
+          bitIndex += 1;
+        }
+      }
+    }
+  }
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      if (!isFunction[y][x] && (x + y) % 2 === 0) modules[y][x] = !modules[y][x];
+    }
+  }
+  drawFormat(0);
+  return modules;
+}
+
+function drawInvitationQr(link) {
+  if (!inviteQrCanvas) return;
+  if (inviteQrNote) inviteQrNote.hidden = true;
+  try {
+    if (typeof generateQrMatrix !== "function") {
+      fallbackInvitationQr();
+      return;
+    }
+    const matrix = generateQrMatrix(link);
+    if (!matrix || !matrix.length) {
+      fallbackInvitationQr();
+      return;
+    }
+    const canvas = inviteQrCanvas;
+    const context = canvas.getContext("2d");
+    const quiet = 4;
+    const count = matrix.length;
+    const moduleSize = Math.floor(canvas.width / (count + quiet * 2));
+    const offset = Math.floor((canvas.width - moduleSize * count) / 2);
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#14211f";
+    for (let row = 0; row < count; row += 1) {
+      for (let column = 0; column < count; column += 1) {
+        if (matrix[row][column]) {
+          context.fillRect(offset + column * moduleSize, offset + row * moduleSize, moduleSize, moduleSize);
+        }
+      }
+    }
+  } catch (error) {
+    fallbackInvitationQr();
+  }
+}
+
+inviteForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await generateInvitationFromDialog();
+});
+closeInviteDialog.addEventListener("click", () => inviteDialog.close());
+cancelInvite.addEventListener("click", () => inviteDialog.close());
+inviteDialog.addEventListener("close", () => {
+  state.inviteProfessional = null;
+  state.inviteLink = "";
+  inviteResult.hidden = true;
+});
+inviteCopyButton.addEventListener("click", async () => {
+  if (!state.inviteLink) return;
+  try {
+    await navigator.clipboard.writeText(state.inviteLink);
+    inviteResultStatus.textContent = "Enlace copiado.";
+  } catch {
+    inviteLinkInput.select();
+    document.execCommand("copy");
+    inviteResultStatus.textContent = "Enlace copiado.";
+  }
+  inviteResultStatus.className = "form-status is-ok";
+});
+
+invitationsList.addEventListener("click", async (event) => {
+  const retry = event.target.closest("[data-retry-invitations]");
+  if (retry) {
+    loadInvitations();
+    return;
+  }
+  const cancel = event.target.closest("[data-cancel-invitation]");
+  if (!cancel || !state.tenant) return;
+  const invitation = state.invitations.find((item) => item.id === cancel.dataset.cancelInvitation);
+  if (!invitation) return;
+  if (!window.confirm(`¿Cancelar la invitación de ${invitation.professionalName ?? "profesional"}?`)) return;
+  cancel.disabled = true;
+  try {
+    await cancelInvitation(state.tenant.tenantId, invitation.id);
+    await loadInvitations();
+    showToast("Invitación cancelada.");
+  } catch (error) {
+    cancel.disabled = false;
+    setInvitationsStatus(messageForError(error), "error");
+  }
+});
 
 const copFormatter = new Intl.NumberFormat("es-CO", {
   style: "currency",

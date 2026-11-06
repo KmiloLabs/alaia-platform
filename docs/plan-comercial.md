@@ -57,9 +57,9 @@ Notas:
 - **Riesgo cero**: 14 días gratis, sin tarjeta, sin permanencia.
 - **Diferenciador frente a Blyssbook/Gestabiz**: agente IA propio que cotiza con **tus** precios y **tus** horarios, y panel de dueño de plataforma para ti.
 
-## 5. Decisiones pendientes del fundador
+## 5. Decisiones del fundador (6 de noviembre de 2026)
 
-1. Precio final de cada plan (arriba hay una propuesta).
-2. Qué pasa al vencer la prueba: ¿bloqueo total o modo lectura?
-3. ¿Se cobra el excedente de IA o se bloquea?
-4. Pasarela de pago a usar.
+1. **Precios:** la propuesta de arriba queda como base; se validan con el piloto.
+2. **Al vencer la prueba sin pago: bloqueo total.** El negocio pasa a `suspended` y ve "Tu cuenta está suspendida" sin operar. Sin modo lectura.
+3. **Excedente de IA:** se implementará un tope por plan; si el sistema lo necesita se cobra el exceso o se bloquea. Se decide con datos de consumo del piloto.
+4. **Pagos:** pasarela tecnológica, fácil y segura, con la mayor automatización posible (cobro recurrente y webhooks). Recomendación: Wompi.

@@ -959,3 +959,88 @@ a.customer-info-value { color: var(--teal); }
 .nav-item.nav-subitem { min-height: 36px; margin-left: 12px; padding-left: 14px; font-size: 11px; color: var(--ink-soft); border-left: 2px solid var(--line); border-radius: 0 9px 9px 0; }
 .nav-item.nav-subitem.is-active { background: var(--mint); color: #276f65; border-left-color: var(--teal); }
 .nav-item.nav-subitem .nav-icon { font-size: 10px; width: 12px; }
+
+/* ---------------------------------------------------------------------------
+   Login con Google, invitaciones y agenda del profesional
+   --------------------------------------------------------------------------- */
+.auth-divider { display: flex; align-items: center; gap: 10px; margin: 14px 0 10px; color: #9aa8a4; font-size: 10px; }
+.auth-divider::before, .auth-divider::after { flex: 1; height: 1px; background: var(--line); content: ""; }
+.auth-google { display: inline-flex; width: 100%; align-items: center; justify-content: center; gap: 9px; min-height: 42px; }
+.google-mark { display: inline-grid; width: 20px; height: 20px; place-items: center; border: 1px solid #dfe7e3; border-radius: 50%; color: #4285f4; font-size: 12px; font-weight: 800; }
+.auth-google-note { margin-top: -3px; text-align: center; }
+
+.invite-screen { display: grid; min-height: 100vh; place-items: center; padding: 28px 17px; background: radial-gradient(120% 80% at 8% 0%, #eef7f3 0%, rgba(238, 247, 243, 0) 55%), var(--canvas); }
+.invite-shell { display: grid; width: min(540px, 100%); gap: 18px; }
+.invite-card { padding: 28px 26px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); box-shadow: 0 20px 60px rgba(26, 61, 55, .10); }
+.invite-card h1 { margin: 0 0 7px; color: var(--ink); font-size: 27px; letter-spacing: -.7px; }
+.invite-copy { margin: 0; color: var(--ink-soft); font-size: 11px; line-height: 1.6; }
+.invite-details { display: grid; gap: 7px; margin: 16px 0; }
+.invite-detail { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding: 9px 11px; border-radius: 8px; background: #f7f9f8; }
+.invite-detail span { color: #879490; font-size: 9px; text-transform: uppercase; letter-spacing: .7px; }
+.invite-detail strong { color: var(--ink); font-size: 11px; text-align: right; }
+.invite-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.invite-back { display: inline-block; margin-top: 13px; text-align: center; }
+
+.professional-view { display: grid; gap: 14px; }
+.professional-agenda-panel { padding: 20px 19px; }
+.professional-agenda-list { display: grid; gap: 8px; margin-top: 8px; }
+.professional-date-heading { margin: 12px 2px 2px; color: #8b9895; font-size: 9px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; }
+.professional-appointment { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 10px 12px; padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
+.professional-appointment-time { display: grid; gap: 2px; }
+.professional-appointment-time strong { color: var(--ink); font-size: 15px; }
+.professional-appointment-time span { color: #8b9895; font-size: 9px; }
+.professional-appointment-main { display: grid; gap: 2px; min-width: 0; }
+.professional-appointment-main strong { overflow: hidden; color: var(--ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.professional-appointment-main span { overflow: hidden; color: #7f918d; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.professional-appointment-actions { display: flex; grid-column: 2 / -1; gap: 7px; }
+.professional-status-button { min-height: 38px; padding: 0 14px; font-size: 10px; }
+.professional-agenda-empty { display: grid; gap: 5px; margin-top: 10px; padding: 22px; border: 1px dashed var(--line); border-radius: 11px; background: #fbfcfb; }
+.professional-agenda-empty strong { color: var(--ink); font-size: 12px; }
+.professional-agenda-empty span { color: #7f918d; font-size: 10px; }
+
+.invitations-panel { padding: 20px 19px; }
+.invitations-list { display: grid; gap: 7px; margin-top: 8px; }
+.invitation-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.invitation-main { display: grid; gap: 2px; min-width: 0; }
+.invitation-main strong { color: var(--ink); font-size: 11px; }
+.invitation-main span { color: #7f918d; font-size: 9px; }
+.invitation-main small { color: #8b9895; font-size: 8px; }
+.invite-result { display: grid; gap: 8px; margin-top: 14px; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: #fbfcfb; }
+.invite-warning { margin: 0; color: #795f2f; font-size: 10px; line-height: 1.5; }
+.invite-result > label { margin-bottom: -4px; }
+.invite-result input[readonly] { font-size: 10px; }
+.invite-result-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.invite-share { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 10px; text-decoration: none; }
+.invite-qr-wrap { display: grid; justify-items: center; gap: 6px; padding-top: 4px; }
+#invite-qr { width: 200px; height: 200px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+.invite-dialog { overflow-y: auto; }
+.invite-form-actions { margin-top: 2px; }
+
+@media (max-width: 760px) {
+  .invite-card { padding: 22px 18px; }
+  .professional-appointment { grid-template-columns: 58px minmax(0, 1fr); }
+  .professional-appointment > .status { grid-column: 2; justify-self: start; }
+  .professional-appointment-actions { grid-column: 2; }
+  .professional-status-button { flex: 1; min-height: 44px; }
+  .invitation-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .invitation-row > .row-cancel { grid-column: 2; }
+  .invitation-main small { white-space: normal; }
+}
+
+[data-theme="dark"] .invite-screen { background: radial-gradient(120% 80% at 8% 0%, #142a24 0%, rgba(20, 42, 36, 0) 55%), var(--canvas); }
+[data-theme="dark"] .invite-card { background: var(--panel); border-color: var(--line); box-shadow: 0 20px 60px rgba(0, 0, 0, .4); }
+[data-theme="dark"] .invite-detail { background: #14211f; }
+[data-theme="dark"] .invite-detail span { color: #98aca6; }
+[data-theme="dark"] .invite-detail strong { color: var(--ink); }
+[data-theme="dark"] .google-mark { border-color: var(--line); }
+[data-theme="dark"] .professional-appointment { background: var(--panel); border-color: var(--line); }
+[data-theme="dark"] .professional-date-heading { color: #98aca6; }
+[data-theme="dark"] .professional-appointment-time strong, [data-theme="dark"] .professional-appointment-main strong { color: var(--ink); }
+[data-theme="dark"] .professional-appointment-time span, [data-theme="dark"] .professional-appointment-main span { color: #98aca6; }
+[data-theme="dark"] .professional-agenda-empty, [data-theme="dark"] .invite-result { background: #14211f; border-color: #334743; }
+[data-theme="dark"] .professional-agenda-empty strong { color: var(--ink); }
+[data-theme="dark"] .professional-agenda-empty span { color: #98aca6; }
+[data-theme="dark"] .invitation-row { background: var(--panel); border-color: var(--line); }
+[data-theme="dark"] .invitation-main strong { color: var(--ink); }
+[data-theme="dark"] .invitation-main span, [data-theme="dark"] .invitation-main small { color: #98aca6; }
+[data-theme="dark"] .invite-warning { color: #d9c48e; }

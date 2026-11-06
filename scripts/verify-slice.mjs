@@ -652,6 +652,46 @@ async function main() {
   const settlementLongRange = await api(`/api/v1/tenants/${tenantA.tenantId}/settlements/preview?from=2032-01-01&to=2032-12-31`, { token: userA.idToken });
   check("Un rango de más de 92 días responde 400", settlementLongRange.status === 400 && settlementLongRange.json?.error?.code === "invalid_range", `HTTP ${settlementLongRange.status}`);
 
+  section("19. Invitaciones y panel del profesional");
+  const invitation = await api(`/api/v1/tenants/${tenantA.tenantId}/invitations`, {
+    method: "POST", token: userA.idToken, body: { professionalId: proOneId, email: `invitado-${RUN_ID}@alaia.test` },
+  });
+  const invitationBody = invitation.json?.invitation ?? {};
+  check("El dueño crea una invitación con enlace y QR", invitation.status === 201 && Boolean(invitationBody.link) && invitationBody.qrPayload === invitationBody.link, `HTTP ${invitation.status}`);
+
+  const invitationsList = await api(`/api/v1/tenants/${tenantA.tenantId}/invitations`, { token: userA.idToken });
+  const listedInvitation = (invitationsList.json?.invitations ?? []).find((item) => item.invitationId === invitationBody.id || item.id === invitationBody.id);
+  const listText = JSON.stringify(invitationsList.json ?? {});
+  check("El listado oculta el token y su hash", Boolean(listedInvitation) && !listText.includes("tokenHash") && !listText.includes(invitationBody.link?.split("/").pop() ?? "###"), `${(invitationsList.json?.invitations ?? []).length} invitación(es)`);
+
+  const token = String(invitationBody.link ?? "").split("/invite/")[1] ?? "";
+  const publicInvitation = await api(`/api/v1/invitations/${token}`);
+  check("La invitación se puede abrir sin sesión", publicInvitation.status === 200 && publicInvitation.json?.professional?.name === "Andrés Barbero", `HTTP ${publicInvitation.status}`);
+
+  const invitedUser = await signUp(`prof-${RUN_ID}`);
+  const accepted = await api(`/api/v1/invitations/${token}/accept`, { method: "POST", token: invitedUser.idToken, body: {} });
+  check("El profesional acepta y queda vinculado", accepted.status === 200 && accepted.json?.membership?.role === "professional" && accepted.json?.membership?.professionalId === proOneId, `rol=${accepted.json?.membership?.role}`);
+
+  const repeatAccept = await api(`/api/v1/invitations/${token}/accept`, { method: "POST", token: invitedUser.idToken, body: {} });
+  check("Aceptar dos veces responde 409", [409, 403].includes(repeatAccept.status), `HTTP ${repeatAccept.status}`);
+
+  const professionalAppointments = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments?from=2032-04-01&to=2032-05-31`, { token: invitedUser.idToken });
+  const professionalList = professionalAppointments.json?.appointments ?? [];
+  check("El profesional solo ve sus citas", professionalList.length === 2 && professionalList.every((item) => item.professionalId === proOneId), `${professionalList.length} cita(s)`);
+
+  const forbiddenService = await api(`/api/v1/tenants/${tenantA.tenantId}/services`, {
+    method: "POST", token: invitedUser.idToken, body: { name: "Servicio del profesional", durationMinutes: 30, priceCOP: 10000 },
+  });
+  check("El profesional no puede crear servicios", forbiddenService.status === 403, `HTTP ${forbiddenService.status}`);
+
+  const attendance = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments/${proAppointment.json?.appointment?.appointmentId}/status`, {
+    method: "POST", token: invitedUser.idToken, body: { status: "completed" },
+  });
+  check("El profesional marca su cita como atendida", attendance.status === 200 && attendance.json?.appointment?.status === "completed", `estado=${attendance.json?.appointment?.status}`);
+
+  const invalidInvitation = await api("/api/v1/invitations/token-inventado-123");
+  check("Un token inventado responde 404", invalidInvitation.status === 404 && invalidInvitation.json?.error?.code === "invitation_not_found", `HTTP ${invalidInvitation.status}`);
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {
