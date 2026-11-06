@@ -1165,3 +1165,7 @@ a.customer-info-value { color: var(--teal); }
 [data-theme="dark"] .whatsapp-bubble.is-error { background: #3a2825; color: #e8a79c; }
 [data-theme="dark"] .whatsapp-chat-history { border-color: var(--line); }
 [data-theme="dark"] .platform-whatsapp { background: #14211f; border-color: var(--line); }
+.status-active { background: #e7f5ec; color: #2f7a4f; }
+.status-inactive { background: #f1e9e2; color: #8a6a4f; }
+[data-theme="dark"] .status-active { background: #1d3a2b; color: #9ad6b0; }
+[data-theme="dark"] .status-inactive { background: #3a2f27; color: #d8b79a; }

@@ -2974,7 +2974,7 @@ function serviceRowHtml(service) {
   return `
     <article class="service-row${inactive ? " is-inactive" : ""}">
       <div class="service-main"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(detailParts.join(" · "))}</span></div>
-      <div class="service-meta"><span class="service-duration">${duration} min</span><span class="service-price">${escapeHtml(price)}</span><span class="status ${inactive ? "status-cancelled" : "status-upcoming"}">${inactive ? "Inactivo" : "Activo"}</span></div>
+      <div class="service-meta"><span class="service-duration">${duration} min</span><span class="service-price">${escapeHtml(price)}</span><span class="status ${inactive ? "status-inactive" : "status-active"}">${inactive ? "Inactivo" : "Activo"}</span></div>
       ${actions}
     </article>`;
 }
@@ -3434,7 +3434,7 @@ function customerRowHtml(customer, index) {
         <span class="client-avatar ${AVATAR_STYLES[index % AVATAR_STYLES.length]}">${escapeHtml(initialsOf(name))}</span>
         <div class="customer-copy"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(contactParts.join(" · "))}</span></div>
       </div>
-      <span class="status ${inactive ? "status-cancelled" : "status-upcoming"}">${inactive ? "Inactivo" : "Activo"}</span>
+      <span class="status ${inactive ? "status-inactive" : "status-active"}">${inactive ? "Inactivo" : "Activo"}</span>
       ${actions}
     </article>`;
 }
@@ -3618,7 +3618,7 @@ function renderCustomerDetail(customer, appointments) {
   customerDetailTitle.textContent = customer.name ?? "Cliente";
   const inactive = customer.active === false;
   customerDetailStatus.textContent = inactive ? "Inactivo" : "Activo";
-  customerDetailStatus.className = `status ${inactive ? "status-cancelled" : "status-upcoming"}`;
+  customerDetailStatus.className = `status ${inactive ? "status-inactive" : "status-active"}`;
   editCustomerButton.disabled = false;
   deactivateCustomerButton.disabled = inactive;
   deactivateCustomerButton.textContent = inactive ? "Desactivado" : "Desactivar";
@@ -4445,7 +4445,7 @@ function renderPlatformTenants() {
       <td class="platform-owner">${escapeHtml(tenant.ownerEmail ?? "—")}</td>
       <td><span class="platform-chip">${escapeHtml(platformPlanLabel(tenant.plan))}</span></td>
       <td><span class="platform-trial is-${platformTrialInfo(tenant).tone}">${escapeHtml(platformTrialInfo(tenant).label)}</span></td>
-      <td><span class="status ${suspended ? "status-cancelled" : "status-upcoming"}">${suspended ? "Suspendido" : "Activo"}</span></td>
+      <td><span class="status ${suspended ? "status-cancelled" : "status-active"}">${suspended ? "Suspendido" : "Activo"}</span></td>
       <td>${numberOrZero(counts.appointments)}</td>
       <td>${numberOrZero(counts.customers)}</td>
       <td>${numberOrZero(usage.agentMessages)}</td>
@@ -4927,7 +4927,7 @@ function renderPlatformDetail(tenant) {
   const suspended = tenant.status === "suspended";
   platformDetailTitle.textContent = tenant.name ?? "Negocio";
   platformDetailStatus.textContent = suspended ? "Suspendido" : "Activo";
-  platformDetailStatus.className = `status ${suspended ? "status-cancelled" : "status-upcoming"}`;
+  platformDetailStatus.className = `status ${suspended ? "status-cancelled" : "status-active"}`;
   platformDetailMeta.textContent = `${SECTOR_LABELS[tenant.sector] ?? tenant.sector ?? "—"} · ${tenant.slug ?? "—"} · ${tenant.timeZone ?? "—"}`;
 
   const info = document.createElement("div");
@@ -6098,7 +6098,7 @@ function createProfessionalRow(professional) {
   main.append(name, contact, commission);
 
   const status = document.createElement("span");
-  status.className = `status ${inactive ? "status-cancelled" : "status-upcoming"}`;
+  status.className = `status ${inactive ? "status-inactive" : "status-active"}`;
   status.textContent = inactive ? "Inactivo" : "Activo";
 
   const actions = document.createElement("div");
