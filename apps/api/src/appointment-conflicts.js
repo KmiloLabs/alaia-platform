@@ -44,6 +44,30 @@ export function findAppointmentConflict(docs, {
   return null;
 }
 
+// Distingue en reprogramar: campo ausente = conservar; null explícito = desasignar;
+// id = reasignar. Cadena vacía se trata como ausente (conservar).
+export function resolveRescheduleAssignment({
+  body,
+  currentProfessionalId = null,
+  currentProfessionalName = null,
+} = {}) {
+  const input = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+  const keepMode = {
+    mode: "keep",
+    professionalId: normalizeProfessionalId(currentProfessionalId),
+    professionalName: currentProfessionalName ?? null,
+  };
+
+  if (!Object.hasOwn(input, "professionalId")) return keepMode;
+  if (input.professionalId === null) {
+    return { mode: "unassign", professionalId: null, professionalName: null };
+  }
+
+  const professionalId = typeof input.professionalId === "string" ? input.professionalId.trim() : "";
+  if (professionalId === "") return keepMode;
+  return { mode: "reassign", professionalId, professionalName: null };
+}
+
 // ¿Esta cita bloquea la disponibilidad pedida?
 // - Sin filtro (professionalId null): cualquier cita scheduled ocupa el hueco.
 // - Con filtro: bloquea la del propio profesional y la que no tiene asignado.

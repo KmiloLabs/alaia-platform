@@ -92,6 +92,8 @@ test("códigos de error de validación de profesionales", () => {
     ["invalid_professional_email", { name: "Ana", email: "sin-arroba" }],
     ["invalid_professional_email", { name: "Ana", email: "x".repeat(121) }],
     ["invalid_professional_notes", { name: "Ana", notes: "x".repeat(201) }],
+    ["invalid_active", { name: "Ana", active: "true" }],
+    ["invalid_active", { name: "Ana", active: 1 }],
   ];
   for (const [code, body] of cases) {
     const result = validateProfessionalInput(body);
@@ -234,6 +236,37 @@ test("el borrado es lógico y la lista filtra inactivos", async () => {
   const missing = await deactivateProfessional({ tenantId: "t1", professionalId: "pro_999", repository });
   assert.equal(missing.ok, false);
   assert.equal(missing.status, 404);
+});
+
+test("PATCH permite reactivar un profesional desactivado", async () => {
+  const repository = createFakeRepository();
+  const created = await createProfessional({ tenantId: "t1", body: PERCENTAGE_BODY, repository });
+  const professionalId = created.professional.professionalId;
+
+  await deactivateProfessional({ tenantId: "t1", professionalId, repository });
+  assert.equal(repository.docs.get(professionalId).active, false);
+
+  const reactivated = await updateProfessional({ tenantId: "t1", professionalId, body: { active: true }, repository });
+  assert.equal(reactivated.ok, true);
+  assert.equal(reactivated.professional.active, true);
+  assert.equal(repository.docs.get(professionalId).active, true);
+
+  const deactivatedAgain = await updateProfessional({ tenantId: "t1", professionalId, body: { active: false }, repository });
+  assert.equal(deactivatedAgain.ok, true);
+  assert.equal(deactivatedAgain.professional.active, false);
+
+  const invalid = await updateProfessional({ tenantId: "t1", professionalId, body: { active: "si" }, repository });
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.status, 400);
+  assert.equal(invalid.code, "invalid_active");
+
+  const createdInactive = await createProfessional({
+    tenantId: "t1",
+    body: { ...PERCENTAGE_BODY, name: "Nuevo inactivo", active: false },
+    repository,
+  });
+  assert.equal(createdInactive.ok, true);
+  assert.equal(createdInactive.professional.active, false);
 });
 
 test("getProfessional valida id y devuelve null si no existe", async () => {

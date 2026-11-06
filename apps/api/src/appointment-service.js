@@ -25,6 +25,7 @@ import {
   blocksAvailability,
   findAppointmentConflict,
   normalizeProfessionalId,
+  resolveRescheduleAssignment,
 } from "./appointment-conflicts.js";
 
 const MAX_APPOINTMENT_DURATION_MS = 480 * 60 * 1000;
@@ -278,14 +279,15 @@ export async function rescheduleAppointment({ tenantId, timeZone, actorUid, appo
 
   const { startsAtLocal, startsAtUtc, durationMinutes: requestedDuration } = validation.value;
 
-  // professionalId opcional en reschedule: reasigna; si no viene, conserva el actual.
+  // professionalId en reschedule: ausente conserva, null desasigna, id reasigna
+  // (validando siempre el hueco del profesional/cupo compartido resultante).
   const rawBody = body && typeof body === "object" && !Array.isArray(body) ? body : {};
-  const reassignmentId = typeof rawBody.professionalId === "string" ? rawBody.professionalId.trim() : "";
+  const assignment = resolveRescheduleAssignment({ body: rawBody });
   let reassignedProfessional = null;
-  if (reassignmentId !== "") {
+  if (assignment.mode === "reassign") {
     reassignedProfessional = await getProfessional({
       tenantId,
-      professionalId: reassignmentId,
+      professionalId: assignment.professionalId,
       repository: professionalRepository,
     });
     if (!reassignedProfessional) {
@@ -314,12 +316,18 @@ export async function rescheduleAppointment({ tenantId, timeZone, actorUid, appo
     const endsAtUtc = new Date(startsAtMs + durationMinutes * 60 * 1000);
     const endsAtMs = endsAtUtc.getTime();
 
-    const nextProfessionalId = reassignedProfessional
-      ? reassignedProfessional.professionalId
-      : normalizeProfessionalId(data.professionalId);
-    const nextProfessionalName = reassignedProfessional
-      ? reassignedProfessional.name
-      : (data.professionalName ?? null);
+    let nextProfessionalId;
+    let nextProfessionalName;
+    if (assignment.mode === "unassign") {
+      nextProfessionalId = null;
+      nextProfessionalName = null;
+    } else if (assignment.mode === "reassign") {
+      nextProfessionalId = reassignedProfessional.professionalId;
+      nextProfessionalName = reassignedProfessional.name;
+    } else {
+      nextProfessionalId = normalizeProfessionalId(data.professionalId);
+      nextProfessionalName = data.professionalName ?? null;
+    }
 
     // Mismo patrón que al crear, pero ignorando la propia cita.
     const window = await transaction.get(

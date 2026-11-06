@@ -150,7 +150,7 @@
           </button>
           <button class="nav-item" data-view="agenda"><span class="nav-icon" aria-hidden="true">▦</span><span>Agenda</span><span class="nav-count" id="nav-count">0</span></button>
           <button class="nav-item" data-view="clientes"><span class="nav-icon" aria-hidden="true">♙</span><span>Clientes</span></button>
-          <button class="nav-item" data-view="equipo" data-future="Equipo"><span class="nav-icon" aria-hidden="true">♧</span><span>Equipo</span></button>
+          <button class="nav-item" data-view="equipo"><span class="nav-icon" aria-hidden="true">♧</span><span>Equipo</span></button>
           <button class="nav-item" data-view="servicios"><span class="nav-icon" aria-hidden="true">◇</span><span>Servicios</span></button>
           <button class="nav-item" data-view="plataforma" id="platform-nav" hidden><span class="nav-icon" aria-hidden="true">▤</span><span>Plataforma</span></button>
         </nav>
@@ -314,11 +314,9 @@
 
             <aside class="right-column">
               <article class="panel team-panel">
-                <div class="panel-heading compact-heading"><div><p class="eyebrow">TU EQUIPO</p><h2>Profesionales</h2></div><button class="icon-button small-plus" aria-label="Agregar profesional" data-toast="El equipo se configurará en la siguiente etapa.">+</button></div>
-                <div class="team-list">
-                  <button class="team-row team-person" id="open-professional" type="button" aria-label="Ver perfil del profesional principal"><span class="team-avatar avatar-navy">AP</span><span class="team-copy"><strong>Profesional principal</strong><small id="team-appointment-count">0 citas · activo</small></span><span class="availability-dot online"></span></button>
-                </div>
-                <button class="full-width-link" data-toast="La gestión del equipo llegará en una próxima etapa.">Ver equipo <span aria-hidden="true">→</span></button>
+                <div class="panel-heading compact-heading"><div><p class="eyebrow">TU EQUIPO</p><h2>Profesionales</h2></div><button class="icon-button small-plus" id="team-panel-new" type="button" aria-label="Agregar profesional">+</button></div>
+                <div class="team-list" id="team-panel-list"></div>
+                <button class="full-width-link" id="team-panel-link" type="button">Ver equipo <span aria-hidden="true">→</span></button>
               </article>
 
               <article class="tip-card">
@@ -520,6 +518,76 @@
             </article>
           </section>
 
+          <section class="team-view" id="team-view" aria-labelledby="team-title" hidden>
+            <article class="panel team-panel-main">
+              <div class="panel-heading">
+                <div><p class="eyebrow">TU EQUIPO</p><h2 id="team-title">Profesionales</h2></div>
+                <div class="team-heading-actions">
+                  <span class="services-count" id="professionals-count"></span>
+                  <label class="services-filter"><input type="checkbox" id="professionals-show-inactive" /> Ver inactivos</label>
+                  <button class="primary-button" id="new-professional-button" type="button"><span class="plus-icon" aria-hidden="true">+</span> Nuevo profesional</button>
+                </div>
+              </div>
+              <p class="config-intro">Cada profesional tiene su forma de pago y puede recibir citas propias. La agenda y los horarios libres se ajustan a su disponibilidad.</p>
+              <p class="form-status" id="professionals-status" role="status" aria-live="polite"></p>
+              <div class="professionals-list" id="professionals-list" aria-busy="false"></div>
+              <div class="professionals-empty" id="professionals-empty" hidden>
+                <strong>Aún no tienes equipo</strong>
+                <span>Agrega a tu primer profesional para asignarle citas y configurar su comisión.</span>
+                <button class="primary-button" id="new-professional-empty" type="button">Agregar mi primer profesional</button>
+              </div>
+            </article>
+
+            <article class="panel settlement-panel" id="settlement-panel" aria-labelledby="settlement-title">
+              <div class="panel-heading">
+                <div><p class="eyebrow">LIQUIDACIÓN</p><h2 id="settlement-title">Liquidación de comisiones</h2></div>
+                <span class="services-count" id="settlement-period-label"></span>
+              </div>
+              <p class="config-intro">Calcula lo que corresponde a cada profesional y cuánto produjo el negocio en un rango de fechas.</p>
+              <form class="settlement-filters" id="settlement-form">
+                <div><label for="settlement-from">Desde</label><input type="date" id="settlement-from" required /></div>
+                <div><label for="settlement-to">Hasta</label><input type="date" id="settlement-to" required /></div>
+                <button class="primary-button" id="settlement-calculate" type="submit">Calcular</button>
+              </form>
+              <p class="field-hint">Rango máximo 92 días. Las citas canceladas no cuentan.</p>
+              <p class="form-status" id="settlement-status" role="status" aria-live="polite"></p>
+              <button class="secondary-button settlement-retry" id="settlement-retry" type="button" hidden>Reintentar</button>
+
+              <div class="settlement-summary" id="settlement-summary" hidden>
+                <article class="settlement-summary-card"><span>Servicios del negocio</span><strong id="settlement-services">0</strong></article>
+                <article class="settlement-summary-card"><span>Producido del negocio</span><strong id="settlement-gross">$ 0</strong></article>
+                <article class="settlement-summary-card"><span>Comisiones</span><strong id="settlement-commissions">$ 0</strong></article>
+                <article class="settlement-summary-card"><span>Alquileres</span><strong id="settlement-rents">$ 0</strong></article>
+                <article class="settlement-summary-card"><span>Neto del equipo</span><strong id="settlement-net">$ 0</strong></article>
+              </div>
+
+              <div class="settlement-table-wrap" id="settlement-table-wrap" hidden>
+                <table class="settlement-table">
+                  <thead>
+                    <tr><th scope="col">Profesional</th><th scope="col">Citas</th><th scope="col">Producido</th><th scope="col">Comisión</th><th scope="col">Alquiler</th><th scope="col">Neto</th></tr>
+                  </thead>
+                  <tbody id="settlement-body"></tbody>
+                  <tfoot>
+                    <tr class="settlement-total-row">
+                      <th scope="row">Total del negocio</th>
+                      <td id="settlement-total-services">0</td>
+                      <td id="settlement-total-gross">$ 0</td>
+                      <td id="settlement-total-commissions">$ 0</td>
+                      <td id="settlement-total-rents">$ 0</td>
+                      <td id="settlement-total-net">$ 0</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <div class="settlement-empty" id="settlement-empty" hidden>
+                <strong>No hay citas en ese rango</strong>
+                <span>Prueba con otras fechas o crea citas para ver la liquidación.</span>
+              </div>
+              <p class="settlement-unassigned" id="settlement-unassigned" hidden>Sin asignar: <strong id="settlement-unassigned-services">0 citas</strong> · <strong id="settlement-unassigned-gross">$ 0</strong></p>
+            </article>
+          </section>
+
           <section class="platform-view" id="platform-view" aria-labelledby="platform-title" hidden>
             <div class="platform-summary" id="platform-summary" aria-label="Resumen de la plataforma"></div>
             <article class="panel platform-panel">
@@ -608,6 +676,11 @@
           <label for="appointment-duration">Duración (min)<input id="appointment-duration" name="duration" type="number" min="5" max="480" step="5" value="45" required /></label>
           <label for="appointment-price">Precio (COP)<input id="appointment-price" name="price" type="number" min="0" max="10000000" step="1000" value="50000" required /></label>
         </div>
+        <div>
+          <label for="appointment-professional">Profesional</label>
+          <select id="appointment-professional" name="professional" aria-describedby="appointment-professional-hint"></select>
+          <p class="field-hint" id="appointment-professional-hint">Puedes dejarla sin asignar.</p>
+        </div>
         <div class="slot-picker" id="appointment-availability">
           <div class="slot-picker-head">
             <p class="slot-label" id="appointment-slots-label">HORARIOS LIBRES</p>
@@ -635,6 +708,11 @@
             <label for="reschedule-time">Nueva hora<input id="reschedule-time" name="time" type="time" required /></label>
             <p class="slot-indicator" id="reschedule-slots-count" aria-live="polite"></p>
           </div>
+        </div>
+        <div>
+          <label for="reschedule-professional">Profesional</label>
+          <select id="reschedule-professional" name="professional" aria-describedby="reschedule-professional-hint"></select>
+          <p class="field-hint" id="reschedule-professional-hint">Puedes reasignarla o dejarla sin asignar.</p>
         </div>
         <div class="slot-picker" id="reschedule-availability">
           <div class="slot-picker-head">
@@ -745,11 +823,36 @@
     </dialog>
 
     <dialog class="appointment-dialog professional-dialog" id="professional-dialog" aria-labelledby="professional-dialog-title">
-      <div class="dialog-heading"><div><p class="eyebrow" id="professional-tenant">EQUIPO</p><h2 id="professional-dialog-title">Profesional principal</h2></div><button class="dialog-close" id="close-professional-dialog" type="button" aria-label="Cerrar">×</button></div>
-      <p class="dialog-note" id="professional-note">En este piloto la agenda la atiende una sola persona.</p>
-      <div class="professional-summary"><span class="team-avatar avatar-navy">AP</span><div><strong>Profesional activo</strong><small>Propietario del negocio</small></div><span class="availability-dot online"></span></div>
-      <div class="professional-stats"><div><strong id="professional-appointments">0</strong><span>Citas del día elegido</span></div><div><strong id="professional-services-count">0</strong><span>Servicios distintos</span></div></div>
-      <div class="professional-services"><p class="eyebrow">SERVICIOS DEL DÍA</p><div id="professional-services"><span>Sin citas en la fecha elegida</span></div></div>
+      <form id="professional-form">
+        <div class="dialog-heading"><div><p class="eyebrow">EQUIPO</p><h2 id="professional-dialog-title">Nuevo profesional</h2></div><button class="dialog-close" id="close-professional-dialog" type="button" aria-label="Cerrar">×</button></div>
+        <p class="dialog-note" id="professional-note">Asígnale citas y define cómo se le paga.</p>
+        <div class="form-pair">
+          <label for="professional-name">Nombre<input id="professional-name" required minlength="2" maxlength="80" placeholder="Ej. Andrés" /></label>
+          <label for="professional-phone">Teléfono (opcional)<input id="professional-phone" type="tel" maxlength="25" placeholder="Ej. 3001234567" /></label>
+        </div>
+        <label for="professional-email">Correo (opcional)<input id="professional-email" type="email" maxlength="120" placeholder="Ej. andres@correo.com" /></label>
+        <label for="professional-notes">Notas (opcional)<textarea id="professional-notes" rows="2" maxlength="200" placeholder="Ej. Especialista en fades."></textarea></label>
+        <p class="profile-subtitle">FORMA DE PAGO</p>
+        <div class="form-pair">
+          <div>
+            <label for="professional-commission-type">Tipo de comisión</label>
+            <select id="professional-commission-type">
+              <option value="percentage">Porcentaje</option>
+              <option value="fixed">Fijo por servicio</option>
+              <option value="rent">Alquiler</option>
+              <option value="mixed">Mixto</option>
+            </select>
+          </div>
+          <label for="professional-effective-from">Vigente desde<input id="professional-effective-from" type="date" /></label>
+        </div>
+        <div class="form-pair">
+          <label for="professional-percent" id="professional-percent-field">Porcentaje (%)<input id="professional-percent" type="number" min="0" max="100" step="1" value="50" /></label>
+          <label for="professional-amount" id="professional-amount-field" hidden>Valor por servicio (COP)<input id="professional-amount" type="number" min="0" max="10000000" step="1000" value="15000" /></label>
+        </div>
+        <label for="professional-rent" id="professional-rent-field" hidden>Alquiler (COP)<input id="professional-rent" type="number" min="0" max="10000000" step="1000" value="300000" /></label>
+        <p class="form-error" id="professional-error" role="alert" aria-live="assertive"></p>
+        <div class="dialog-actions"><button class="secondary-button" id="cancel-professional" type="button">Cancelar</button><button class="primary-button" id="save-professional" type="submit">Guardar profesional</button></div>
+      </form>
     </dialog>
 
     <dialog class="appointment-dialog account-dialog" id="account-dialog" aria-labelledby="account-dialog-title">

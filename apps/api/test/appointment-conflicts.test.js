@@ -5,6 +5,7 @@ import {
   findAppointmentConflict,
   isOverlapping,
   normalizeProfessionalId,
+  resolveRescheduleAssignment,
   sameProfessionalSlot,
 } from "../src/appointment-conflicts.js";
 import { DEFAULT_OPENING_HOURS, generateAvailabilitySlots } from "../src/availability.js";
@@ -133,6 +134,49 @@ test("disponibilidad filtrada por profesional con GenerateAvailabilitySlots", ()
   assert.deepEqual(slotsFor("pro_b"), ["09:00", "10:00", "10:30", "11:30"]);
   // Sin filtro: todas las citas ocupan el hueco del negocio.
   assert.deepEqual(slotsFor(null), ["09:00", "10:30", "11:30"]);
+});
+
+test("reschedule: campo ausente conserva, null desasigna, id reasigna", () => {
+  const current = { currentProfessionalId: "pro_1", currentProfessionalName: "Andrés" };
+
+  assert.deepEqual(resolveRescheduleAssignment({ body: {}, ...current }), {
+    mode: "keep",
+    professionalId: "pro_1",
+    professionalName: "Andrés",
+  });
+  assert.deepEqual(resolveRescheduleAssignment({ body: { startsAt: "2030-01-01T10:00" }, ...current }), {
+    mode: "keep",
+    professionalId: "pro_1",
+    professionalName: "Andrés",
+  });
+  assert.deepEqual(resolveRescheduleAssignment({ body: { professionalId: null }, ...current }), {
+    mode: "unassign",
+    professionalId: null,
+    professionalName: null,
+  });
+  assert.deepEqual(resolveRescheduleAssignment({ body: { professionalId: "pro_2" }, ...current }), {
+    mode: "reassign",
+    professionalId: "pro_2",
+    professionalName: null,
+  });
+  assert.deepEqual(resolveRescheduleAssignment({ body: { professionalId: "  " }, ...current }), {
+    mode: "keep",
+    professionalId: "pro_1",
+    professionalName: "Andrés",
+  });
+  // Desasignar una cita que ya no tenía profesional también es un no-op válido.
+  assert.deepEqual(resolveRescheduleAssignment({ body: { professionalId: null }, currentProfessionalId: null }), {
+    mode: "unassign",
+    professionalId: null,
+    professionalName: null,
+  });
+});
+
+test("desasignar choca con el cupo compartido ocupado", () => {
+  const docs = [appointment("u1", { ...BASE_RANGE, professionalId: null })];
+  // Mover una cita asignada a "sin asignar" sobre otra sin asignar -> conflicto.
+  const conflict = findAppointmentConflict(docs, { ...BASE_RANGE, professionalId: null });
+  assert.equal(conflict.doc.id, "u1");
 });
 
 test("DEFAULT_OPENING_HOURS sigue disponible para las pruebas de disponibilidad", () => {

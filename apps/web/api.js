@@ -40,6 +40,19 @@ const ERROR_MESSAGES = {
   invalid_address: "La dirección no puede superar los 200 caracteres.",
   invalid_phone: "El teléfono del negocio no es válido.",
   invalid_social_link: "Revisa las redes: usa https:// o un número de WhatsApp válido.",
+  invalid_professional_name: "El nombre del profesional debe tener entre 2 y 80 caracteres.",
+  professional_name_taken: "Ya tienes un profesional con ese nombre.",
+  invalid_professional_phone: "El teléfono del profesional debe tener entre 7 y 15 dígitos.",
+  invalid_professional_email: "El correo del profesional no es válido.",
+  invalid_professional_notes: "Las notas del profesional no pueden superar los 200 caracteres.",
+  invalid_commission_type: "Elige un tipo de comisión válido.",
+  invalid_percent: "El porcentaje debe ser un entero entre 0 y 100.",
+  invalid_amount: "El valor fijo debe ser un entero entre 0 y 10.000.000.",
+  invalid_rent: "El alquiler debe ser un entero entre 0 y 10.000.000.",
+  invalid_effective_from: "La fecha de vigencia no es válida.",
+  professional_not_found: "No encontramos ese profesional en tu equipo.",
+  invalid_range: "El rango no es válido: revisa las fechas y usa máximo 92 días.",
+  invalid_date: "La fecha del rango no es válida.",
   provider_not_found: "No encontramos ese proveedor de IA.",
   invalid_api_key: "La clave debe tener entre 8 y 200 caracteres.",
   invalid_models: "Escribe entre 1 y 10 modelos, separados por comas (máx. 64 caracteres cada uno).",
@@ -209,6 +222,11 @@ export function testPlatformProvider(provider) {
   });
 }
 
+export function getSettlementPreview(tenantId, from, to) {
+  const params = new URLSearchParams({ from, to });
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/settlements/preview?${params.toString()}`);
+}
+
 export function createTenant({ name, sector, timeZone }) {
   return request("/api/v1/tenants", {
     method: "POST",
@@ -283,6 +301,7 @@ export function createAppointment(tenantId, appointment) {
     clientRequestId: appointment.clientRequestId ?? createClientRequestId(),
   };
   if (appointment.customerId) body.customerId = appointment.customerId;
+  if (appointment.professionalId) body.professionalId = appointment.professionalId;
   return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments`, {
     method: "POST",
     body,
@@ -326,6 +345,32 @@ export function deactivateCustomer(tenantId, customerId) {
   });
 }
 
+export function listProfessionals(tenantId, { includeInactive = false } = {}) {
+  const query = includeInactive ? "?includeInactive=1" : "";
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/professionals${query}`);
+}
+
+export function createProfessional(tenantId, professional) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/professionals`, {
+    method: "POST",
+    body: professional,
+  });
+}
+
+export function updateProfessional(tenantId, professionalId, changes) {
+  return request(
+    `/api/v1/tenants/${encodeURIComponent(tenantId)}/professionals/${encodeURIComponent(professionalId)}`,
+    { method: "PATCH", body: changes },
+  );
+}
+
+export function deactivateProfessional(tenantId, professionalId) {
+  return request(
+    `/api/v1/tenants/${encodeURIComponent(tenantId)}/professionals/${encodeURIComponent(professionalId)}`,
+    { method: "DELETE" },
+  );
+}
+
 export function cancelAppointment(tenantId, appointmentId) {
   return request(
     `/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments/${encodeURIComponent(appointmentId)}/cancel`,
@@ -333,17 +378,19 @@ export function cancelAppointment(tenantId, appointmentId) {
   );
 }
 
-export function listAvailability(tenantId, { from, to, durationMinutes, stepMinutes }) {
+export function listAvailability(tenantId, { from, to, durationMinutes, stepMinutes, professionalId }) {
   const params = new URLSearchParams({ from, to, durationMinutes: String(durationMinutes) });
   if (stepMinutes) params.set("stepMinutes", String(stepMinutes));
+  if (professionalId) params.set("professionalId", professionalId);
   return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/availability?${params.toString()}`);
 }
 
-export function rescheduleAppointment(tenantId, appointmentId, { startsAt, durationMinutes }) {
+export function rescheduleAppointment(tenantId, appointmentId, { startsAt, durationMinutes, professionalId }) {
   const body = { startsAt };
   if (durationMinutes !== undefined && durationMinutes !== null) {
     body.durationMinutes = durationMinutes;
   }
+  if (professionalId !== undefined) body.professionalId = professionalId;
   return request(
     `/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments/${encodeURIComponent(appointmentId)}/reschedule`,
     { method: "POST", body },

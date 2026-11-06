@@ -10,9 +10,11 @@ import {
   createAppointment as createAppointmentRequest,
   createClientRequestId,
   createCustomer,
+  createProfessional,
   createService,
   createTenant,
   deactivateCustomer,
+  deactivateProfessional,
   deactivateService,
   deletePlatformProvider,
   getAgentConfig,
@@ -21,7 +23,8 @@ import {
   getMe,
   getPlatformSummary,
   getPlatformTenant,
-  getTenantContext,
+  getSettlementPreview,
+getTenantContext,
   isTenantAccessError,
   isUnauthorized,
   listAppointments,
@@ -29,6 +32,7 @@ import {
   listCustomers,
   listPlatformProviders,
   listPlatformTenants,
+  listProfessionals,
   listServices,
   listTenants,
   messageForError,
@@ -38,6 +42,7 @@ import {
   testPlatformProvider,
   updateCustomer,
   updatePlatformProvider,
+  updateProfessional,
   updatePlatformTenant,
   updateService,
   updateTenant,
@@ -191,14 +196,61 @@ const previousDay = $("#previous-day");
 const nextDay = $("#next-day");
 const goToday = $("#go-today");
 
-const teamAppointmentCount = $("#team-appointment-count");
-const openProfessional = $("#open-professional");
+const teamView = $("#team-view");
+const teamPanelList = $("#team-panel-list");
+const teamPanelNew = $("#team-panel-new");
+const teamPanelLink = $("#team-panel-link");
+const professionalsList = $("#professionals-list");
+const professionalsEmpty = $("#professionals-empty");
+const professionalsCount = $("#professionals-count");
+const professionalsStatus = $("#professionals-status");
+const professionalsShowInactive = $("#professionals-show-inactive");
+const newProfessionalButton = $("#new-professional-button");
+const newProfessionalEmpty = $("#new-professional-empty");
+const settlementForm = $("#settlement-form");
+const settlementFrom = $("#settlement-from");
+const settlementTo = $("#settlement-to");
+const settlementCalculate = $("#settlement-calculate");
+const settlementStatus = $("#settlement-status");
+const settlementRetry = $("#settlement-retry");
+const settlementPeriodLabel = $("#settlement-period-label");
+const settlementSummary = $("#settlement-summary");
+const settlementServices = $("#settlement-services");
+const settlementGross = $("#settlement-gross");
+const settlementCommissions = $("#settlement-commissions");
+const settlementRents = $("#settlement-rents");
+const settlementNet = $("#settlement-net");
+const settlementTableWrap = $("#settlement-table-wrap");
+const settlementBody = $("#settlement-body");
+const settlementTotalServices = $("#settlement-total-services");
+const settlementTotalGross = $("#settlement-total-gross");
+const settlementTotalCommissions = $("#settlement-total-commissions");
+const settlementTotalRents = $("#settlement-total-rents");
+const settlementTotalNet = $("#settlement-total-net");
+const settlementEmpty = $("#settlement-empty");
+const settlementUnassigned = $("#settlement-unassigned");
+const settlementUnassignedServices = $("#settlement-unassigned-services");
+const settlementUnassignedGross = $("#settlement-unassigned-gross");
 const professionalDialog = $("#professional-dialog");
+const professionalForm = $("#professional-form");
+const professionalDialogTitle = $("#professional-dialog-title");
+const professionalNote = $("#professional-note");
 const closeProfessionalDialog = $("#close-professional-dialog");
-const professionalTenant = $("#professional-tenant");
-const professionalAppointments = $("#professional-appointments");
-const professionalServicesCount = $("#professional-services-count");
-const professionalServices = $("#professional-services");
+const cancelProfessionalButton = $("#cancel-professional");
+const saveProfessionalButton = $("#save-professional");
+const professionalNameInput = $("#professional-name");
+const professionalPhoneInput = $("#professional-phone");
+const professionalEmailInput = $("#professional-email");
+const professionalNotesInput = $("#professional-notes");
+const professionalCommissionType = $("#professional-commission-type");
+const professionalEffectiveFrom = $("#professional-effective-from");
+const professionalPercentInput = $("#professional-percent");
+const professionalAmountInput = $("#professional-amount");
+const professionalRentInput = $("#professional-rent");
+const professionalPercentField = $("#professional-percent-field");
+const professionalAmountField = $("#professional-amount-field");
+const professionalRentField = $("#professional-rent-field");
+const professionalError = $("#professional-error");
 
 const appointmentDialog = $("#appointment-dialog");
 const appointmentForm = $("#appointment-form");
@@ -216,6 +268,8 @@ const appointmentSlotsCount = $("#appointment-slots-count");
 const appointmentSlotList = $("#appointment-slot-list");
 const appointmentServiceSelect = $("#appointment-service-select");
 const appointmentServiceHint = $("#appointment-service-hint");
+const appointmentProfessional = $("#appointment-professional");
+const appointmentProfessionalHint = $("#appointment-professional-hint");
 
 const scheduleForm = $("#schedule-form");
 const scheduleDays = $("#schedule-days");
@@ -360,6 +414,8 @@ const rescheduleDetail = $("#reschedule-detail");
 const rescheduleCurrent = $("#reschedule-current");
 const rescheduleDate = $("#reschedule-date");
 const rescheduleTime = $("#reschedule-time");
+const rescheduleProfessional = $("#reschedule-professional");
+const rescheduleProfessionalHint = $("#reschedule-professional-hint");
 const rescheduleSlotsCount = $("#reschedule-slots-count");
 const rescheduleSlotList = $("#reschedule-slot-list");
 const rescheduleError = $("#reschedule-error");
@@ -453,6 +509,18 @@ const state = {
   appointmentCustomerTimer: null,
   appointmentCustomerFilling: false,
   appointmentSuggestions: [],
+  professionals: [],
+  professionalsTenantId: null,
+  professionalsLoaded: false,
+  professionalsLoadSeq: 0,
+  professionalsIncludeInactive: false,
+  professionalsLoading: false,
+  professionalSaving: false,
+  professionalTargetId: null,
+  settlementTenantId: null,
+  settlementSeq: 0,
+  settlementLoading: false,
+  settlementData: null,
   isPlatformAdmin: false,
   platformLoaded: false,
   platformQuery: "",
@@ -562,6 +630,13 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
     state.customersLoadSeq += 1;
     state.customerDetailId = null;
     state.customerDetailSeq += 1;
+    state.professionals = [];
+    state.professionalsTenantId = null;
+    state.professionalsLoaded = false;
+    state.professionalsLoadSeq += 1;
+    state.settlementTenantId = null;
+    state.settlementData = null;
+    state.settlementSeq += 1;
     state.appointmentCustomerId = null;
     state.appointmentCustomerSeq += 1;
     state.scheduleSeq += 1;
@@ -573,6 +648,7 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
     setView(state.view);
     renderDateUi();
     await loadDay(state.selectedDate, seq);
+    void loadProfessionals({ silent: true });
   } catch (error) {
     if (seq !== state.sessionSeq) return;
     if (isUnauthorized(error)) {
@@ -898,7 +974,6 @@ function renderTenantUi() {
   workspaceAvatar.textContent = initialOf(state.tenant.name);
   workspaceMeta.textContent = roleLabel ? `${sectorLabel} · ${roleLabel}` : sectorLabel;
   profileRole.textContent = roleLabel || "Cuenta";
-  professionalTenant.textContent = `EQUIPO · ${state.tenant.name}`;
   renderTenantOptions();
   if (changeTenantButton) changeTenantButton.hidden = false;
   updateNavigationVisibility();
@@ -1146,15 +1221,6 @@ function renderAgenda() {
   clientsFoot.textContent = isToday ? "en la agenda de hoy" : "en el día elegido";
 
   navCount.textContent = String(scheduled.length);
-  teamAppointmentCount.textContent = `${scheduled.length} ${scheduled.length === 1 ? "cita" : "citas"} ${isToday ? "hoy" : "ese día"} · activo`;
-
-  professionalAppointments.textContent = String(scheduled.length);
-  const services = uniqueValues(scheduled.map((appointment) => appointment.serviceName));
-  professionalServicesCount.textContent = String(services.length);
-  professionalServices.innerHTML = services.length
-    ? services.map((service) => `<span>${escapeHtml(service)}</span>`).join("")
-    : "<span>Sin citas en la fecha elegida</span>";
-
   agendaFooter.innerHTML = appointments.length
     ? `<span class="footer-line"></span><span>${appointments.length} ${appointments.length === 1 ? "cita" : "citas"} · ${scheduled.length} ${scheduled.length === 1 ? "programada" : "programadas"}${cancelled.length ? ` · ${cancelled.length} ${cancelled.length === 1 ? "cancelada" : "canceladas"}` : ""}</span><span class="footer-line"></span>`
     : `<span class="footer-line"></span><span>Sin citas para esta fecha</span><span class="footer-line"></span>`;
@@ -1180,7 +1246,7 @@ function appointmentRowHtml(appointment, index) {
       <div class="appointment-time"><strong>${escapeHtml(time)}</strong><span>${escapeHtml(duration)}</span></div>
       <span class="appointment-rail ${RAIL_STYLES[index % RAIL_STYLES.length]}"></span>
       <div class="client-avatar ${AVATAR_STYLES[index % AVATAR_STYLES.length]}">${escapeHtml(initialsOf(name))}</div>
-      <div class="appointment-info"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(service)} · ${escapeHtml(price)}</span></div>
+      <div class="appointment-info"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(service)} · ${escapeHtml(price)}</span><span class="appointment-professional">${escapeHtml(appointment.professionalName || "Sin asignar")}</span></div>
       <span class="status ${cancelled ? "status-cancelled" : "status-upcoming"}">${cancelled ? "Cancelada" : "Programada"}</span>
       ${actions}
     </article>`;
@@ -1328,7 +1394,7 @@ agendaToggle.addEventListener("click", () => {
 });
 
 function setView(view) {
-  state.view = ["agenda", "configuracion", "servicios", "clientes", "plataforma"].includes(view) ? view : "resumen";
+  state.view = ["agenda", "configuracion", "servicios", "clientes", "equipo", "plataforma"].includes(view) ? view : "resumen";
   document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     const isActive = item.dataset.view === state.view;
     item.classList.toggle("is-active", isActive);
@@ -1336,7 +1402,7 @@ function setView(view) {
     else item.removeAttribute("aria-current");
   });
 
-  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios", clientes: "Clientes", plataforma: "Plataforma" };
+  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios", clientes: "Clientes", equipo: "Equipo", plataforma: "Plataforma" };
   currentSection.textContent = sectionLabels[state.view];
 
   const metricGrid = document.querySelector(".metric-grid");
@@ -1346,11 +1412,12 @@ function setView(view) {
   const isConfig = state.view === "configuracion";
   const isServices = state.view === "servicios";
   const isCustomers = state.view === "clientes";
+  const isTeam = state.view === "equipo";
   const isPlatform = state.view === "plataforma";
 
   if (metricGrid) metricGrid.hidden = true;
   if (legacyMetrics) legacyMetrics.hidden = true;
-  if (contentGrid) contentGrid.hidden = isConfig || isServices || isCustomers || isPlatform;
+  if (contentGrid) contentGrid.hidden = isConfig || isServices || isCustomers || isTeam || isPlatform;
   if (dashboardGrid) dashboardGrid.hidden = state.view !== "resumen";
   if (dashboardServices) dashboardServices.hidden = state.view !== "resumen";
   if (dashboardStatus) dashboardStatus.hidden = state.view !== "resumen";
@@ -1361,7 +1428,8 @@ function setView(view) {
   if (servicesView) servicesView.hidden = !isServices;
   if (customersView) customersView.hidden = !isCustomers;
   if (platformView) platformView.hidden = !isPlatform;
-  newAppointmentButton.hidden = isConfig || isServices || isCustomers || isPlatform;
+  if (teamView) teamView.hidden = !isTeam;
+  newAppointmentButton.hidden = isConfig || isServices || isCustomers || isTeam || isPlatform;
   agendaToggle.textContent = isAgenda ? "Ver resumen →" : "Ver agenda →";
 
   renderHeader();
@@ -1372,6 +1440,10 @@ function setView(view) {
   }
   if (isServices) loadServices();
   if (isCustomers) loadCustomers({ force: true });
+  if (isTeam) {
+    loadProfessionals();
+    loadSettlementPreview();
+  }
   if (isPlatform) loadPlatformDashboard();
   if (state.view === "resumen") loadDashboard();
 }
@@ -1399,6 +1471,12 @@ function renderHeader() {
     todayLabel.textContent = "TU GENTE";
     setPageTitle("Clientes");
     pageSubtitle.textContent = "Quiénes son, cómo contactarlos y todo lo que han venido a tu negocio.";
+    return;
+  }
+  if (state.view === "equipo") {
+    todayLabel.textContent = "TU EQUIPO";
+    setPageTitle("Equipo");
+    pageSubtitle.textContent = "Quiénes atienden, cómo se les paga y qué citas tienen asignadas.";
     return;
   }
   if (!state.selectedDate) return;
@@ -4355,6 +4433,7 @@ async function loadCreateSlots() {
   const seq = ++state.createSlotsSeq;
   const dateValue = appointmentDate.value;
   const durationMinutes = Number(appointmentDuration.value);
+  const professionalId = appointmentProfessional?.value || null;
 
   if (!isDateValue(dateValue) || !Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 480) {
     renderSlotsMessage("create", "Indica una fecha y una duración válidas para ver los horarios libres.");
@@ -4363,8 +4442,8 @@ async function loadCreateSlots() {
 
   setSlotsLoading("create");
   try {
-    const slots = await fetchAvailability(dateValue, durationMinutes);
-    if (seq !== state.createSlotsSeq || !appointmentDialog.open || dateValue !== appointmentDate.value) return;
+    const slots = await fetchAvailability(dateValue, durationMinutes, professionalId);
+    if (seq !== state.createSlotsSeq || !appointmentDialog.open || dateValue !== appointmentDate.value || professionalId !== (appointmentProfessional?.value || null)) return;
     state.createSlots = slots ?? [];
     renderSlots("create", state.createSlots, dateValue, appointmentTime.value);
   } catch (error) {
@@ -4378,6 +4457,7 @@ async function loadRescheduleSlots() {
   const seq = ++state.rescheduleSlotsSeq;
   const dateValue = rescheduleDate.value;
   const durationMinutes = state.rescheduleDuration || 45;
+  const professionalId = rescheduleProfessional?.value || null;
 
   if (!isDateValue(dateValue)) {
     renderSlotsMessage("reschedule", "Elige una fecha válida para ver los horarios libres.");
@@ -4386,8 +4466,8 @@ async function loadRescheduleSlots() {
 
   setSlotsLoading("reschedule");
   try {
-    const slots = await fetchAvailability(dateValue, durationMinutes);
-    if (seq !== state.rescheduleSlotsSeq || !rescheduleDialog.open || dateValue !== rescheduleDate.value) return;
+    const slots = await fetchAvailability(dateValue, durationMinutes, professionalId);
+    if (seq !== state.rescheduleSlotsSeq || !rescheduleDialog.open || dateValue !== rescheduleDate.value || professionalId !== (rescheduleProfessional?.value || null)) return;
     state.rescheduleSlots = slots ?? [];
     renderSlots("reschedule", state.rescheduleSlots, dateValue, rescheduleTime.value);
   } catch (error) {
@@ -4396,13 +4476,13 @@ async function loadRescheduleSlots() {
   }
 }
 
-async function fetchAvailability(dateValue, durationMinutes) {
+async function fetchAvailability(dateValue, durationMinutes, professionalId = null) {
   const tenantId = state.tenant?.tenantId;
   if (!tenantId) return [];
-  const key = `${tenantId}|${dateValue}|${durationMinutes}`;
+  const key = `${tenantId}|${dateValue}|${durationMinutes}|${professionalId || "any"}`;
   if (state.availabilityCache.has(key)) return state.availabilityCache.get(key);
 
-  const data = await listAvailability(tenantId, { from: dateValue, to: dateValue, durationMinutes });
+  const data = await listAvailability(tenantId, { from: dateValue, to: dateValue, durationMinutes, professionalId });
   if (state.tenant?.tenantId !== tenantId) return [];
   const slots = Array.isArray(data?.slots) ? data.slots : [];
   state.availabilityCache.set(key, slots);
@@ -4566,6 +4646,7 @@ function openRescheduleDialog(appointment) {
   rescheduleCurrent.textContent = `Actualmente: ${formatLongDate(dateValue)} a las ${timeValue}.`;
   rescheduleDate.value = dateValue;
   rescheduleTime.value = timeValue;
+  populateProfessionalSelects({ rescheduleId: appointment.professionalId ?? "" });
   rescheduleError.textContent = "";
   rescheduleSlotsCount.textContent = "";
   rescheduleSlotList.replaceChildren();
@@ -4573,6 +4654,7 @@ function openRescheduleDialog(appointment) {
   setRescheduleBusy(false);
   rescheduleDialog.showModal();
   loadRescheduleSlots();
+  void ensureProfessionalsLoaded().then(() => populateProfessionalSelects({ rescheduleId: appointment.professionalId ?? "" }));
 }
 
 function setRescheduleBusy(busy) {
@@ -4580,6 +4662,7 @@ function setRescheduleBusy(busy) {
   saveRescheduleButton.textContent = busy ? "Guardando…" : "Guardar cambio";
   rescheduleDate.disabled = busy;
   rescheduleTime.disabled = busy;
+  rescheduleProfessional.disabled = busy;
   cancelRescheduleButton.disabled = busy;
   setSlotChipsDisabled(rescheduleSlotList, busy);
 }
@@ -4610,6 +4693,7 @@ rescheduleForm.addEventListener("submit", async (event) => {
     const result = await rescheduleAppointmentRequest(tenantId, appointmentId, {
       startsAt: `${dateValue}T${timeValue}`,
       durationMinutes: state.rescheduleDuration,
+      professionalId: rescheduleProfessional.value || undefined,
     });
     const updated = result?.appointment ?? null;
     state.cache.clear();
@@ -4686,10 +4770,12 @@ function openAppointmentDialog() {
   resetAppointmentCustomer();
   setDialogBusy(false);
   state.createRequestId = createClientRequestId();
+  populateProfessionalSelects();
   appointmentDialog.showModal();
   appointmentClient.focus();
   loadCreateSlots();
   prepareAppointmentServices();
+  void ensureProfessionalsLoaded().then(() => populateProfessionalSelects());
 }
 
 closeDialogButton.addEventListener("click", () => appointmentDialog.close());
@@ -4703,7 +4789,7 @@ appointmentDialog.addEventListener("close", () => {
 function setDialogBusy(busy) {
   saveAppointmentButton.disabled = busy;
   saveAppointmentButton.textContent = busy ? "Guardando…" : "Agregar cita";
-  for (const field of [appointmentClient, appointmentService, appointmentDate, appointmentTime, appointmentDuration, appointmentPrice, appointmentCustomerSearch, appointmentCustomerPhone]) {
+  for (const field of [appointmentClient, appointmentService, appointmentDate, appointmentTime, appointmentDuration, appointmentPrice, appointmentProfessional, appointmentCustomerSearch, appointmentCustomerPhone]) {
     field.disabled = busy;
   }
   appointmentCustomerSave.disabled = busy || Boolean(state.appointmentCustomerId);
@@ -4793,6 +4879,7 @@ appointmentForm.addEventListener("submit", async (event) => {
       startsAt: `${date}T${time}`,
       durationMinutes,
       priceCOP,
+      professionalId: appointmentProfessional.value || null,
       clientRequestId: state.createRequestId ?? createClientRequestId(),
     });
 
@@ -4835,13 +4922,497 @@ appointmentForm.addEventListener("submit", async (event) => {
 });
 
 // ---------------------------------------------------------------------------
-// Diálogo del profesional y toasts
+// Equipo, comisiones y asignación de citas
 // ---------------------------------------------------------------------------
 
-openProfessional.addEventListener("click", () => {
+const COMMISSION_TYPE_LABELS = {
+  percentage: "Porcentaje",
+  fixed: "Fijo por servicio",
+  rent: "Alquiler",
+  mixed: "Mixto",
+};
+
+function professionalRecordId(professional) {
+  return professional?.professionalId ?? professional?.id ?? "";
+}
+
+function activeProfessionals() {
+  return state.professionals.filter((professional) => professional.active !== false);
+}
+
+function professionalCommissionSummary(professional) {
+  const commission = professional?.commission ?? {};
+  const percent = numberOrZero(commission.percent);
+  const amount = numberOrZero(commission.amountCOP);
+  const rent = numberOrZero(commission.rentCOP);
+  if (commission.type === "fixed") return `${formatCOP(amount)} por servicio`;
+  if (commission.type === "rent") return `Alquiler ${formatCOP(rent)}`;
+  if (commission.type === "mixed") return `${percent}% + alquiler ${formatCOP(rent)}`;
+  return `${percent}%`;
+}
+
+function setProfessionalsStatus(message, tone = "idle") {
+  if (!professionalsStatus) return;
+  professionalsStatus.textContent = message;
+  professionalsStatus.className = `form-status is-${tone}`;
+}
+
+function setProfessionalsLoading() {
+  if (!professionalsList) return;
+  professionalsList.setAttribute("aria-busy", "true");
+  professionalsList.replaceChildren(textBlock("Cargando equipo…", "platform-message"));
+  if (professionalsEmpty) professionalsEmpty.hidden = true;
+  if (professionalsCount) professionalsCount.textContent = "";
+  setProfessionalsStatus("Cargando equipo…", "loading");
+}
+
+function renderProfessionalsError(message) {
+  if (!professionalsList) return;
+  professionalsList.setAttribute("aria-busy", "false");
+  const wrap = document.createElement("div");
+  wrap.className = "provider-error";
+  const text = document.createElement("span");
+  text.textContent = message;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "secondary-button";
+  retry.dataset.retryProfessionals = "1";
+  retry.textContent = "Reintentar";
+  wrap.append(text, retry);
+  professionalsList.replaceChildren(wrap);
+  if (professionalsEmpty) professionalsEmpty.hidden = true;
+  if (professionalsCount) professionalsCount.textContent = "";
+  setProfessionalsStatus(message, "error");
+}
+
+function createProfessionalRow(professional) {
+  const row = document.createElement("article");
+  const inactive = professional.active === false;
+  row.className = `professional-row${inactive ? " is-inactive" : ""}`;
+  row.dataset.professionalId = professionalRecordId(professional);
+
+  const avatar = document.createElement("span");
+  avatar.className = "team-avatar professional-avatar";
+  avatar.textContent = initialsOf(professional.name);
+  avatar.setAttribute("aria-hidden", "true");
+
+  const main = document.createElement("div");
+  main.className = "professional-main";
+  const name = document.createElement("strong");
+  name.textContent = String(professional.name ?? "Profesional");
+  const contact = document.createElement("span");
+  contact.textContent = [professional.phone, professional.email].filter(Boolean).join(" · ") || "Sin contacto";
+  const commission = document.createElement("small");
+  commission.className = "professional-commission";
+  commission.textContent = professionalCommissionSummary(professional);
+  main.append(name, contact, commission);
+
+  const status = document.createElement("span");
+  status.className = `status ${inactive ? "status-cancelled" : "status-upcoming"}`;
+  status.textContent = inactive ? "Inactivo" : "Activo";
+
+  const actions = document.createElement("div");
+  actions.className = "professional-actions";
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "row-shift";
+  edit.dataset.editProfessional = professionalRecordId(professional);
+  edit.textContent = "Editar";
+  edit.setAttribute("aria-label", `Editar a ${professional.name ?? "profesional"}`);
+  actions.append(edit);
+  if (!inactive) {
+    const deactivate = document.createElement("button");
+    deactivate.type = "button";
+    deactivate.className = "row-cancel";
+    deactivate.dataset.deactivateProfessional = professionalRecordId(professional);
+    deactivate.textContent = "Desactivar";
+    deactivate.setAttribute("aria-label", `Desactivar a ${professional.name ?? "profesional"}`);
+    actions.append(deactivate);
+  } else {
+    const reactivate = document.createElement("button");
+    reactivate.type = "button";
+    reactivate.className = "row-shift";
+    reactivate.dataset.reactivateProfessional = professionalRecordId(professional);
+    reactivate.textContent = "Reactivar";
+    reactivate.setAttribute("aria-label", `Reactivar a ${professional.name ?? "profesional"}`);
+    actions.append(reactivate);
+  }
+
+  row.append(avatar, main, status, actions);
+  return row;
+}
+
+function renderProfessionals() {
+  if (!professionalsList) return;
+  const list = state.professionals;
+  professionalsList.setAttribute("aria-busy", "false");
+  if (!list.length) {
+    professionalsList.replaceChildren();
+    if (professionalsEmpty) professionalsEmpty.hidden = false;
+    if (professionalsCount) professionalsCount.textContent = "";
+    setProfessionalsStatus("", "idle");
+    return;
+  }
+  if (professionalsEmpty) professionalsEmpty.hidden = true;
+  professionalsList.replaceChildren(...list.map((professional) => createProfessionalRow(professional)));
+  if (professionalsCount) professionalsCount.textContent = `${list.length} ${list.length === 1 ? "profesional" : "profesionales"}`;
+  setProfessionalsStatus("", "idle");
+}
+
+function renderTeamPanel() {
+  if (!teamPanelList) return;
+  const active = activeProfessionals();
+  teamPanelList.replaceChildren();
+  if (!active.length) {
+    const empty = document.createElement("div");
+    empty.className = "team-mini-empty";
+    const title = document.createElement("strong");
+    title.textContent = "Aún no tienes equipo";
+    const copy = document.createElement("span");
+    copy.textContent = "Agrega profesionales para asignarles citas.";
+    empty.append(title, copy);
+    teamPanelList.append(empty);
+    return;
+  }
+  for (const professional of active.slice(0, 3)) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "team-row team-person";
+    row.dataset.teamProfessionalId = professionalRecordId(professional);
+    row.setAttribute("aria-label", `Editar a ${professional.name ?? "profesional"}`);
+    const avatar = document.createElement("span");
+    avatar.className = "team-avatar professional-avatar";
+    avatar.textContent = initialsOf(professional.name);
+    const copy = document.createElement("span");
+    copy.className = "team-copy";
+    const name = document.createElement("strong");
+    name.textContent = String(professional.name ?? "Profesional");
+    const summary = document.createElement("small");
+    summary.textContent = professionalCommissionSummary(professional);
+    copy.append(name, summary);
+    const dot = document.createElement("span");
+    dot.className = "availability-dot online";
+    row.append(avatar, copy, dot);
+    teamPanelList.append(row);
+  }
+}
+
+async function loadProfessionals({ silent = false } = {}) {
+  if (!state.tenant) return;
+  const tenantId = state.tenant.tenantId;
+  const seq = ++state.professionalsLoadSeq;
+  state.professionalsLoading = true;
+  if (!silent) setProfessionalsLoading();
+  try {
+    const data = await listProfessionals(tenantId, { includeInactive: state.professionalsIncludeInactive });
+    if (seq !== state.professionalsLoadSeq || state.tenant?.tenantId !== tenantId) return;
+    state.professionals = Array.isArray(data?.professionals) ? data.professionals : [];
+    state.professionalsTenantId = tenantId;
+    state.professionalsLoaded = true;
+    renderProfessionals();
+    renderTeamPanel();
+    populateProfessionalSelects();
+  } catch (error) {
+    if (seq !== state.professionalsLoadSeq) return;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    if (!silent) renderProfessionalsError(messageForError(error));
+  } finally {
+    if (seq === state.professionalsLoadSeq) state.professionalsLoading = false;
+  }
+}
+
+function fillProfessionalSelect(select, currentId = "", { emptyLabel } = {}) {
+  if (!select) return;
+  const active = activeProfessionals();
+  select.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = emptyLabel ?? (active.length ? "Sin asignar" : "Sin equipo configurado");
+  select.append(placeholder);
+  for (const professional of active) {
+    const option = document.createElement("option");
+    option.value = professionalRecordId(professional);
+    option.textContent = String(professional.name ?? "Profesional");
+    select.append(option);
+  }
+  const current = state.professionals.find((professional) => professionalRecordId(professional) === currentId);
+  if (current && current.active === false) {
+    const option = document.createElement("option");
+    option.value = professionalRecordId(current);
+    option.textContent = `${current.name} (inactivo)`;
+    select.append(option);
+  }
+  select.value = currentId && select.querySelector(`option[value="${CSS.escape(currentId)}"]`) ? currentId : "";
+}
+
+function updateProfessionalHint(select, hint, { preserve = false } = {}) {
+  if (!hint) return;
+  const active = activeProfessionals();
+  if (!state.professionalsLoaded) {
+    hint.textContent = "Cargando equipo…";
+    return;
+  }
+  hint.textContent = active.length
+    ? (preserve ? "Puedes reasignarla o mantener la actual." : "Puedes dejarla sin asignar.")
+    : "Sin equipo configurado. La cita se guardará sin asignar.";
+}
+
+function populateProfessionalSelects({ rescheduleId } = {}) {
+  if (appointmentProfessional) fillProfessionalSelect(appointmentProfessional, appointmentProfessional.value);
+  const rescheduleCurrent = rescheduleId ?? rescheduleProfessional?.value ?? "";
+  if (rescheduleProfessional) {
+    fillProfessionalSelect(rescheduleProfessional, rescheduleCurrent, {
+      emptyLabel: rescheduleCurrent ? "Mantener asignación" : "Sin asignar",
+    });
+  }
+  updateProfessionalHint(appointmentProfessional, appointmentProfessionalHint);
+  updateProfessionalHint(rescheduleProfessional, rescheduleProfessionalHint, { preserve: Boolean(rescheduleCurrent) });
+}
+
+async function ensureProfessionalsLoaded() {
+  if (!state.professionalsLoaded && state.tenant) await loadProfessionals({ silent: true });
+  return state.professionalsLoaded;
+}
+
+function openProfessionalDialog(professional = null) {
+  if (!state.tenant || professionalDialog.open) return;
+  const editing = Boolean(professional);
+  state.professionalTargetId = editing ? professionalRecordId(professional) : null;
+  professionalForm.reset();
+  professionalDialogTitle.textContent = editing ? "Editar profesional" : "Nuevo profesional";
+  professionalNote.textContent = editing
+    ? "Actualiza sus datos o su forma de pago."
+    : "Asígnale citas y define cómo se le paga.";
+  professionalNameInput.value = professional?.name ?? "";
+  professionalPhoneInput.value = professional?.phone ?? "";
+  professionalEmailInput.value = professional?.email ?? "";
+  professionalNotesInput.value = professional?.notes ?? "";
+  const commission = professional?.commission ?? {};
+  professionalCommissionType.value = COMMISSION_TYPE_LABELS[commission.type] ? commission.type : "percentage";
+  professionalPercentInput.value = String(numberOrZero(commission.percent ?? 50));
+  professionalAmountInput.value = String(numberOrZero(commission.amountCOP ?? 15000));
+  professionalRentInput.value = String(numberOrZero(commission.rentCOP ?? 300000));
+  professionalEffectiveFrom.value = isDateValue(commission.effectiveFrom) ? commission.effectiveFrom : todayValue();
+  professionalError.textContent = "";
+  updateProfessionalCommissionFields();
   professionalDialog.showModal();
+  professionalNameInput.focus();
+}
+
+function updateProfessionalCommissionFields() {
+  const type = professionalCommissionType.value;
+  professionalPercentField.hidden = !(type === "percentage" || type === "mixed");
+  professionalAmountField.hidden = type !== "fixed";
+  professionalRentField.hidden = !(type === "rent" || type === "mixed");
+  professionalPercentInput.required = type === "percentage" || type === "mixed";
+  professionalAmountInput.required = type === "fixed";
+  professionalRentInput.required = type === "rent" || type === "mixed";
+}
+
+function setProfessionalBusy(busy) {
+  saveProfessionalButton.disabled = busy;
+  cancelProfessionalButton.disabled = busy;
+  saveProfessionalButton.textContent = busy ? "Guardando…" : "Guardar profesional";
+  for (const field of [professionalNameInput, professionalPhoneInput, professionalEmailInput, professionalNotesInput, professionalCommissionType, professionalEffectiveFrom, professionalPercentInput, professionalAmountInput, professionalRentInput]) {
+    field.disabled = busy;
+  }
+}
+
+async function saveProfessional() {
+  if (!state.tenant || state.professionalSaving) return;
+  professionalError.textContent = "";
+  const name = professionalNameInput.value.trim();
+  const phoneRaw = professionalPhoneInput.value.trim();
+  const phone = normalizePhoneDigits(phoneRaw);
+  const email = professionalEmailInput.value.trim();
+  const notes = professionalNotesInput.value.trim();
+  const type = professionalCommissionType.value;
+  const effectiveFrom = professionalEffectiveFrom.value;
+  const percent = Number(professionalPercentInput.value);
+  const amountCOP = Number(professionalAmountInput.value);
+  const rentCOP = Number(professionalRentInput.value);
+
+  if (name.length < 2 || name.length > 80) {
+    professionalError.textContent = "El nombre debe tener entre 2 y 80 caracteres.";
+    professionalNameInput.focus();
+    return;
+  }
+  if (phoneRaw && (phone.length < 7 || phone.length > 15)) {
+    professionalError.textContent = "El teléfono debe tener entre 7 y 15 dígitos.";
+    professionalPhoneInput.focus();
+    return;
+  }
+  if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 120)) {
+    professionalError.textContent = "El correo no es válido.";
+    professionalEmailInput.focus();
+    return;
+  }
+  if (notes.length > 200) {
+    professionalError.textContent = "Las notas no pueden superar los 200 caracteres.";
+    professionalNotesInput.focus();
+    return;
+  }
+  if (!isDateValue(effectiveFrom)) {
+    professionalError.textContent = "Indica una fecha de vigencia válida.";
+    professionalEffectiveFrom.focus();
+    return;
+  }
+  if ((type === "percentage" || type === "mixed") && (!Number.isInteger(percent) || percent < 0 || percent > 100)) {
+    professionalError.textContent = "El porcentaje debe ser un entero entre 0 y 100.";
+    professionalPercentInput.focus();
+    return;
+  }
+  if (type === "fixed" && (!Number.isInteger(amountCOP) || amountCOP < 0 || amountCOP > 10000000)) {
+    professionalError.textContent = "El valor fijo debe ser un entero entre 0 y 10.000.000.";
+    professionalAmountInput.focus();
+    return;
+  }
+  if ((type === "rent" || type === "mixed") && (!Number.isInteger(rentCOP) || rentCOP < 0 || rentCOP > 10000000)) {
+    professionalError.textContent = "El alquiler debe ser un entero entre 0 y 10.000.000.";
+    professionalRentInput.focus();
+    return;
+  }
+
+  const payload = {
+    name,
+    phone,
+    email,
+    notes,
+    commission: {
+      type,
+      percent: type === "percentage" || type === "mixed" ? percent : 0,
+      amountCOP: type === "fixed" ? amountCOP : 0,
+      rentCOP: type === "rent" || type === "mixed" ? rentCOP : 0,
+      effectiveFrom,
+    },
+  };
+
+  const tenantId = state.tenant.tenantId;
+  const targetId = state.professionalTargetId;
+  state.professionalSaving = true;
+  setProfessionalBusy(true);
+  try {
+    if (targetId) await updateProfessional(tenantId, targetId, payload);
+    else await createProfessional(tenantId, payload);
+    professionalDialog.close();
+    await loadProfessionals();
+    populateProfessionalSelects();
+    showToast(targetId ? "Profesional actualizado." : "Profesional agregado.");
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      professionalDialog.close();
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      professionalDialog.close();
+      await handleTenantUnavailable(error);
+      return;
+    }
+    professionalError.textContent = messageForError(error);
+  } finally {
+    state.professionalSaving = false;
+    setProfessionalBusy(false);
+  }
+}
+
+function findProfessional(professionalId) {
+  return state.professionals.find((professional) => professionalRecordId(professional) === professionalId) ?? null;
+}
+
+professionalsList.addEventListener("click", async (event) => {
+  const retry = event.target.closest("[data-retry-professionals]");
+  if (retry) {
+    loadProfessionals();
+    return;
+  }
+  const edit = event.target.closest("[data-edit-professional]");
+  if (edit) {
+    const professional = findProfessional(edit.dataset.editProfessional);
+    if (professional) openProfessionalDialog(professional);
+    return;
+  }
+  const reactivate = event.target.closest("[data-reactivate-professional]");
+  if (reactivate) {
+    const professional = findProfessional(reactivate.dataset.reactivateProfessional);
+    if (!professional) return;
+    reactivate.disabled = true;
+    try {
+      await updateProfessional(state.tenant.tenantId, professionalRecordId(professional), { active: true });
+      await loadProfessionals();
+      populateProfessionalSelects();
+      showToast(`${professional.name} reactivado.`);
+    } catch (error) {
+      if (isUnauthorized(error)) return forceSignOut(messageForError(error));
+      reactivate.disabled = false;
+      setProfessionalsStatus(messageForError(error), "error");
+    }
+    return;
+  }
+  const deactivate = event.target.closest("[data-deactivate-professional]");
+  if (deactivate) {
+    const professional = findProfessional(deactivate.dataset.deactivateProfessional);
+    if (!professional) return;
+    if (!window.confirm(`¿Desactivar a ${professional.name}? Sus citas anteriores se conservan.`)) return;
+    deactivate.disabled = true;
+    try {
+      await deactivateProfessional(state.tenant.tenantId, professionalRecordId(professional));
+      await loadProfessionals();
+      populateProfessionalSelects();
+      showToast(`${professional.name} desactivado.`);
+    } catch (error) {
+      if (isUnauthorized(error)) return forceSignOut(messageForError(error));
+      deactivate.disabled = false;
+      setProfessionalsStatus(messageForError(error), "error");
+    }
+    return;
+  }
+});
+
+professionalsShowInactive.addEventListener("change", () => {
+  state.professionalsIncludeInactive = professionalsShowInactive.checked;
+  loadProfessionals();
+});
+
+for (const button of [newProfessionalButton, newProfessionalEmpty, teamPanelNew]) {
+  button.addEventListener("click", () => openProfessionalDialog());
+}
+teamPanelLink.addEventListener("click", () => setView("equipo"));
+teamPanelList.addEventListener("click", (event) => {
+  const row = event.target.closest("[data-team-professional-id]");
+  if (!row) return;
+  const professional = findProfessional(row.dataset.teamProfessionalId);
+  if (professional) openProfessionalDialog(professional);
+});
+
+professionalCommissionType.addEventListener("change", updateProfessionalCommissionFields);
+professionalForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveProfessional();
 });
 closeProfessionalDialog.addEventListener("click", () => professionalDialog.close());
+cancelProfessionalButton.addEventListener("click", () => professionalDialog.close());
+professionalDialog.addEventListener("close", () => {
+  state.professionalTargetId = null;
+});
+
+appointmentProfessional.addEventListener("change", () => {
+  state.availabilityCache.clear();
+  updateProfessionalHint(appointmentProfessional, appointmentProfessionalHint);
+  if (appointmentDialog.open) loadCreateSlots();
+});
+rescheduleProfessional.addEventListener("change", () => {
+  state.availabilityCache.clear();
+  updateProfessionalHint(rescheduleProfessional, rescheduleProfessionalHint, { preserve: Boolean(rescheduleProfessional.value) });
+  if (rescheduleDialog.open) loadRescheduleSlots();
+});
 
 document.querySelectorAll("[data-toast]").forEach((button) => {
   button.addEventListener("click", () => showToast(button.dataset.toast));
@@ -4940,6 +5511,141 @@ const copFormatter = new Intl.NumberFormat("es-CO", {
   currency: "COP",
   maximumFractionDigits: 0,
 });
+
+function settlementLocalParts() {
+  const timeZone = state.context?.timeZone || DEFAULT_TIME_ZONE;
+  const [year, month, day] = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date())
+    .split("-")
+    .map(Number);
+  return { year, month, day };
+}
+
+function settlementDefaultRange() {
+  const { year, month } = settlementLocalParts();
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const mm = String(month).padStart(2, "0");
+  return { from: `${year}-${mm}-01`, to: `${year}-${mm}-${String(lastDay).padStart(2, "0")}` };
+}
+
+function setSettlementStatus(message, tone) {
+  settlementStatus.textContent = message;
+  settlementStatus.className = `form-status is-${tone}`;
+}
+
+function renderSettlementError(message) {
+  setSettlementStatus(message, "error");
+  settlementRetry.hidden = false;
+  if (settlementSummary) settlementSummary.hidden = true;
+  if (settlementTableWrap) settlementTableWrap.hidden = true;
+  if (settlementEmpty) settlementEmpty.hidden = true;
+  if (settlementUnassigned) settlementUnassigned.hidden = true;
+  if (settlementBody) settlementBody.replaceChildren();
+}
+
+function renderSettlement(data) {
+  const rows = Array.isArray(data?.professionals) ? data.professionals : [];
+  const business = data?.business ?? { services: 0, gross: 0 };
+  const unassigned = data?.unassigned ?? { services: 0, gross: 0 };
+  const totals = rows.reduce((accumulator, row) => ({
+    commission: accumulator.commission + numberOrZero(row.commission),
+    rent: accumulator.rent + numberOrZero(row.rent),
+    net: accumulator.net + numberOrZero(row.net),
+  }), { commission: 0, rent: 0, net: 0 });
+
+  if (settlementPeriodLabel) settlementPeriodLabel.textContent = `${data?.from ?? ""} → ${data?.to ?? ""}`;
+  if (settlementServices) settlementServices.textContent = String(numberOrZero(business.services));
+  if (settlementGross) settlementGross.textContent = formatCOP(business.gross);
+  if (settlementCommissions) settlementCommissions.textContent = formatCOP(totals.commission);
+  if (settlementRents) settlementRents.textContent = formatCOP(totals.rent);
+  if (settlementNet) settlementNet.textContent = formatCOP(totals.net);
+  if (settlementSummary) settlementSummary.hidden = false;
+
+  if (settlementTotalServices) settlementTotalServices.textContent = String(numberOrZero(business.services));
+  if (settlementTotalGross) settlementTotalGross.textContent = formatCOP(business.gross);
+  if (settlementTotalCommissions) settlementTotalCommissions.textContent = formatCOP(totals.commission);
+  if (settlementTotalRents) settlementTotalRents.textContent = formatCOP(totals.rent);
+  if (settlementTotalNet) settlementTotalNet.textContent = formatCOP(totals.net);
+
+  if (settlementBody) {
+    settlementBody.innerHTML = rows.map((row) => `
+      <tr>
+        <th scope="row">${escapeHtml(row.name ?? "")}</th>
+        <td>${numberOrZero(row.services)}</td>
+        <td>${formatCOP(row.gross)}</td>
+        <td>${formatCOP(row.commission)}</td>
+        <td>${formatCOP(row.rent)}</td>
+        <td class="settlement-net${numberOrZero(row.net) < 0 ? " is-negative" : ""}">${formatCOP(row.net)}</td>
+      </tr>`).join("");
+  }
+
+  const hasRows = rows.length > 0;
+  if (settlementTableWrap) settlementTableWrap.hidden = !hasRows;
+  if (settlementEmpty) settlementEmpty.hidden = numberOrZero(business.services) > 0;
+
+  if (settlementUnassigned) {
+    settlementUnassigned.hidden = numberOrZero(unassigned.services) === 0;
+    if (settlementUnassignedServices) settlementUnassignedServices.textContent = `${numberOrZero(unassigned.services)} citas`;
+    if (settlementUnassignedGross) settlementUnassignedGross.textContent = formatCOP(unassigned.gross);
+  }
+
+  settlementRetry.hidden = true;
+  setSettlementStatus(hasRows ? "Liquidación calculada." : "Liquidación calculada: sin citas en ese rango.", "ready");
+}
+
+async function loadSettlementPreview() {
+  if (!state.tenant) return;
+  const tenantId = state.tenant.tenantId;
+  if (state.settlementTenantId !== tenantId) {
+    state.settlementTenantId = tenantId;
+    state.settlementData = null;
+    if (settlementFrom) settlementFrom.value = "";
+    if (settlementTo) settlementTo.value = "";
+  }
+  const range = settlementDefaultRange();
+  if (settlementFrom && !settlementFrom.value) settlementFrom.value = range.from;
+  if (settlementTo && !settlementTo.value) settlementTo.value = range.to;
+  const from = settlementFrom?.value ?? "";
+  const to = settlementTo?.value ?? "";
+  if (!from || !to) return;
+
+  const seq = ++state.settlementSeq;
+  state.settlementLoading = true;
+  setSettlementStatus("Calculando…", "loading");
+  settlementRetry.hidden = true;
+
+  try {
+    const data = await getSettlementPreview(tenantId, from, to);
+    if (seq !== state.settlementSeq || state.tenant?.tenantId !== tenantId) return;
+    state.settlementData = data;
+    renderSettlement(data);
+  } catch (error) {
+    if (seq !== state.settlementSeq) return;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    renderSettlementError(messageForError(error));
+  } finally {
+    if (seq === state.settlementSeq) state.settlementLoading = false;
+  }
+}
+
+if (settlementForm) {
+  settlementForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void loadSettlementPreview();
+  });
+}
+if (settlementRetry) {
+  settlementRetry.addEventListener("click", () => {
+    void loadSettlementPreview();
+  });
+}
 
 function formatCOP(value) {
   return copFormatter.format(numberOrZero(value));

@@ -109,6 +109,14 @@ export function validateProfessionalInput(body, { partial = false, defaultEffect
     value.commission = buildDefaultCommission(defaultEffectiveFrom);
   }
 
+  // `active` editable por PATCH (reactivar/desactivar); en el alta por defecto true.
+  if (input.active !== undefined) {
+    if (typeof input.active !== "boolean") {
+      return invalid("invalid_active", "El estado activo debe ser true o false.");
+    }
+    value.active = input.active;
+  }
+
   return { ok: true, value };
 }
 
@@ -191,7 +199,8 @@ export async function createProfessional({ tenantId, body, defaultEffectiveFrom 
     return nameTaken();
   }
 
-  const created = await repository.create(tenantId, { ...validation.value, active: true });
+  const { active = true, ...data } = validation.value;
+  const created = await repository.create(tenantId, { ...data, active });
   return { ok: true, status: 201, professional: serializeProfessional(created.professionalId, created.data) };
 }
 

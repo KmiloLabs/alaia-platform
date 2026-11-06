@@ -37,7 +37,7 @@ Validaciones:
 - `percent`: entero 0–100 (obligatorio en percentage/mixed) → `invalid_percent`.
 - `amountCOP`: entero 0–10.000.000 (obligatorio en fixed) → `invalid_amount`.
 - `rentCOP`: entero 0–10.000.000 (obligatorio en rent/mixed) → `invalid_rent`.
-- `effectiveFrom`: fecha `YYYY-MM-DD` → `invalid_effective_from`.
+- `effectiveFrom`: fecha `YYYY-MM-DD` → `invalid_effective_from`.\n- `active`: booleano, editable por `PATCH` para reactivar o desactivar → `invalid_active`.
 
 Rutas (leer: cualquier miembro; escribir: dueño):
 | Método | Ruta | Respuesta |
@@ -54,7 +54,7 @@ Rutas (leer: cualquier miembro; escribir: dueño):
 - `POST /appointments` acepta `professionalId` opcional. Si viene, debe pertenecer al negocio (`404 professional_not_found`).
 - La cita guarda `professionalId` y `professionalName` (copia del momento).
 - **Conflicto:** dos citas se cruzan si se solapan **y** tienen el mismo `professionalId`, considerando `null` como un cupo compartido ("sin asignar"). Es decir, dos citas sin asignar se cruzan entre sí; una asignada y una sin asignar no se cruzan.
-- `reschedule` conserva el profesional; acepta `professionalId` opcional para reasignar (validando conflicto del nuevo).
+- `reschedule` conserva el profesional si el campo no viene; si viene un `professionalId` reasigna validando el conflicto del nuevo; si viene `null` explícito, deja la cita **sin asignar**.
 - `GET /appointments` devuelve ambos campos.
 
 ## 3. Disponibilidad por profesional
