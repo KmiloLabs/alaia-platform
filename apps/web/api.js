@@ -22,6 +22,9 @@ const ERROR_MESSAGES = {
   invalid_override_date: "La fecha especial no es válida.",
   duplicate_override_date: "Ya existe una fecha especial para ese día.",
   invalid_override_hours: "La hora de cierre de la fecha especial debe ser posterior a la apertura.",
+  invalid_reminders: "La configuración de recordatorios no es válida.",
+  invalid_reminder_schedule: "Activa al menos un aviso (el primero o el segundo) para enviar recordatorios.",
+  invalid_reminder_message: "El mensaje solo puede usar las variables permitidas y máximo 300 caracteres.",
   empty_update: "No hay cambios para guardar.",
   not_owner: "Solo el propietario del negocio puede cambiar esta configuración.",
   invalid_service_name: "El nombre del servicio debe tener entre 2 y 80 caracteres.",
@@ -306,6 +309,10 @@ export function updateAppointmentStatus(tenantId, appointmentId, status) {
     `/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments/${encodeURIComponent(appointmentId)}/status`,
     { method: "POST", body: { status } },
   );
+}
+
+export function getReminderSummary(tenantId) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/reminders/summary`);
 }
 
 export function getWhatsappChannel(tenantId) {

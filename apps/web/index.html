@@ -473,6 +473,45 @@
               </form>
             </article>
 
+            <article class="panel reminders-panel" id="reminders-panel" aria-labelledby="reminders-title">
+              <div class="panel-heading">
+                <div><p class="eyebrow">RECORDATORIOS</p><h2 id="reminders-title">Avisa antes de la cita</h2></div>
+                <span class="config-status" id="reminders-status">Cargando…</span>
+              </div>
+              <p class="config-intro">Envía recordatorios automáticos por WhatsApp para reducir las inasistencias.</p>
+              <form id="reminders-form">
+                <label class="reminders-switch" for="reminders-enabled"><input type="checkbox" id="reminders-enabled" /> Enviar recordatorios por WhatsApp</label>
+                <div class="reminders-grid">
+                  <label for="reminders-first">Primer aviso (horas antes)<input id="reminders-first" type="number" min="0" max="168" step="1" value="24" /><small>0 = no enviar este aviso</small></label>
+                  <label for="reminders-second">Segundo aviso (horas antes)<input id="reminders-second" type="number" min="0" max="168" step="1" value="2" /><small>0 = no enviar este aviso</small></label>
+                </div>
+                <label for="reminders-message">Mensaje del recordatorio</label>
+                <textarea id="reminders-message" rows="3" maxlength="300" placeholder="Hola {nombre}, te recordamos tu cita en {negocio} el {fecha} a las {hora}."></textarea>
+                <div class="reminders-message-foot">
+                  <div class="reminders-vars" aria-label="Variables disponibles">
+                    <span>Variables:</span>
+                    <button type="button" data-reminder-variable="{nombre}">{nombre}</button>
+                    <button type="button" data-reminder-variable="{negocio}">{negocio}</button>
+                    <button type="button" data-reminder-variable="{fecha}">{fecha}</button>
+                    <button type="button" data-reminder-variable="{hora}">{hora}</button>
+                    <button type="button" data-reminder-variable="{servicio}">{servicio}</button>
+                  </div>
+                  <span class="config-counter" id="reminders-counter">0/300</span>
+                </div>
+                <div class="reminders-preview">
+                  <p class="eyebrow">VISTA PREVIA</p>
+                  <p id="reminders-preview-text">—</p>
+                </div>
+                <p class="field-hint">Para enviarse de verdad, el canal de WhatsApp debe estar conectado.</p>
+                <p class="reminders-summary" id="reminders-summary" hidden></p>
+                <p class="form-error" id="reminders-error" role="alert" aria-live="assertive"></p>
+                <div class="dialog-actions reminders-actions">
+                  <p class="form-status" id="reminders-message-status" role="status" aria-live="polite"></p>
+                  <button class="primary-button" id="reminders-save" type="submit">Guardar recordatorios</button>
+                </div>
+              </form>
+            </article>
+
             <article class="panel profile-panel" aria-labelledby="profile-title">
               <div class="panel-heading">
                 <div><p class="eyebrow">PERFIL DEL NEGOCIO</p><h2 id="profile-title">Tu ficha pública</h2></div>

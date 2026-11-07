@@ -32,6 +32,7 @@ import {
   getDashboard,
   getInvitation,
   getMe,
+  getReminderSummary,
   getWhatsappChannel,
   getPlatformSummary,
   getPlatformTenant,
@@ -406,6 +407,19 @@ const dateOverrideOpen = $("#date-override-open");
 const dateOverrideClose = $("#date-override-close");
 const addDateOverride = $("#add-date-override");
 const dateOverrideError = $("#date-override-error");
+const remindersPanel = $("#reminders-panel");
+const remindersStatus = $("#reminders-status");
+const remindersForm = $("#reminders-form");
+const remindersEnabled = $("#reminders-enabled");
+const remindersFirst = $("#reminders-first");
+const remindersSecond = $("#reminders-second");
+const remindersMessage = $("#reminders-message");
+const remindersCounter = $("#reminders-counter");
+const remindersPreviewText = $("#reminders-preview-text");
+const remindersError = $("#reminders-error");
+const remindersMessageStatus = $("#reminders-message-status");
+const remindersSummary = $("#reminders-summary");
+const remindersSave = $("#reminders-save");
 const scheduleStatus = $("#schedule-status");
 const scheduleMessage = $("#schedule-message");
 const scheduleSaveButton = $("#schedule-save");
@@ -648,6 +662,9 @@ const state = {
   dateOverrides: [],
   dateOverridesDirty: false,
   showPastDateOverrides: false,
+  remindersLoading: false,
+  remindersSaving: false,
+  reminderSummaryCount: null,
   serviceCatalogAvailable: false,
   customers: [],
   customersTenantId: null,
@@ -2481,6 +2498,7 @@ function setView(view) {
     renderProfile();
     renderPublicPageCard();
     loadWhatsappChannel();
+    loadReminders();
     loadSchedule();
     loadAgentConfig();
   }
@@ -2602,6 +2620,243 @@ scheduleDays.addEventListener("change", (event) => {
   clearScheduleMessage();
   if (scheduleStatus.classList.contains("is-ready")) setScheduleStatus("Cambios sin guardar", "warning");
 });
+
+// ---------------------------------------------------------------------------
+// Recordatorios por WhatsApp
+// ---------------------------------------------------------------------------
+
+const REMINDER_VARIABLES = ["nombre", "negocio", "fecha", "hora", "servicio"];
+const DEFAULT_REMINDER_MESSAGE = "Hola {nombre}, te recordamos tu cita en {negocio} el {fecha} a las {hora}.";
+
+function defaultReminders() {
+  return { enabled: false, firstHoursBefore: 24, secondHoursBefore: 2, message: DEFAULT_REMINDER_MESSAGE };
+}
+
+function normalizeReminderSettings(raw) {
+  const defaults = defaultReminders();
+  if (!raw || typeof raw !== "object") return defaults;
+  const first = Number(raw.firstHoursBefore);
+  const second = Number(raw.secondHoursBefore);
+  return {
+    enabled: raw.enabled === true,
+    firstHoursBefore: Number.isInteger(first) && first >= 0 && first <= 168 ? first : defaults.firstHoursBefore,
+    secondHoursBefore: Number.isInteger(second) && second >= 0 && second <= 168 ? second : defaults.secondHoursBefore,
+    message: typeof raw.message === "string" ? raw.message.slice(0, 300) : defaults.message,
+  };
+}
+
+function reminderStatusLabel(settings) {
+
+  remindersStatus.textContent = settings.enabled ? "Activos" : "Desactivados";
+  remindersStatus.className = settings.enabled ? "config-status is-ready" : "config-status";
+}
+
+function updateReminderCounter() {
+  remindersCounter.textContent = `${remindersMessage.value.length}/300`;
+}
+
+function updateReminderPreview() {
+  if (!remindersPreviewText) return;
+  const sample = {
+    nombre: "Camila",
+    negocio: state.tenant?.name ?? "Barbería",
+    fecha: formatLongDate(addDays(todayValue(), 7)),
+    hora: "10:00",
+    servicio: "Corte clásico",
+  };
+  const message = remindersMessage.value.trim();
+  if (!message) {
+    remindersPreviewText.textContent = "Escribe un mensaje para ver la vista previa.";
+    remindersPreviewText.classList.add("is-empty");
+    return;
+  }
+  remindersPreviewText.classList.remove("is-empty");
+  remindersPreviewText.textContent = message.replace(/\{(nombre|negocio|fecha|hora|servicio)\}/g, (_, key) => sample[key] ?? "");
+}
+
+function toggleReminderFields() {
+  const enabled = remindersEnabled.checked;
+  remindersFirst.disabled = !enabled;
+  remindersSecond.disabled = !enabled;
+  remindersMessage.disabled = !enabled;
+  for (const button of remindersForm.querySelectorAll("[data-reminder-variable]")) button.disabled = !enabled;
+  reminderStatusLabel({ enabled });
+}
+
+function renderReminderSettings(raw) {
+  const settings = normalizeReminderSettings(raw);
+  remindersEnabled.checked = settings.enabled;
+  remindersFirst.value = String(settings.firstHoursBefore);
+  remindersSecond.value = String(settings.secondHoursBefore);
+  remindersMessage.value = settings.message;
+  remindersError.textContent = "";
+  remindersMessageStatus.textContent = "";
+  remindersMessageStatus.className = "form-status";
+  updateReminderCounter();
+  toggleReminderFields();
+  updateReminderPreview();
+}
+
+async function loadReminders() {
+  if (!state.tenant) return;
+  const tenantId = state.tenant.tenantId;
+  const seq = (state.remindersSeq ?? 0) + 1;
+  state.remindersSeq = seq;
+  state.remindersLoading = true;
+  remindersStatus.textContent = "Cargando…";
+  remindersStatus.className = "config-status is-loading";
+  remindersError.textContent = "";
+  try {
+    const context = await getTenantContext(tenantId);
+    if (seq !== state.remindersSeq || state.tenant?.tenantId !== tenantId) return;
+    state.context = context;
+    renderReminderSettings(context?.tenant?.reminders);
+    reminderStatusLabel(normalizeReminderSettings(context?.tenant?.reminders));
+    await loadReminderSummary(seq);
+  } catch (error) {
+    if (seq !== state.remindersSeq) return;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    remindersStatus.textContent = "Error";
+    remindersStatus.className = "config-status is-error";
+    remindersError.textContent = messageForError(error);
+  } finally {
+    if (seq === state.remindersSeq) state.remindersLoading = false;
+  }
+}
+
+async function loadReminderSummary(seq) {
+  remindersSummary.hidden = true;
+  try {
+    const data = await getReminderSummary(state.tenant.tenantId);
+    if (seq !== state.remindersSeq) return;
+    const count = Number(data?.pending ?? data?.count ?? data?.total ?? data?.reminders?.pending);
+    if (!Number.isFinite(count)) return;
+    remindersSummary.textContent = `${count} ${count === 1 ? "recordatorio programado" : "recordatorios programados"} en los próximos 7 días.`;
+    remindersSummary.hidden = false;
+  } catch {
+    remindersSummary.hidden = true;
+  }
+}
+
+function showReminderError(message) {
+  remindersError.textContent = message;
+  remindersMessageStatus.textContent = "";
+  remindersMessageStatus.className = "form-status";
+}
+
+function setRemindersBusy(busy) {
+  state.remindersSaving = busy;
+  remindersSave.disabled = busy;
+  remindersSave.textContent = busy ? "Guardando…" : "Guardar recordatorios";
+  remindersEnabled.disabled = busy;
+  if (busy) {
+    remindersFirst.disabled = true;
+    remindersSecond.disabled = true;
+    remindersMessage.disabled = true;
+    for (const button of remindersForm.querySelectorAll("[data-reminder-variable]")) button.disabled = true;
+  } else {
+    toggleReminderFields();
+  }
+}
+
+async function saveReminders() {
+  if (!state.tenant || state.remindersSaving) return;
+  remindersError.textContent = "";
+  const enabled = remindersEnabled.checked;
+  const first = Number(remindersFirst.value);
+  const second = Number(remindersSecond.value);
+  const message = remindersMessage.value;
+  if (!Number.isInteger(first) || first < 0 || first > 168 || !Number.isInteger(second) || second < 0 || second > 168) {
+    showReminderError("Los avisos deben ser horas enteras entre 0 y 168 (0 = no enviar).");
+    return;
+  }
+  if (enabled && first === 0 && second === 0) {
+    showReminderError("Activa al menos un aviso: el primero o el segundo debe ser mayor que 0.");
+    remindersFirst.focus();
+    return;
+  }
+  if (message.length > 300) {
+    showReminderError("El mensaje no puede superar los 300 caracteres.");
+    remindersMessage.focus();
+    return;
+  }
+  const variables = [...message.matchAll(/\{([^}]*)\}/g)].map((match) => match[1]);
+  const unknown = variables.find((variable) => !REMINDER_VARIABLES.includes(variable));
+  if (unknown) {
+    showReminderError(`La variable {${unknown}} no es válida. Usa solo: {nombre}, {negocio}, {fecha}, {hora}, {servicio}.`);
+    remindersMessage.focus();
+    return;
+  }
+
+  const tenantId = state.tenant.tenantId;
+  setRemindersBusy(true);
+  remindersStatus.textContent = "Guardando…";
+  remindersStatus.className = "config-status is-loading";
+  try {
+    await updateTenant(tenantId, {
+      reminders: { enabled, firstHoursBefore: first, secondHoursBefore: second, message },
+    });
+    const context = await getTenantContext(tenantId);
+    if (state.tenant?.tenantId !== tenantId) return;
+    state.context = context;
+    renderReminderSettings(context?.tenant?.reminders);
+    reminderStatusLabel(normalizeReminderSettings(context?.tenant?.reminders));
+    remindersMessageStatus.textContent = "Recordatorios guardados.";
+    remindersMessageStatus.className = "form-status is-ok";
+    showToast("Recordatorios guardados.");
+    await loadReminderSummary(state.remindersSeq);
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    showReminderError(messageForError(error));
+    remindersStatus.textContent = "Error";
+    remindersStatus.className = "config-status is-error";
+  } finally {
+    setRemindersBusy(false);
+  }
+}
+
+remindersForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveReminders();
+});
+remindersEnabled.addEventListener("change", () => {
+  toggleReminderFields();
+  updateReminderPreview();
+});
+remindersMessage.addEventListener("input", () => {
+  updateReminderCounter();
+  updateReminderPreview();
+});
+for (const input of [remindersFirst, remindersSecond]) {
+  input.addEventListener("input", () => {
+    remindersMessageStatus.textContent = "";
+  });
+}
+for (const button of remindersForm.querySelectorAll("[data-reminder-variable]")) {
+  button.addEventListener("click", () => {
+    if (remindersMessage.disabled) return;
+    const variable = button.dataset.reminderVariable;
+    const start = remindersMessage.selectionStart ?? remindersMessage.value.length;
+    const end = remindersMessage.selectionEnd ?? start;
+    remindersMessage.setRangeText(variable, start, end, "end");
+    remindersMessage.dispatchEvent(new Event("input", { bubbles: true }));
+    remindersMessage.focus();
+  });
+}
 
 async function loadSchedule(seq = state.sessionSeq) {
   if (!state.tenant) return;

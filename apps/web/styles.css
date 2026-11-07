@@ -1212,3 +1212,46 @@ a.customer-info-value { color: var(--teal); }
 [data-theme="dark"] .date-override-form label { color: #98aca6; }
 [data-theme="dark"] .date-override-form input, [data-theme="dark"] .date-override-form select { background: #1b2b28; border-color: #334743; color: var(--ink); }
 .professional-self { margin: 4px 0 0; color: var(--ink-soft); font-size: 12px; font-weight: 500; }
+
+/* ---------------------------------------------------------------------------
+   Recordatorios
+   --------------------------------------------------------------------------- */
+.reminders-panel { padding: 20px 19px; }
+.reminders-switch { display: flex; align-items: center; gap: 9px; margin: 4px 0 13px; color: var(--ink); font-size: 12px; font-weight: 700; }
+.reminders-switch input { width: 17px; height: 17px; accent-color: var(--teal); }
+.reminders-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.reminders-grid label { display: block; color: #526460; font-size: 10px; font-weight: 700; }
+.reminders-grid input { width: 100%; height: 40px; margin-top: 4px; padding: 0 9px; border: 1px solid #dfe7e3; border-radius: 8px; background: #fff; color: var(--ink); font-size: 11px; }
+.reminders-grid small { display: block; margin-top: 3px; color: #8b9895; font-size: 8px; font-weight: 400; }
+.reminders-panel > form > label[for="reminders-message"] { display: block; margin-bottom: 4px; color: #526460; font-size: 10px; font-weight: 700; }
+#reminders-message { width: 100%; min-height: 84px; padding: 9px 10px; border: 1px solid #dfe7e3; border-radius: 8px; background: #fff; color: var(--ink); font: inherit; font-size: 11px; line-height: 1.5; resize: vertical; }
+.reminders-message-foot { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin: 6px 0 11px; }
+.reminders-vars { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: #8b9895; font-size: 8px; }
+.reminders-vars button { min-height: 24px; padding: 0 6px; border: 1px solid #dfe7e3; border-radius: 5px; background: #f7faf8; color: #2f776b; cursor: pointer; font-size: 8px; font-weight: 700; }
+.reminders-vars button:disabled { cursor: not-allowed; opacity: .45; }
+.reminders-preview { padding: 12px; border: 1px solid #dfe7e3; border-radius: 10px; background: #f6faf8; }
+.reminders-preview .eyebrow { margin: 0 0 5px; }
+.reminders-preview p:not(.eyebrow) { margin: 0; color: #395751; font-size: 11px; line-height: 1.55; white-space: pre-wrap; }
+.reminders-preview p.is-empty { color: #8b9895; font-style: italic; }
+.reminders-summary { margin: 9px 0 0; color: #2f776b; font-size: 9px; font-weight: 700; }
+.reminders-actions { align-items: center; justify-content: space-between; margin-top: 11px; }
+.reminders-actions .form-status { flex: 1; margin: 0; }
+.reminders-panel [disabled] { opacity: .65; }
+
+@media (max-width: 620px) {
+  .reminders-grid { grid-template-columns: 1fr; }
+  .reminders-message-foot { flex-direction: column; }
+  .reminders-actions { flex-direction: column; align-items: stretch; }
+  .reminders-actions .primary-button { width: 100%; min-height: 46px; }
+  .reminders-actions .form-status { order: 2; }
+}
+
+[data-theme="dark"] .reminders-switch { color: var(--ink); }
+[data-theme="dark"] .reminders-grid label, [data-theme="dark"] .reminders-panel > form > label[for="reminders-message"] { color: #98aca6; }
+[data-theme="dark"] .reminders-grid input, [data-theme="dark"] #reminders-message { background: #1b2b28; border-color: #334743; color: var(--ink); }
+[data-theme="dark"] .reminders-grid small, [data-theme="dark"] .reminders-vars { color: #98aca6; }
+[data-theme="dark"] .reminders-vars button { background: #1b2b28; border-color: #334743; color: #a9ded1; }
+[data-theme="dark"] .reminders-preview { background: #14211f; border-color: var(--line); }
+[data-theme="dark"] .reminders-preview p:not(.eyebrow) { color: #c3d4cf; }
+[data-theme="dark"] .reminders-preview p.is-empty { color: #98aca6; }
+[data-theme="dark"] .reminders-summary { color: #a9ded1; }

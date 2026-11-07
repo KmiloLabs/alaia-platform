@@ -33,6 +33,11 @@ import {
   canUpdateAppointmentStatus,
   validateAppointmentStatusUpdate,
 } from "./appointment-status.js";
+import {
+  rescheduleRemindersForAppointment,
+  scheduleRemindersForAppointment,
+  skipPendingReminders,
+} from "./reminder-service.js";
 
 const MAX_APPOINTMENT_DURATION_MS = 480 * 60 * 1000;
 const FALLBACK_TIME_ZONE = "America/Bogota";
@@ -260,7 +265,14 @@ export async function createAppointment({ tenantId, tenant = null, timeZone, act
 
   // Releemos para devolver el createdAt resuelto por el servidor.
   const created = await appointmentRef.get();
-  return { ok: true, created: true, appointment: serializeAppointment(appointmentRef.id, created.data()) };
+  const appointment = serializeAppointment(appointmentRef.id, created.data());
+  // Programar recordatorios no debe tumbar la creación de la cita.
+  try {
+    await scheduleRemindersForAppointment({ tenant: scheduleTenant, appointment });
+  } catch {
+    // La cita ya quedó creada; el cron simplemente no tendrá avisos nuevos.
+  }
+  return { ok: true, created: true, appointment };
 }
 
 export async function cancelAppointment({ tenantId, actorUid, appointmentId }) {
@@ -289,6 +301,11 @@ export async function cancelAppointment({ tenantId, actorUid, appointmentId }) {
   });
 
   if (outcome.kind === "missing") return appointmentNotFound();
+  try {
+    await skipPendingReminders({ tenantId, appointmentId, note: "appointment_cancelled" });
+  } catch {
+    // La cancelación ya quedó guardada; el cron marcará lo pendiente como skipped.
+  }
   return {
     ok: true,
     alreadyCancelled: outcome.kind === "already_cancelled",
@@ -492,7 +509,13 @@ export async function rescheduleAppointment({ tenantId, tenant = null, timeZone,
       message: "Ese horario se cruza con otra cita activa del negocio.",
     };
   }
-  return { ok: true, appointment: serializeAppointment(appointmentId, outcome.data) };
+  const appointment = serializeAppointment(appointmentId, outcome.data);
+  try {
+    await rescheduleRemindersForAppointment({ tenant: scheduleTenant, appointment });
+  } catch {
+    // La cita ya quedó reprogramada; el cron descartará los avisos viejos.
+  }
+  return { ok: true, appointment };
 }
 
 function appointmentsRef(tenantId) {

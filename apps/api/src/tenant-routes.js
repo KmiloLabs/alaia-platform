@@ -16,6 +16,7 @@ import {
 } from "./availability.js";
 import { createService } from "./service-catalog.js";
 import { serviceRepository } from "./service-repository.js";
+import { resolveReminders, validateReminders } from "./reminder-config.js";
 import { sectorTemplateFor } from "./sector-templates.js";
 import { isPlatformAdminEmail } from "./platform.js";
 import {
@@ -38,17 +39,18 @@ tenantRoutes.get("/me", (req, res) => {
 });
 
 tenantRoutes.get("/me/tenants", asyncRoute(async (req, res) => {
-  const memberships = await db.collectionGroup("memberships")
-    .where("userId", "==", req.user.uid)
-    .where("status", "==", "active")
-    .get();
+  // Índice propio por usuario (users/{uid}.tenantIds): evita consultas de grupo
+  // de colecciones que exigen índices compuestos en Firestore real.
+  const userSnapshot = await db.collection("users").doc(req.user.uid).get();
+  const tenantIds = Array.isArray(userSnapshot.data()?.tenantIds) ? userSnapshot.data().tenantIds : [];
 
-  const result = await Promise.all(memberships.docs.map(async (membershipDoc) => {
-    const tenantRef = membershipDoc.ref.parent.parent;
-    if (!tenantRef) return null;
-    const tenantSnapshot = await tenantRef.get();
-    if (!tenantSnapshot.exists) return null;
-    const membership = membershipDoc.data();
+  const result = await Promise.all(tenantIds.map(async (tenantId) => {
+    const tenantRef = db.collection("tenants").doc(tenantId);
+    const membershipRef = tenantRef.collection("memberships").doc(req.user.uid);
+    const [tenantSnapshot, membershipSnapshot] = await Promise.all([tenantRef.get(), membershipRef.get()]);
+    if (!tenantSnapshot.exists || !membershipSnapshot.exists) return null;
+    const membership = membershipSnapshot.data();
+    if (membership.status !== "active") return null;
     const tenant = tenantSnapshot.data();
     return {
       tenantId: tenantRef.id,
@@ -139,6 +141,11 @@ tenantRoutes.post("/tenants", asyncRoute(async (req, res) => {
         tenantId: tenantRef.id,
         createdAt: FieldValue.serverTimestamp(),
       });
+      transaction.set(
+        db.collection("users").doc(req.user.uid),
+        { tenantIds: FieldValue.arrayUnion(tenantRef.id), updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
     });
   } catch (error) {
     if (error.code === "slug-already-exists") {
@@ -187,7 +194,8 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
 
   const hasHoursFields = body.openingHours !== undefined || body.slotStepMinutes !== undefined;
   const hasScheduleFields = hasHoursFields || body.dateOverrides !== undefined;
-  if (!hasScheduleFields && !profile.hasAny) {
+  const hasReminders = body.reminders !== undefined;
+  if (!hasScheduleFields && !hasReminders && !profile.hasAny) {
     return sendError(res, 400, "empty_update", "Indica al menos un campo del negocio para actualizar.");
   }
 
@@ -197,6 +205,9 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
   const overrides = body.dateOverrides !== undefined ? validateDateOverrides(body) : { ok: true, value: undefined };
   if (!overrides.ok) return sendError(res, 400, overrides.code, overrides.message);
 
+  const reminders = hasReminders ? validateReminders(body) : { ok: true, value: undefined };
+  if (!reminders.ok) return sendError(res, 400, reminders.code, reminders.message);
+
   const update = {
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: req.user.uid,
@@ -204,6 +215,7 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
   if (schedule.value.openingHours !== undefined) update.openingHours = schedule.value.openingHours;
   if (schedule.value.slotStepMinutes !== undefined) update.slotStepMinutes = schedule.value.slotStepMinutes;
   if (overrides.value !== undefined) update.dateOverrides = overrides.value;
+  if (reminders.value !== undefined) update.reminders = reminders.value;
   if (profile.value.description !== undefined) update.description = profile.value.description;
   if (profile.value.address !== undefined) update.address = profile.value.address;
   if (profile.value.phone !== undefined) update.phone = profile.value.phone;
@@ -221,6 +233,7 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
     openingHours: schedule.value.openingHours ?? req.tenant.openingHours,
     slotStepMinutes: schedule.value.slotStepMinutes ?? req.tenant.slotStepMinutes,
     dateOverrides: overrides.value !== undefined ? overrides.value : resolveDateOverrides(req.tenant),
+    reminders: reminders.value !== undefined ? reminders.value : resolveReminders(req.tenant),
     description: profile.value.description ?? req.tenant.description,
     address: profile.value.address ?? req.tenant.address,
     phone: profile.value.phone ?? req.tenant.phone,
@@ -236,6 +249,7 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
       timeZone: req.tenant.timeZone,
       openingHours: resolveOpeningHours(updatedTenant),
       dateOverrides: resolveDateOverrides(updatedTenant),
+      reminders: resolveReminders(updatedTenant),
       slotStepMinutes: resolveSlotStepMinutes(updatedTenant),
       ...resolveBusinessProfile(updatedTenant),
     },
@@ -252,6 +266,7 @@ tenantRoutes.get("/tenants/:tenantId/context", requireTenantMembership, (req, re
       timeZone: req.tenant.timeZone,
       openingHours: resolveOpeningHours(req.tenant),
       dateOverrides: resolveDateOverrides(req.tenant),
+      reminders: resolveReminders(req.tenant),
       slotStepMinutes: resolveSlotStepMinutes(req.tenant),
       ...resolveBusinessProfile(req.tenant),
       status: req.tenant.status,

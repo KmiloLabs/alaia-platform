@@ -12,7 +12,7 @@
     "dev:web": "npm --workspace @alaia/web run dev",
     "build:web": "npm --workspace @alaia/web run build",
     "emulators": "firebase emulators:start --only auth,firestore --project demo-alaia",
-    "verify": "node scripts/verify-slice.mjs"
+    "verify": "node --env-file=.env scripts/verify-slice.mjs"
   },
   "engines": {
     "node": ">=22"

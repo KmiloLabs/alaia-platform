@@ -29,8 +29,8 @@ function section(title) {
   console.log(`\n${title}`);
 }
 
-async function http(url, { method = "GET", token, body } = {}) {
-  const headers = {};
+async function http(url, { method = "GET", token, body, extraHeaders = {} } = {}) {
+  const headers = { ...extraHeaders };
   if (token) headers.authorization = `Bearer ${token}`;
   if (body !== undefined) headers["content-type"] = "application/json";
   const response = await fetch(url, {
@@ -895,6 +895,52 @@ async function main() {
     body: { dateOverrides: [{ date: specialSunday, closed: false, open: "14:00", close: "10:00" }] },
   });
   check("Horas de excepción inválidas responden 400", badOverrideHours.status === 400 && badOverrideHours.json?.error?.code === "invalid_override_hours", `HTTP ${badOverrideHours.status}`);
+
+  section("26. Recordatorios automáticos");
+  const remindersSaved = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken,
+    body: { reminders: { enabled: true, firstHoursBefore: 24, secondHoursBefore: 2, message: "Hola {nombre}, te recordamos tu cita en {negocio} el {fecha} a las {hora}." } },
+  });
+  check("El dueño activa los recordatorios", remindersSaved.status === 200 && remindersSaved.json?.tenant?.reminders?.enabled === true, `HTTP ${remindersSaved.status}`);
+
+  const remindersContext = await api(`/api/v1/tenants/${tenantA.tenantId}/context`, { token: userA.idToken });
+  check("Los recordatorios viajan en el contexto", remindersContext.json?.tenant?.reminders?.firstHoursBefore === 24, `primer aviso=${remindersContext.json?.tenant?.reminders?.firstHoursBefore}h`);
+
+  let reminderDate = "";
+  for (let offset = 3; offset < 12; offset += 1) {
+    const candidate = new Date(Date.now() + offset * 86400000);
+    const iso = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" }).format(candidate);
+    const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short" }).format(new Date(`${iso}T12:00:00Z`));
+    if (weekday !== "Sun" && weekday !== "Sat") { reminderDate = iso; break; }
+  }
+  const reminderAppointment = await api(`/api/v1/tenants/${tenantA.tenantId}/appointments`, {
+    method: "POST", token: userA.idToken,
+    body: { customerName: "Cliente Recordatorio", serviceName: "Corte clásico", startsAt: `${reminderDate}T10:00`, durationMinutes: 45, priceCOP: 50000 },
+  });
+  const reminderSummary = await api(`/api/v1/tenants/${tenantA.tenantId}/reminders/summary`, { token: userA.idToken });
+  check("Una cita futura programa dos recordatorios", reminderAppointment.status === 201 && (reminderSummary.json?.pending ?? 0) >= 2, `pendientes=${reminderSummary.json?.pending}`);
+
+  await api(`/api/v1/tenants/${tenantA.tenantId}/appointments/${reminderAppointment.json?.appointment?.appointmentId}/cancel`, { method: "POST", token: userA.idToken, body: {} });
+  const summaryAfterCancel = await api(`/api/v1/tenants/${tenantA.tenantId}/reminders/summary`, { token: userA.idToken });
+  check("Cancelar la cita cancela sus recordatorios", (summaryAfterCancel.json?.skipped ?? 0) >= 2, `saltados=${summaryAfterCancel.json?.skipped}`);
+
+  const badCron = await http(`${API_BASE}/api/v1/tasks/reminders/run`, { method: "POST", body: {}, extraHeaders: { "X-Cron-Secret": "incorrecto" } });
+  check("El cron con secreto incorrecto responde 401", badCron.status === 401 && badCron.json?.error?.code === "invalid_cron_secret", `HTTP ${badCron.status}`);
+
+  const cronRun = await http(`${API_BASE}/api/v1/tasks/reminders/run`, { method: "POST", body: {}, extraHeaders: { "X-Cron-Secret": process.env.CRON_SECRET ?? "" } });
+  check("El cron protegido responde con el resumen", cronRun.status === 200 && Number.isInteger(cronRun.json?.processed), `procesados=${cronRun.json?.processed}`);
+
+  const badSchedule = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken,
+    body: { reminders: { enabled: true, firstHoursBefore: 0, secondHoursBefore: 0 } },
+  });
+  check("Activar sin avisos responde 400", badSchedule.status === 400 && badSchedule.json?.error?.code === "invalid_reminder_schedule", `HTTP ${badSchedule.status}`);
+
+  const badMessage = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken,
+    body: { reminders: { enabled: true, firstHoursBefore: 24, secondHoursBefore: 0, message: "Hola {cliente}" } },
+  });
+  check("Una variable desconocida responde 400", badMessage.status === 400 && badMessage.json?.error?.code === "invalid_reminder_message", `HTTP ${badMessage.status}`);
 
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);

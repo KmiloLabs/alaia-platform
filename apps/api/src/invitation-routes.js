@@ -163,6 +163,11 @@ publicInvitationRoutes.post("/invitations/:token/accept", requireUser, asyncRout
       acceptedBy: req.user.uid,
       acceptedAt: FieldValue.serverTimestamp(),
     });
+    transaction.set(
+      db.collection("users").doc(req.user.uid),
+      { tenantIds: FieldValue.arrayUnion(found.tenantRef.id), updatedAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    );
     return { kind: "accepted", professionalId: typeof data.professionalId === "string" ? data.professionalId : null };
   });
 
