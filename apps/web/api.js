@@ -1,6 +1,7 @@
 import { auth } from "./firebase.js";
 
-export const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3001";
+// En desarrollo usa la API local; en produccion, mismo origen (la API sirve el panel).
+export const API_BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:3001" : "");
 
 const ERROR_MESSAGES = {
   unauthenticated: "Tu sesión ya no es válida. Vuelve a iniciar sesión.",

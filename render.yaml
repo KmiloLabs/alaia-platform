@@ -1,0 +1,50 @@
+# Despliegue de Alaia en un solo servicio (Render, plan gratuito).
+# El panel compilado se sirve desde la misma API: un solo dominio, sin CORS.
+services:
+  - type: web
+    name: alaia
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build:web
+    startCommand: node apps/api/src/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.20.0
+      - key: FIREBASE_PROJECT_ID
+        value: alaia-3f637
+      # El JSON completo de la cuenta de servicio (Configuración → Cuentas de servicio).
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      # Firebase web (público) para compilar el panel.
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        value: alaia-3f637.firebaseapp.com
+      - key: VITE_FIREBASE_PROJECT_ID
+        value: alaia-3f637
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        value: alaia-3f637.firebasestorage.app
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: VITE_FIREBASE_APP_ID
+        sync: false
+      # Agente IA
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: AGENT_ENABLE_MOCK
+        value: "false"
+      # Plataforma
+      - key: PLATFORM_ADMIN_EMAILS
+        sync: false
+      - key: PLATFORM_SECRET
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      # WhatsApp (cuando esté configurado en Meta)
+      - key: WHATSAPP_MODE
+        value: sandbox
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false

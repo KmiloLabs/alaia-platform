@@ -1,4 +1,7 @@
 import express from "express";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { tenantRoutes } from "./tenant-routes.js";
 import { appointmentRoutes } from "./appointment-routes.js";
 import { serviceRoutes } from "./service-routes.js";
@@ -24,6 +27,7 @@ const allowedOrigins = new Set(
 );
 
 app.disable("x-powered-by");
+app.set("trust proxy", 1);
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
@@ -31,7 +35,11 @@ app.use((req, res, next) => {
 
   const origin = req.get("origin");
   if (origin) {
-    if (!allowedOrigins.has(origin)) return sendError(res, 403, "origin_not_allowed", "Origen no permitido.");
+    // Mismo origen (panel servido por la API): se permite siempre.
+    const ownOrigin = `${req.protocol}://${req.get("host")}`;
+    if (!allowedOrigins.has(origin) && origin !== ownOrigin) {
+      return sendError(res, 403, "origin_not_allowed", "Origen no permitido.");
+    }
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
@@ -67,6 +75,16 @@ app.use("/api/v1", reminderRoutes);
 app.use("/api/v1", whatsappPlatformRoutes);
 app.use("/api/v1", agentRoutes);
 app.use("/api/v1", platformRoutes);
+// Panel compilado: en producción un solo servicio sirve la API y el panel.
+const webDist = path.resolve(fileURLToPath(new URL("../../web/dist", import.meta.url)));
+if (existsSync(path.join(webDist, "index.html"))) {
+  app.use(express.static(webDist, { index: false }));
+  app.use((req, res, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api")) return next();
+    return res.sendFile(path.join(webDist, "index.html"));
+  });
+}
+
 app.use((_req, res) => sendError(res, 404, "not_found", "No encontramos esa ruta."));
 app.use((error, _req, res, _next) => {
   const status = Number(error.status || error.statusCode || 500);

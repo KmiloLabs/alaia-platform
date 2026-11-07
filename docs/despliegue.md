@@ -1,76 +1,86 @@
-# Guía de despliegue (puente gratuito)
+# Despliegue de Alaia
 
-Objetivo: sacar Alaia del emulador local a internet sin pagar, con Firebase (plan Spark) y un hosting gratuito para la API. Cuando haya clientes pagando se cambia a Google Cloud (Cloud Run) sin reescribir nada.
+**Estrategia:** un solo servicio en internet que sirve **el panel y la API** en el mismo dominio. Sin CORS cruzado y sin configurar dos servicios.
 
-## 1. Firebase (plan Spark, sin tarjeta)
+## 1. Qué se despliega
 
-1. console.firebase.google.com → **Agregar proyecto** → proyecto de Google Cloud existente (el de Alaia, no el de Selene).
-2. Plan **Spark**.
-3. Activar:
-   - **Firestore Database** → crear base de datos → modo producción.
-   - **Authentication** → Correo electrónico/contraseña y Google.
-   - **Hosting** (se usa al final).
-4. Crear una **app web** (Configuración → Tus apps → Web) y copiar `firebaseConfig` (son datos públicos).
+- Un servicio Node en **Render (plan gratuito)**.
+- Sirve:
+  - el panel compilado (`apps/web/dist`) en `/`,
+  - la API en `/api/v1`,
+  - el webhook de WhatsApp en `/api/v1/webhooks/whatsapp`.
+- Base de datos y login: **Firebase real del proyecto `alaia-3f637`** (ya conectado y probado).
 
-## 2. Credenciales del servidor (API)
+El plan gratuito de Render duerme el servicio tras ~15 minutos sin uso: la primera visita puede tardar 30–60 segundos. Suficiente para el piloto.
 
-Firebase → Configuración del proyecto → **Cuentas de servicio** → **Generar nueva clave privada**. Descarga un `.json`.
+## 2. Requisitos
 
-- Guardarlo fuera del repositorio, por ejemplo `C:\Users\Usuario\Downloads\alaia-secrets\service-account.json`.
-- Nunca subirlo a Git ni pegarlo en el chat.
+1. Cuenta en **render.com** (gratis, con GitHub).
+2. El repositorio de Alaia en GitHub (`KmiloLabs/alaia-platform`).
+3. El JSON de la **cuenta de servicio** de Firebase (Configuración → Cuentas de servicio).
+4. Los datos de la **app web** de Firebase (públicos).
 
-Variables de la API para el proyecto real (en `.env`):
+## 3. Pasos en Render
 
-```
-FIREBASE_PROJECT_ID=<id-del-proyecto>
-GOOGLE_APPLICATION_CREDENTIALS=C:\ruta\service-account.json
-# y quitar/no definir:
-# FIREBASE_AUTH_EMULATOR_HOST
-# FIRESTORE_EMULATOR_HOST
-```
+1. Entra a render.com → **New → Web Service** → conecta el repositorio de Alaia.
+2. Configuración:
+   - **Name:** alaia
+   - **Runtime:** Node
+   - **Build Command:** `npm install && npm run build:web`
+   - **Start Command:** `node apps/api/src/server.js`
+   - **Plan:** Free
+   - **Health Check Path:** `/health`
+3. En **Environment Variables**, pega:
 
-## 3. Panel (variables de build)
+| Variable | Valor |
+|---|---|
+| `FIREBASE_PROJECT_ID` | `alaia-3f637` |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | El JSON completo de la cuenta de servicio (secreto) |
+| `VITE_FIREBASE_API_KEY` | La del `firebaseConfig` |
+| `VITE_FIREBASE_AUTH_DOMAIN` | `alaia-3f637.firebaseapp.com` |
+| `VITE_FIREBASE_PROJECT_ID` | `alaia-3f637` |
+| `VITE_FIREBASE_STORAGE_BUCKET` | `alaia-3f637.firebasestorage.app` |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | La del `firebaseConfig` |
+| `VITE_FIREBASE_APP_ID` | La del `firebaseConfig` |
+| `DEEPSEEK_API_KEY` | La clave de DeepSeek |
+| `PLATFORM_ADMIN_EMAILS` | `automatizacionsaas@gmail.com` |
+| `PLATFORM_SECRET` | 64 caracteres hex (generar) |
+| `CRON_SECRET` | Secreto para recordatorios (generar) |
+| `AGENT_ENABLE_MOCK` | `false` |
+| `WHATSAPP_MODE` | `sandbox` (por ahora) |
 
-En `.env` (o en el proveedor de hosting), para que el panel use el proyecto real:
+4. **Create Web Service** y espera el deploy (3–5 minutos).
+5. Abre la URL que da Render: debe cargar el panel y permitir login con la cuenta real.
 
-```
-VITE_FIREBASE_API_KEY=...
-VITE_FIREBASE_AUTH_DOMAIN=...
-VITE_FIREBASE_PROJECT_ID=...
-VITE_FIREBASE_STORAGE_BUCKET=...
-VITE_FIREBASE_MESSAGING_SENDER_ID=...
-VITE_FIREBASE_APP_ID=...
-VITE_API_URL=https://<api-publica>
-```
+## 4. Verificación
 
-Sin `VITE_FIREBASE_API_KEY`, el panel sigue usando el emulador local (modo desarrollo).
-
-## 4. API en hosting gratuito
-
-Opciones sin tarjeta: Render (nivel gratuito) u otro PaaS equivalente.
-
-- Repo: GitHub de Alaia; comando de arranque `npm --workspace @alaia/api run start`.
-- Variables: las de la sección 2, más las del agente (`DEEPSEEK_API_KEY`, etc.) y las del canal (`WHATSAPP_*`).
-- Limitación del plan gratis: el servicio se duerme tras inactividad (primera visita lenta).
+1. `https://<servicio>.onrender.com/health` → `{"status":"ok"}`.
+2. Login con el correo del dueño → aparece el negocio.
+3. Crear un servicio y una cita → recargar la página → siguen ahí (Firestore real).
 
 ## 5. WhatsApp
 
-- La URL del webhook debe ser pública: `https://<api-publica>/api/v1/webhooks/whatsapp`.
-- En Meta: WhatsApp → Configuración → Webhook: pegar la URL y el `WHATSAPP_VERIFY_TOKEN`.
-- Suscribir el campo `messages`.
-- En el panel de plataforma: conectar el `phone_number_id` del negocio.
+- URL del webhook para Meta: `https://<servicio>.onrender.com/api/v1/webhooks/whatsapp`.
+- Verify token: el valor de `WHATSAPP_VERIFY_TOKEN`.
+- Cuando el número esté registrado en Meta, cambiar `WHATSAPP_MODE` a `live` y reiniciar el servicio.
 
-## 6. Orden de trabajo
+## 6. Dominio propio (después)
 
-1. Proyecto Firebase real y credenciales.
-2. Probar la API local contra Firestore real (sin emulador).
-3. Desplegar la API.
-4. Desplegar el panel (Firebase Hosting) apuntando a la API.
-5. Webhook de WhatsApp y prueba real.
-6. Dominio propio (cuando el sistema funcione).
+1. Comprar el dominio.
+2. En Render: **Settings → Custom Domain** → agregar dominio.
+3. Crear el registro DNS que indica Render (CNAME).
+4. El certificado HTTPS lo gestiona Render.
 
-## 7. Notas de seguridad
+## 7. Cuándo migrar a Google Cloud
 
-- El service account JSON da acceso total a la base: tratarlo como una contraseña.
-- El panel no habla con Firestore directamente: todo pasa por la API (las reglas de Firestore pueden quedar cerradas).
-- Rotar claves si alguna se expone; el token de WhatsApp temporal vence en 24 h.
+Cuando haya clientes pagando y el arranque en frío moleste:
+
+- Activar facturación (prepago de Google Colombia, queda como saldo).
+- Mover la API a Cloud Run y el panel a Firebase Hosting.
+- El código ya soporta los dos entornos cambiando variables.
+
+## 8. Secretos
+
+- `FIREBASE_SERVICE_ACCOUNT_JSON` da acceso total a la base: solo en variables de entorno, nunca en Git.
+- Si una clave se expone, rotarla y actualizar la variable.
+- `.env` y `.env.real` están ignorados por Git.
