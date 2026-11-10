@@ -76,6 +76,43 @@ Motivo: sin eso no hay piloto real, y sin piloto no hay validación de precios n
 
 **Dependencias:** proveedor con visión, almacenamiento de archivos, UI de revisión. **Esfuerzo:** 3–4 semanas.
 
+## 5. Hallazgos del análisis de Aventhra (10 nov 2026)
+
+Stack que publican: Meta API, Upstash (cola), Claude + OpenAI de respaldo, OpenAI para voz, Voyage AI (catálogo), Supabase (datos), Vercel/Next.js, Wompi, Resend (correos), Gemini para imágenes, login Google. Lo útil para Alaia:
+
+### 5.1 Cola durable de mensajes (adoptar)
+- Hoy el webhook responde 200 de inmediato y procesa con `setImmediate`: cumple el tiempo de Meta, pero si el proceso se reinicia el mensaje se pierde.
+- Adoptar: colección `whatsappInbox` como cola durable + worker con reintentos y backoff (máx 3). Estado por mensaje (pending/processing/sent/failed).
+- Antes de pasar a `live` con volumen. Esfuerzo: 2–3 días.
+
+### 5.2 Transcripción de notas de voz (adoptar)
+- DeepSeek no procesa audio. Necesita proveedor con audio (OpenAI Whisper u otro).
+- Flujo: descargar audio de Meta → transcribir → guardar texto y responder.
+- Costo por minuto y límite por plan. Esfuerzo: 3–5 días + costo.
+
+### 5.3 Respaldo de proveedor de IA (adoptar ligero)
+- Si DeepSeek falla o da timeout, intentar con otro proveedor configurado.
+- Nuestro registro ya es multi-proveedor; falta la cadena de fallback y dejar marca en la conversación.
+
+### 5.4 Recordatorios por correo (evaluar)
+- WhatsApp fuera de la ventana de 24 h exige plantilla aprobada; el correo evita ese trámite.
+- Requiere que el cliente final tenga correo. Resend u otro proveedor.
+
+### 5.5 Cobro recurrente (adoptar antes de vender)
+- Aventhra cobra manual cada mes (debilidad: abandono). Alaia debe buscar cobro automático con Wompi (tokenización/suscripción si está disponible) o recordatorio de pago + suspensión.
+
+### 5.6 Costos de Meta a la vista (adoptar en planes)
+- Las conversaciones/plantillas de WhatsApp tienen costo propio de Meta. Debe quedar claro que ese costo es aparte y se paga con la cuenta del negocio.
+
+### 5.7 Coexistencia de Meta (investigar)
+- Meta ofrece "coexistencia" entre WhatsApp Business app y Cloud API en el mismo número para pymes. Si está disponible en Colombia, el dueño podría seguir respondiendo desde su celular y la IA pausarse sola.
+- Investigar disponibilidad y requisitos; no prometerlo antes de probarlo.
+
+### 5.8 Lo que NO se copia
+- Stack Supabase/Next/Vercel/Upstash: Alaia ya funciona con Firebase/Express/Vite; cambiar de stack no aporta.
+- Reglas RLS de Supabase: Alaia ya niega todo acceso directo del cliente a Firestore (`firestore.rules` con `allow read, write: if false`) y valida la membresía en el backend. Es equivalente y más simple.
+- Búsqueda vectorial de catálogo (Voyage): con catálogos pequeños de servicios basta el listado en el prompt.
+
 ## Orden de ejecución posterior
 
 1. Capa 0: piloto en vivo (en curso).
