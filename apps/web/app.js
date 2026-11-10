@@ -33,6 +33,7 @@ import {
   getInvitation,
   getMe,
   getReminderSummary,
+  getConversation,
   getWhatsappChannel,
   getPlatformSummary,
   getPlatformTenant,
@@ -46,6 +47,7 @@ getTenantContext,
   listAvailability,
   listCustomers,
   listInvitations,
+  listConversations,
   listPlatformProviders,
   listPlatformTenants,
   listProfessionals,
@@ -57,8 +59,10 @@ getTenantContext,
   sendAgentMessage,
   testPlatformProvider,
   testWhatsappMessage,
+  replyConversation,
   updateAppointmentStatus,
   connectWhatsappNumber,
+  setConversationHandoff as setConversationHandoffRequest,
   updateCustomer,
   updatePlatformProvider,
   updateProfessional,
@@ -298,6 +302,29 @@ const professionalAgendaList = $("#professional-agenda-list");
 const professionalAgendaStatus = $("#professional-agenda-status");
 const professionalAgendaEmpty = $("#professional-agenda-empty");
 const professionalAgendaCount = $("#professional-agenda-count");
+const conversationsView = $("#conversations-view");
+const conversationsNav = $("#conversations-nav");
+const conversationsCount = $("#conversations-count");
+const conversationsStatus = $("#conversations-status");
+const conversationsList = $("#conversations-list");
+const conversationFilters = document.querySelectorAll("[data-conversation-filter]");
+const conversationPlaceholder = $("#conversation-placeholder");
+const conversationDetailContent = $("#conversation-detail-content");
+const conversationBack = $("#conversation-back");
+const conversationName = $("#conversation-name");
+const conversationMeta = $("#conversation-meta");
+const conversationMode = $("#conversation-mode");
+const conversationHandoffBanner = $("#conversation-handoff-banner");
+const conversationMessages = $("#conversation-messages");
+const conversationDetailStatus = $("#conversation-detail-status");
+const conversationDetailError = $("#conversation-detail-error");
+const conversationActions = $("#conversation-actions");
+const conversationTakeover = $("#conversation-takeover");
+const conversationRelease = $("#conversation-release");
+const conversationReplyForm = $("#conversation-reply-form");
+const conversationReplyInput = $("#conversation-reply-input");
+const conversationReplySend = $("#conversation-reply-send");
+const conversationReplyCount = $("#conversation-reply-count");
 const professionalAgendaSelf = $("#professional-agenda-self");
 const invitationsList = $("#invitations-list");
 const invitationsStatus = $("#invitations-status");
@@ -585,6 +612,10 @@ const agentModel = $("#agent-model");
 const agentTone = $("#agent-tone");
 const agentInstructions = $("#agent-instructions");
 const agentInstructionsCount = $("#agent-instructions-count");
+const agentPrivacyNotice = $("#agent-privacy-notice");
+const agentPrivacyCount = $("#agent-privacy-count");
+const agentPrivacyStatus = $("#agent-privacy-status");
+const agentPrivacySave = $("#agent-privacy-save");
 const agentProvidersNote = $("#agent-providers-note");
 const agentSaveButton = $("#agent-save");
 const agentSaveStatus = $("#agent-save-status");
@@ -708,6 +739,19 @@ const state = {
   professionalSelfName: "",
   professionalAgendaSeq: 0,
   professionalAgendaLoading: false,
+  conversations: [],
+  conversationsFilter: "all",
+  conversationsSeq: 0,
+  conversationsLoading: false,
+  conversationId: null,
+  conversationDetail: null,
+  conversationDetailSeq: 0,
+  conversationDetailLoading: false,
+  conversationDraft: "",
+  conversationReplySending: false,
+  conversationHandoffBusy: false,
+  conversationPollTimer: null,
+  privacySaving: false,
   settlementTenantId: null,
   settlementSeq: 0,
   settlementLoading: false,
@@ -1677,6 +1721,7 @@ async function activateTenant(tenantId, seq = state.sessionSeq) {
     renderTenantUi();
     showScreen("panel");
     setView(state.view);
+    if (window.location.hash.replace(/\/$/, "") === "#/conversaciones" && !state.isProfessional) setView("conversaciones");
     renderDateUi();
     if (state.isProfessional) {
       await loadProfessionalAgenda(seq);
@@ -2033,6 +2078,10 @@ function updateNavigationVisibility() {
   for (const item of document.querySelectorAll(".nav-item[data-view]")) {
     if (item.id === "professional-agenda-nav") {
       item.hidden = !isProfessional;
+      continue;
+    }
+    if (item.id === "conversations-nav") {
+      item.hidden = !hasTenant || isProfessional;
       continue;
     }
     if (["platform-nav", "platform-nav-businesses", "platform-nav-providers"].includes(item.id)) {
@@ -2437,8 +2486,19 @@ document.querySelectorAll(".nav-item[data-view]").forEach((button) => {
       showToast(`${button.dataset.future} llegará en una próxima etapa.`);
       return;
     }
+    if (button.dataset.view === "conversaciones") {
+      history.replaceState(null, "", "#/conversaciones");
+    } else if (window.location.hash.startsWith("#/conversaciones")) {
+      history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
     setView(button.dataset.view);
   });
+});
+
+window.addEventListener("hashchange", () => {
+  if (window.location.hash.replace(/\/$/, "") === "#/conversaciones" && state.tenant && !state.isProfessional) {
+    setView("conversaciones");
+  }
 });
 
 agendaToggle.addEventListener("click", () => {
@@ -2446,7 +2506,7 @@ agendaToggle.addEventListener("click", () => {
 });
 
 function setView(view) {
-  state.view = ["agenda", "configuracion", "servicios", "clientes", "equipo", "plataforma", "plataforma-negocios", "plataforma-proveedores", "mi-agenda"].includes(view) ? view : "resumen";
+  state.view = ["agenda", "configuracion", "servicios", "clientes", "equipo", "conversaciones", "plataforma", "plataforma-negocios", "plataforma-proveedores", "mi-agenda"].includes(view) ? view : "resumen";
   const isPlatformView = state.view.startsWith("plataforma");
   document.querySelectorAll(".nav-item[data-view]").forEach((item) => {
     const isActive = item.dataset.view === state.view || (isPlatformView && item.id === "platform-nav");
@@ -2455,7 +2515,7 @@ function setView(view) {
     else item.removeAttribute("aria-current");
   });
 
-  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios", clientes: "Clientes", equipo: "Equipo", plataforma: "Plataforma", "plataforma-negocios": "Plataforma", "plataforma-proveedores": "Plataforma", "mi-agenda": "Mi agenda" };
+  const sectionLabels = { resumen: "Resumen", agenda: "Agenda", configuracion: "Configuración", servicios: "Servicios", clientes: "Clientes", equipo: "Equipo", conversaciones: "Conversaciones", plataforma: "Plataforma", "plataforma-negocios": "Plataforma", "plataforma-proveedores": "Plataforma", "mi-agenda": "Mi agenda" };
   currentSection.textContent = sectionLabels[state.view];
 
   const metricGrid = document.querySelector(".metric-grid");
@@ -2466,12 +2526,13 @@ function setView(view) {
   const isServices = state.view === "servicios";
   const isCustomers = state.view === "clientes";
   const isTeam = state.view === "equipo";
+  const isConversations = state.view === "conversaciones";
   const isProfessionalAgenda = state.view === "mi-agenda";
   const isPlatform = state.view.startsWith("plataforma");
 
   if (metricGrid) metricGrid.hidden = true;
   if (legacyMetrics) legacyMetrics.hidden = true;
-  if (contentGrid) contentGrid.hidden = isConfig || isServices || isCustomers || isTeam || isProfessionalAgenda || isPlatform;
+  if (contentGrid) contentGrid.hidden = isConfig || isServices || isCustomers || isTeam || isConversations || isProfessionalAgenda || isPlatform;
   if (dashboardGrid) dashboardGrid.hidden = state.view !== "resumen";
   if (dashboardServices) dashboardServices.hidden = state.view !== "resumen";
   if (dashboardStatus) dashboardStatus.hidden = state.view !== "resumen";
@@ -2489,8 +2550,9 @@ function setView(view) {
     if (platformProvidersPanel) platformProvidersPanel.hidden = platformSection === "negocios";
   }
   if (teamView) teamView.hidden = !isTeam;
+  if (conversationsView) conversationsView.hidden = !isConversations;
   if (professionalAgendaView) professionalAgendaView.hidden = !isProfessionalAgenda;
-  newAppointmentButton.hidden = isConfig || isServices || isCustomers || isTeam || isProfessionalAgenda || isPlatform;
+  newAppointmentButton.hidden = isConfig || isServices || isCustomers || isTeam || isConversations || isProfessionalAgenda || isPlatform;
   agendaToggle.textContent = isAgenda ? "Ver resumen →" : "Ver agenda →";
 
   renderHeader();
@@ -2509,6 +2571,8 @@ function setView(view) {
     loadInvitations();
     loadSettlementPreview();
   }
+  if (isConversations) loadConversations();
+  else stopConversationPolling();
   if (isProfessionalAgenda) {
     loadProfessionalAgenda();
     loadProfessionalSelfName();
@@ -2552,6 +2616,12 @@ function renderHeader() {
     todayLabel.textContent = "MI AGENDA";
     setPageTitle("Mi agenda");
     pageSubtitle.textContent = "Tus citas asignadas, tu día y el estado de cada cliente.";
+    return;
+  }
+  if (state.view === "conversaciones") {
+    todayLabel.textContent = "CHATS DE WHATSAPP";
+    setPageTitle("Conversaciones");
+    pageSubtitle.textContent = "Responde como persona cuando la IA necesite una mano.";
     return;
   }
   if (!state.selectedDate) return;
@@ -2619,6 +2689,353 @@ scheduleDays.addEventListener("change", (event) => {
   setScheduleRowEnabled(row, toggle.checked);
   clearScheduleMessage();
   if (scheduleStatus.classList.contains("is-ready")) setScheduleStatus("Cambios sin guardar", "warning");
+});
+
+// ---------------------------------------------------------------------------
+// Bandeja de conversaciones y atención humana
+// ---------------------------------------------------------------------------
+
+function conversationDisplayName(conversation) {
+  return String(conversation?.customerName || conversation?.customerPhone || "Cliente sin nombre");
+}
+
+function relativeConversationTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "ahora";
+  if (minutes < 60) return `hace ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `hace ${days} d`;
+  return new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short", timeZone: businessTimeZone() }).format(date);
+}
+
+function setConversationsStatus(message, tone = "") {
+  conversationsStatus.textContent = message;
+  conversationsStatus.className = `form-status${tone ? ` is-${tone}` : ""}`;
+}
+
+function setConversationDetailStatus(message, tone = "") {
+  conversationDetailStatus.textContent = message;
+  conversationDetailStatus.className = `form-status${tone ? ` is-${tone}` : ""}`;
+}
+
+function startConversationPolling() {
+  if (state.conversationPollTimer) return;
+  state.conversationPollTimer = setInterval(() => {
+    if (state.view !== "conversaciones" || !state.tenant) return;
+    if (!state.conversationsLoading) loadConversations({ silent: true });
+    if (state.conversationId && !state.conversationDetailLoading) loadConversationDetail(state.conversationId, { silent: true });
+  }, 10000);
+}
+
+function stopConversationPolling() {
+  if (state.conversationPollTimer) {
+    clearInterval(state.conversationPollTimer);
+    state.conversationPollTimer = null;
+  }
+}
+
+async function loadConversations({ silent = false } = {}) {
+  if (!state.tenant) return;
+  const tenantId = state.tenant.tenantId;
+  const seq = ++state.conversationsSeq;
+  state.conversationsLoading = true;
+  if (!silent) {
+    conversationsList.setAttribute("aria-busy", "true");
+    conversationsList.replaceChildren(textBlock("Cargando conversaciones…", "platform-message"));
+    setConversationsStatus("Cargando…", "loading");
+  }
+  try {
+    const data = await listConversations(tenantId, { status: state.conversationsFilter, limit: 50 });
+    if (seq !== state.conversationsSeq || state.tenant?.tenantId !== tenantId) return;
+    state.conversations = Array.isArray(data?.conversations) ? data.conversations : [];
+    renderConversations();
+    startConversationPolling();
+  } catch (error) {
+    if (seq !== state.conversationsSeq) return;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    conversationsList.setAttribute("aria-busy", "false");
+    const wrap = document.createElement("div");
+    wrap.className = "provider-error";
+    const text = document.createElement("span");
+    text.textContent = messageForError(error);
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "secondary-button";
+    retry.dataset.retryConversations = "1";
+    retry.textContent = "Reintentar";
+    wrap.append(text, retry);
+    conversationsList.replaceChildren(wrap);
+    conversationsCount.textContent = "";
+    setConversationsStatus(messageForError(error), "error");
+  } finally {
+    if (seq === state.conversationsSeq) state.conversationsLoading = false;
+  }
+}
+
+function renderConversations() {
+  const conversations = state.conversations;
+  conversationsList.setAttribute("aria-busy", "false");
+  setConversationsStatus("", "");
+  if (!conversations.length) {
+    conversationsList.replaceChildren(textBlock("Aún no hay conversaciones", "platform-message"));
+    conversationsCount.textContent = "0 conversaciones";
+    conversationPlaceholder.hidden = false;
+    conversationDetailContent.hidden = true;
+    state.conversationId = null;
+    state.conversationDetail = null;
+    return;
+  }
+  conversationsCount.textContent = `${conversations.length} ${conversations.length === 1 ? "conversación" : "conversaciones"}`;
+  if (state.conversationId && !conversations.some((conversation) => conversation.conversationId === state.conversationId)) {
+    state.conversationId = null;
+    state.conversationDetail = null;
+    conversationPlaceholder.hidden = false;
+    conversationDetailContent.hidden = true;
+  }
+  conversationsList.replaceChildren(...conversations.map((conversation) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `conversation-row${conversation.conversationId === state.conversationId ? " is-selected" : ""}`;
+    row.dataset.conversationId = conversation.conversationId;
+    row.setAttribute("aria-label", `Abrir conversación de ${conversationDisplayName(conversation)}`);
+    const main = document.createElement("span");
+    main.className = "conversation-row-main";
+    const name = document.createElement("strong");
+    name.textContent = conversationDisplayName(conversation);
+    const preview = document.createElement("span");
+    preview.className = "conversation-preview";
+    preview.textContent = conversation.lastMessagePreview || "Sin mensajes";
+    main.append(name, preview);
+    const side = document.createElement("span");
+    side.className = "conversation-row-side";
+    const time = document.createElement("span");
+    time.className = "conversation-time";
+    time.textContent = relativeConversationTime(conversation.lastMessageAt);
+    side.append(time);
+    if (conversation.humanActive) {
+      const badge = document.createElement("span");
+      badge.className = "conversation-badge is-human";
+      badge.textContent = "Persona";
+      side.append(badge);
+    }
+    row.append(main, side);
+    return row;
+  }));
+}
+
+async function loadConversationDetail(conversationId, { silent = false } = {}) {
+  if (!state.tenant || !conversationId) return;
+  const tenantId = state.tenant.tenantId;
+  const seq = ++state.conversationDetailSeq;
+  state.conversationId = conversationId;
+  state.conversationDetailLoading = true;
+  conversationsView.classList.add("is-detail-open");
+  conversationPlaceholder.hidden = true;
+  conversationDetailContent.hidden = false;
+  conversationDetailError.textContent = "";
+  if (!silent) {
+    setConversationDetailStatus("Cargando conversación…", "loading");
+    conversationMessages.replaceChildren();
+  }
+  try {
+    const data = await getConversation(tenantId, conversationId);
+    if (seq !== state.conversationDetailSeq || state.tenant?.tenantId !== tenantId) return;
+    state.conversationDetail = data;
+    renderConversationDetail(data);
+  } catch (error) {
+    if (seq !== state.conversationDetailSeq) return;
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    conversationDetailError.textContent = messageForError(error);
+    conversationDetailError.className = "form-error";
+    setConversationDetailStatus("", "");
+  } finally {
+    if (seq === state.conversationDetailSeq) state.conversationDetailLoading = false;
+  }
+}
+
+function renderConversationMessages(messages) {
+  if (!Array.isArray(messages) || !messages.length) {
+    conversationMessages.replaceChildren(textBlock("Esta conversación todavía no tiene mensajes.", "platform-message"));
+    return;
+  }
+  conversationMessages.replaceChildren(...messages.map((message) => {
+    const role = message.role === "human" ? "human" : message.role === "assistant" || message.role === "agent" ? "assistant" : message.role === "system" ? "system" : "user";
+    const bubble = document.createElement("article");
+    bubble.className = `conversation-message is-${role}`;
+    const head = document.createElement("div");
+    head.className = "conversation-message-head";
+    const label = document.createElement("strong");
+    label.textContent = role === "human" ? "Persona" : role === "assistant" ? "IA" : role === "system" ? "Sistema" : "Cliente";
+    const at = document.createElement("span");
+    const date = message.at ? new Date(message.at) : null;
+    at.textContent = date && !Number.isNaN(date.getTime())
+      ? new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: businessTimeZone() }).format(date)
+      : "";
+    head.append(label, at);
+    const content = document.createElement("p");
+    content.textContent = String(message.content ?? "");
+    bubble.append(head, content);
+    return bubble;
+  }));
+  conversationMessages.scrollTop = conversationMessages.scrollHeight;
+}
+
+function renderConversationDetail(data) {
+  const conversation = data?.conversation ?? {};
+  const humanActive = conversation.humanActive === true;
+  conversationName.textContent = conversationDisplayName(conversation);
+  conversationMeta.textContent = [conversation.customerPhone, conversation.channel === "whatsapp" ? "WhatsApp" : conversation.channel].filter(Boolean).join(" · ");
+  conversationMode.textContent = humanActive ? "Persona" : "IA activa";
+  conversationMode.className = `conversation-mode ${humanActive ? "is-human" : "is-bot"}`;
+  conversationHandoffBanner.hidden = !humanActive;
+  conversationTakeover.hidden = humanActive;
+  conversationRelease.hidden = !humanActive;
+  conversationReplyForm.hidden = !humanActive;
+  conversationDetailError.textContent = "";
+  setConversationDetailStatus("", "");
+  renderConversationMessages(data?.messages);
+  if (humanActive) {
+    if (document.activeElement !== conversationReplyInput) conversationReplyInput.value = state.conversationDraft;
+    conversationReplyCount.textContent = `${conversationReplyInput.value.length}/2000`;
+  }
+}
+
+async function setConversationHandoff(active) {
+  if (!state.tenant || !state.conversationId || state.conversationHandoffBusy) return;
+  state.conversationHandoffBusy = true;
+  conversationTakeover.disabled = true;
+  conversationRelease.disabled = true;
+  setConversationDetailStatus(active ? "Activando atención humana…" : "Devolviendo a la IA…", "loading");
+  try {
+    await setConversationHandoffRequest(state.tenant.tenantId, state.conversationId, active);
+    if (!active) state.conversationDraft = "";
+    await loadConversationDetail(state.conversationId, { silent: true });
+    await loadConversations({ silent: true });
+    setConversationDetailStatus(active ? "Ahora respondes tú. La IA no contestará en este chat." : "La IA vuelve a responder en este chat.", "ok");
+    if (active) conversationReplyInput.focus();
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    conversationDetailError.textContent = messageForError(error);
+    setConversationDetailStatus("", "");
+  } finally {
+    state.conversationHandoffBusy = false;
+    conversationTakeover.disabled = false;
+    conversationRelease.disabled = false;
+  }
+}
+
+async function sendConversationReply() {
+  if (!state.tenant || !state.conversationId || state.conversationReplySending) return;
+  const text = conversationReplyInput.value.trim();
+  conversationDetailError.textContent = "";
+  if (!text) {
+    conversationDetailError.textContent = "Escribe una respuesta antes de enviarla.";
+    conversationReplyInput.focus();
+    return;
+  }
+  if (text.length > 2000) {
+    conversationDetailError.textContent = "La respuesta no puede superar los 2000 caracteres.";
+    return;
+  }
+  state.conversationReplySending = true;
+  conversationReplySend.disabled = true;
+  conversationReplySend.textContent = "Enviando…";
+  setConversationDetailStatus("Enviando respuesta…", "loading");
+  try {
+    await replyConversation(state.tenant.tenantId, state.conversationId, text);
+    state.conversationDraft = "";
+    conversationReplyInput.value = "";
+    conversationReplyCount.textContent = "0/2000";
+    await loadConversationDetail(state.conversationId, { silent: true });
+    await loadConversations({ silent: true });
+    setConversationDetailStatus("Respuesta enviada como persona.", "ok");
+    showToast("Respuesta humana enviada.");
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    conversationDetailError.textContent = messageForError(error);
+    setConversationDetailStatus("", "");
+  } finally {
+    state.conversationReplySending = false;
+    conversationReplySend.disabled = false;
+    conversationReplySend.textContent = "Enviar respuesta";
+  }
+}
+
+conversationsList.addEventListener("click", (event) => {
+  const retry = event.target.closest("[data-retry-conversations]");
+  if (retry) {
+    loadConversations();
+    return;
+  }
+  const row = event.target.closest("[data-conversation-id]");
+  if (row) loadConversationDetail(row.dataset.conversationId);
+});
+for (const button of conversationFilters) {
+  button.addEventListener("click", () => {
+    state.conversationsFilter = button.dataset.conversationFilter;
+    for (const item of conversationFilters) {
+      const active = item === button;
+      item.classList.toggle("is-active", active);
+      item.setAttribute("aria-pressed", String(active));
+    }
+    state.conversationId = null;
+    state.conversationDetail = null;
+    conversationPlaceholder.hidden = false;
+    conversationDetailContent.hidden = true;
+    conversationsView.classList.remove("is-detail-open");
+    loadConversations();
+  });
+}
+conversationTakeover.addEventListener("click", () => setConversationHandoff(true));
+conversationRelease.addEventListener("click", () => setConversationHandoff(false));
+conversationReplyInput.addEventListener("input", () => {
+  state.conversationDraft = conversationReplyInput.value;
+  conversationReplyCount.textContent = `${conversationReplyInput.value.length}/2000`;
+});
+conversationReplyForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await sendConversationReply();
+});
+conversationBack.addEventListener("click", () => {
+  conversationsView.classList.remove("is-detail-open");
+  state.conversationId = null;
+  state.conversationDetail = null;
+  conversationPlaceholder.hidden = false;
+  conversationDetailContent.hidden = true;
 });
 
 // ---------------------------------------------------------------------------
@@ -5577,6 +5994,62 @@ agentProvider.addEventListener("change", () => {
 });
 
 agentInstructions.addEventListener("input", updateInstructionsCounter);
+agentPrivacyNotice.addEventListener("input", () => {
+  agentPrivacyCount.textContent = String(agentPrivacyNotice.value.length);
+});
+agentPrivacySave.addEventListener("click", savePrivacyNotice);
+
+const DEFAULT_PRIVACY_NOTICE = "Este chat lo atiende un asistente de inteligencia artificial de {negocio}. Tus datos se usan solo para gestionar tu cita. Si prefieres hablar con una persona, escribe PERSONA.";
+
+async function savePrivacyNotice() {
+  if (!state.tenant || state.privacySaving) return;
+  const text = agentPrivacyNotice.value.trim();
+  agentPrivacyStatus.textContent = "";
+  agentPrivacyStatus.className = "form-status";
+  if (!text) {
+    agentPrivacyStatus.textContent = "El aviso de privacidad no puede estar vacío.";
+    agentPrivacyStatus.className = "form-status is-error";
+    agentPrivacyNotice.focus();
+    return;
+  }
+  if (text.length > 500) {
+    agentPrivacyStatus.textContent = "El aviso no puede superar los 500 caracteres.";
+    agentPrivacyStatus.className = "form-status is-error";
+    agentPrivacyNotice.focus();
+    return;
+  }
+  const tenantId = state.tenant.tenantId;
+  state.privacySaving = true;
+  agentPrivacySave.disabled = true;
+  agentPrivacySave.textContent = "Guardando…";
+  agentPrivacyStatus.textContent = "Guardando…";
+  agentPrivacyStatus.className = "form-status is-loading";
+  try {
+    await updateTenant(tenantId, { assistant: { privacyNotice: text } });
+    const context = await getTenantContext(tenantId);
+    if (state.tenant?.tenantId !== tenantId) return;
+    state.context = context;
+    agentPrivacyStatus.textContent = "Aviso de privacidad guardado.";
+    agentPrivacyStatus.className = "form-status is-ok";
+    agentPrivacyCount.textContent = String(text.length);
+    showToast("Aviso de privacidad guardado.");
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      await forceSignOut(messageForError(error));
+      return;
+    }
+    if (isTenantAccessError(error)) {
+      await handleTenantUnavailable(error);
+      return;
+    }
+    agentPrivacyStatus.textContent = messageForError(error);
+    agentPrivacyStatus.className = "form-status is-error";
+  } finally {
+    state.privacySaving = false;
+    agentPrivacySave.disabled = false;
+    agentPrivacySave.textContent = "Guardar aviso";
+  }
+}
 
 async function loadAgentConfig(seq = state.sessionSeq) {
   if (!state.tenant) return;
@@ -5654,6 +6127,13 @@ function renderAgentConfig() {
   agentTone.value = AGENT_TONES.includes(config.tone) ? config.tone : "cercano";
   agentInstructions.value = typeof config.instructions === "string" ? config.instructions : "";
   updateInstructionsCounter();
+  const privacyNotice = typeof state.context?.tenant?.assistant?.privacyNotice === "string"
+    ? state.context.tenant.assistant.privacyNotice
+    : DEFAULT_PRIVACY_NOTICE;
+  if (document.activeElement !== agentPrivacyNotice) agentPrivacyNotice.value = privacyNotice;
+  agentPrivacyCount.textContent = String(agentPrivacyNotice.value.length);
+  agentPrivacyStatus.textContent = "";
+  agentPrivacyStatus.className = "form-status";
 
   const notes = providers
     .filter((provider) => !provider.configured)
