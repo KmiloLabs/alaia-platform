@@ -81,6 +81,6 @@ Cuando haya clientes pagando y el arranque en frío moleste:
 
 ## 8. Secretos
 
-- `FIREBASE_SERVICE_ACCOUNT_JSON` da acceso total a la base: solo en variables de entorno, nunca en Git.
+- `FIREBASE_SERVICE_ACCOUNT_JSON_BASE64` (y su variante en JSON) da acceso total a la base: solo en variables de entorno, nunca en Git.
 - Si una clave se expone, rotarla y actualizar la variable.
 - `.env` y `.env.real` están ignorados por Git.

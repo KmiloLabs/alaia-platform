@@ -14,7 +14,8 @@ services:
       - key: FIREBASE_PROJECT_ID
         value: alaia-3f637
       # El JSON completo de la cuenta de servicio (Configuración → Cuentas de servicio).
-      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+      # La cuenta de servicio en base64: una sola linea, sin saltos que Render rompa.
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON_BASE64
         sync: false
       # Firebase web (público) para compilar el panel.
       - key: VITE_FIREBASE_API_KEY
