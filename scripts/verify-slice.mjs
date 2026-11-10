@@ -942,6 +942,135 @@ async function main() {
   });
   check("Una variable desconocida responde 400", badMessage.status === 400 && badMessage.json?.error?.code === "invalid_reminder_message", `HTTP ${badMessage.status}`);
 
+  section("27. Coexistencia humano-IA y aviso de privacidad");
+  const { createHmac } = await import("node:crypto");
+  const privacyNoticeText = "Aviso de {negocio}: tus datos se usan solo para gestionar tu cita.";
+  const privacyPatch = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
+    method: "PATCH", token: userA.idToken, body: { assistant: { privacyNotice: privacyNoticeText } },
+  });
+  const privacyContext = await api(`/api/v1/tenants/${tenantA.tenantId}/context`, { token: userA.idToken });
+  check("El dueño guarda assistant.privacyNotice y el contexto lo devuelve", privacyPatch.status === 200
+    && privacyContext.json?.tenant?.assistant?.privacyNotice === privacyNoticeText, `HTTP ${privacyPatch.status}`);
+
+  const handoffPhoneId = `777${Date.now()}`;
+  const handoffConnect = await api(`/api/v1/platform/tenants/${tenantA.tenantId}/whatsapp`, {
+    method: "PUT", token: admin.idToken, body: { phoneNumberId: handoffPhoneId, displayPhone: "+57 300 222 3333" },
+  });
+  check("Plataforma conecta el número para la prueba de handoff", handoffConnect.status === 200, `HTTP ${handoffConnect.status}`);
+
+  const waSecret27 = process.env.WHATSAPP_APP_SECRET ?? "alaia-app-secret-local";
+  const handoffPhone = "573001234599";
+  const sendHandoffMessage = (messageId, text) => {
+    const payload = {
+      object: "whatsapp_business_account",
+      entry: [{
+        id: "waba-handoff",
+        changes: [{
+          field: "messages",
+          value: {
+            messaging_product: "whatsapp",
+            metadata: { display_phone_number: "573001112222", phone_number_id: handoffPhoneId },
+            contacts: [{ profile: { name: "Cliente Handoff" }, wa_id: handoffPhone }],
+            messages: [{ id: messageId, from: handoffPhone, timestamp: String(Math.floor(Date.now() / 1000)), type: "text", text: { body: text } }],
+          },
+        }],
+      }],
+    };
+    const raw = JSON.stringify(payload);
+    return http(`${API_BASE}/api/v1/webhooks/whatsapp`, {
+      method: "POST",
+      body: payload,
+      extraHeaders: { "x-hub-signature-256": `sha256=${createHmac("sha256", waSecret27).update(raw).digest("hex")}` },
+    });
+  };
+  const wait27 = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const findConversation27 = async () => {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await wait27(300);
+      const list = await api(`/api/v1/tenants/${tenantA.tenantId}/conversations?limit=50`, { token: userA.idToken });
+      const conversation = (list.json?.conversations ?? []).find((item) => item.customerPhone === handoffPhone);
+      if (conversation) return conversation;
+    }
+    return null;
+  };
+  const detail27 = async (conversationId) => {
+    const detail = await api(`/api/v1/tenants/${tenantA.tenantId}/conversations/${conversationId}`, { token: userA.idToken });
+    return detail.json;
+  };
+  const waitForReply27 = async (conversationId) => {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await wait27(300);
+      const detail = await detail27(conversationId);
+      if ((detail?.messages ?? []).some((message) => message.role === "assistant" && message.kind !== "privacy_notice")) {
+        return detail;
+      }
+    }
+    return null;
+  };
+
+  const firstSend27 = await sendHandoffMessage(`wamid.27.${RUN_ID}.1`, "Hola, quiero una cita");
+  const conversation27 = await findConversation27();
+  const firstDetail27 = conversation27 ? await waitForReply27(conversation27.conversationId) : null;
+  process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8081";
+  const { applicationDefault, getApps, initializeApp } = await import("firebase-admin/app");
+  const { getFirestore } = await import("firebase-admin/firestore");
+  const verifyDb = getFirestore(getApps()[0] ?? initializeApp({
+    credential: applicationDefault(),
+    projectId: process.env.FIREBASE_PROJECT_ID || "demo-alaia",
+  }));
+  const outbox27 = await verifyDb.collection("tenants").doc(tenantA.tenantId).collection("whatsappOutbox").get();
+  const privacyNotices = outbox27.docs.map((doc) => doc.data()).filter((item) => item.source === "privacy_notice");
+  const privacyMessages = (firstDetail27?.messages ?? []).filter((message) => message.kind === "privacy_notice");
+  check("El aviso de privacidad se envía una sola vez, interpolado y en sandbox", firstSend27.status === 200
+    && Boolean(conversation27) && privacyMessages.length === 1
+    && privacyMessages[0].content.includes(tenantA.name)
+    && privacyNotices.length === 1 && privacyNotices[0].status === "recorded", `aviso=${privacyMessages.length} outbox=${privacyNotices.length}`);
+
+  const agentRepliesAfterNotice = (firstDetail27?.messages ?? []).filter((message) => message.role === "assistant" && message.kind !== "privacy_notice");
+  check("Después del aviso la IA responde en la conversación", agentRepliesAfterNotice.length >= 1, `respuestas=${agentRepliesAfterNotice.length}`);
+
+  const handoffOn = await api(`/api/v1/tenants/${tenantA.tenantId}/conversations/${conversation27?.conversationId}/handoff`, {
+    method: "POST", token: userA.idToken, body: { active: true },
+  });
+  check("El dueño activa la atención humana", handoffOn.status === 200 && handoffOn.json?.conversation?.humanActive === true, `HTTP ${handoffOn.status}`);
+
+  const repliesBeforeHuman = agentRepliesAfterNotice.length;
+  const secondSend27 = await sendHandoffMessage(`wamid.27.${RUN_ID}.2`, "Prefiero hablar con una persona");
+  await wait27(1500);
+  const humanActiveDetail = await detail27(conversation27?.conversationId);
+  const repliesWhileHuman = (humanActiveDetail?.messages ?? []).filter((message) => message.role === "assistant" && message.kind !== "privacy_notice").length;
+  const inboundSaved = (humanActiveDetail?.messages ?? []).some((message) => message.role === "user" && message.content === "Prefiero hablar con una persona");
+  check("Con humano activo la IA no responde y el mensaje queda en el historial", secondSend27.status === 200
+    && repliesWhileHuman === repliesBeforeHuman && inboundSaved, `respuestas=${repliesWhileHuman}/${repliesBeforeHuman} guardado=${inboundSaved}`);
+
+  const humanReply = await api(`/api/v1/tenants/${tenantA.tenantId}/conversations/${conversation27?.conversationId}/reply`, {
+    method: "POST", token: userA.idToken, body: { text: "Hola, soy Ana del negocio. Te ayudo." },
+  });
+  const afterReplyDetail = await detail27(conversation27?.conversationId);
+  const humanMessage = (afterReplyDetail?.messages ?? []).find((message) => message.role === "human");
+  check("La respuesta humana se envía y queda en el historial", humanReply.status === 200
+    && humanMessage?.content === "Hola, soy Ana del negocio. Te ayudo.", `HTTP ${humanReply.status}`);
+
+  const handoffOff = await api(`/api/v1/tenants/${tenantA.tenantId}/conversations/${conversation27?.conversationId}/handoff`, {
+    method: "POST", token: userA.idToken, body: { active: false },
+  });
+  const repliesBeforeResume = (afterReplyDetail?.messages ?? []).filter((message) => message.role === "assistant" && message.kind !== "privacy_notice").length;
+  const thirdSend27 = await sendHandoffMessage(`wamid.27.${RUN_ID}.3`, "¿Siguen abiertos?");
+  let resumedDetail = null;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await wait27(300);
+    const detail = await detail27(conversation27?.conversationId);
+    if ((detail?.messages ?? []).filter((message) => message.role === "assistant" && message.kind !== "privacy_notice").length > repliesBeforeResume) {
+      resumedDetail = detail;
+      break;
+    }
+  }
+  check("Al desactivar el humano la IA vuelve a responder", handoffOff.status === 200
+    && handoffOff.json?.conversation?.humanActive === false
+    && Boolean(resumedDetail), `humanActive=${handoffOff.json?.conversation?.humanActive}`);
+
+  await api(`/api/v1/platform/tenants/${tenantA.tenantId}/whatsapp`, { method: "DELETE", token: admin.idToken });
+
   const failed = results.filter((result) => !result.passed);
   console.log(`\n${results.length - failed.length}/${results.length} comprobaciones pasan.`);
   if (failed.length) {

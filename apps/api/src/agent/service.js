@@ -114,6 +114,11 @@ export async function sendAgentMessage({
     content: input.value.message,
     at: FieldValue.serverTimestamp(),
   });
+  await conversationRef.set({
+    lastMessageAt: FieldValue.serverTimestamp(),
+    lastMessagePreview: messagePreview(input.value.message),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
 
   let toolCalls = [];
   let finalText = "";
@@ -211,6 +216,8 @@ export async function sendAgentMessage({
   await conversationRef.set({
     channel: resolvedChannel,
     updatedAt: FieldValue.serverTimestamp(),
+    lastMessageAt: FieldValue.serverTimestamp(),
+    lastMessagePreview: messagePreview(reply),
     handoff,
     lastAction: action,
     model: { provider: config.provider, model: modelToUse },
@@ -243,6 +250,12 @@ async function createConversationRef({ conversationsRef, channel, customerPhone,
     ...(channel === "whatsapp"
       ? { customerPhone: customerPhone ?? null, customerId: customerId ?? null }
       : {}),
+    humanActive: false,
+    humanActiveAt: null,
+    humanActiveBy: null,
+    privacyNoticeSentAt: null,
+    lastMessageAt: null,
+    lastMessagePreview: "",
     startedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     handoff: false,
@@ -272,6 +285,11 @@ function timestampToMillis(value) {
   if (typeof value.toMillis === "function") return value.toMillis();
   if (value instanceof Date) return value.getTime();
   return null;
+}
+
+function messagePreview(content) {
+  const text = typeof content === "string" ? content.trim().replace(/\s+/g, " ") : "";
+  return text.length > 120 ? `${text.slice(0, 120)}…` : text;
 }
 
 function validateMessageInput(body) {  const input = body && typeof body === "object" && !Array.isArray(body) ? body : {};

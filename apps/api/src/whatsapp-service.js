@@ -16,6 +16,19 @@ import {
 import { findCustomerByPhone, createCustomer } from "./customer-catalog.js";
 import { customerRepository } from "./customer-repository.js";
 import { sendAgentMessage } from "./agent/service.js";
+import {
+  renderPrivacyNotice,
+  resolveAssistant,
+  resolveConversationAutomation,
+  shouldSendPrivacyNotice,
+} from "./assistant.js";
+import {
+  appendConversationMessage,
+  countConversationMessages,
+  ensureWhatsappConversation,
+  markPrivacyNoticeSent,
+  setHumanActive,
+} from "./conversation-service.js";
 
 const MAX_AGENT_MESSAGE_LENGTH = 2000;
 const TEST_CUSTOMER_PHONE = "3000000000";
@@ -62,15 +75,89 @@ export async function processWhatsappMessage({ message, env = process.env, fetch
   const tenant = { id: number.tenantId, ...tenantSnapshot.data() };
 
   const customer = await findOrCreateCustomer({ tenantId: tenant.id, message });
+  const now = new Date();
+  const conversation = await ensureWhatsappConversation({
+    tenantId: tenant.id,
+    customerPhone: message.from,
+    customerName: customer.name ?? message.profileName,
+    customerId: customer.customerId,
+    now,
+  });
+  let conversationData = conversation.data;
+
+  // Coexistencia humano-IA: humano activo bloquea al agente; >12 h se reanuda.
+  const automation = resolveConversationAutomation({ conversation: conversationData, now });
+  if (automation.autoResumed) {
+    await setHumanActive({ conversationRef: conversation.ref, active: false, userId: null, now });
+    conversationData = { ...conversationData, humanActive: false, humanActiveAt: null, humanActiveBy: null };
+  }
 
   const text = String(message.text ?? "").slice(0, MAX_AGENT_MESSAGE_LENGTH);
+  const mode = resolveWhatsappMode(env);
+
+  // Humano a cargo: solo se guarda el historial; la IA no responde.
+  if (automation.humanActive) {
+    await appendConversationMessage({
+      conversationRef: conversation.ref,
+      role: "user",
+      content: text,
+      now,
+    });
+    await whatsappOutboxRepository.record(tenant.id, {
+      tenantId: tenant.id,
+      source: "whatsapp_inbound",
+      phoneNumberId: message.phoneNumberId,
+      to: message.from,
+      text,
+      conversationId: conversation.conversationId,
+      customerId: customer.customerId,
+      mode,
+      status: "skipped",
+      reason: "human_active",
+    });
+    await whatsappMessageRepository.update(message.messageId, {
+      status: "processed",
+      tenantId: tenant.id,
+      conversationId: conversation.conversationId,
+      customerId: customer.customerId,
+      mode: "human_active",
+    });
+    return { status: "human_active", conversationId: conversation.conversationId };
+  }
+
+  // Aviso de privacidad: una sola vez y solo en la primera conversación nueva.
+  const messagesCount = await countConversationMessages(conversation.ref);
+  if (shouldSendPrivacyNotice({ conversation: conversationData, messagesCount })) {
+    const noticeText = renderPrivacyNotice(resolveAssistant(tenant).privacyNotice, tenant.name);
+    const delivered = await deliverNotice({
+      tenant,
+      mode,
+      phoneNumberId: message.phoneNumberId,
+      to: message.from,
+      text: noticeText,
+      conversationId: conversation.conversationId,
+      env,
+      fetchImpl,
+    });
+    if (delivered) {
+      await appendConversationMessage({
+        conversationRef: conversation.ref,
+        role: "assistant",
+        content: noticeText,
+        now,
+        kind: "privacy_notice",
+      });
+      await markPrivacyNoticeSent({ conversationRef: conversation.ref, now });
+    }
+  }
+
   const agentResult = await sendAgentMessage({
     tenant,
     actorUid: null,
     channel: "whatsapp",
     customerPhone: message.from,
     customerId: customer.customerId,
-    body: { message: text },
+    body: { message: text, conversationId: conversation.conversationId },
   });
 
   if (!agentResult.ok) {
@@ -82,9 +169,9 @@ export async function processWhatsappMessage({ message, env = process.env, fetch
     return { status: "agent_error", code: agentResult.code ?? null };
   }
 
-  const mode = resolveWhatsappMode(env);
   const baseRecord = {
     tenantId: tenant.id,
+    source: "whatsapp_agent",
     phoneNumberId: message.phoneNumberId,
     to: message.from,
     text: agentResult.reply,
@@ -142,6 +229,46 @@ export async function processWhatsappMessage({ message, env = process.env, fetch
     conversationId: agentResult.conversationId,
   });
   return { status: "disabled", conversationId: agentResult.conversationId };
+}
+
+// Entrega el aviso de privacidad por el mismo canal. sandbox -> outbox.
+async function deliverNotice({ tenant, mode, phoneNumberId, to, text, conversationId, env, fetchImpl }) {
+  if (mode === "sandbox") {
+    await whatsappOutboxRepository.record(tenant.id, {
+      tenantId: tenant.id,
+      source: "privacy_notice",
+      phoneNumberId,
+      to,
+      text,
+      conversationId,
+      mode,
+      status: "recorded",
+    });
+    return true;
+  }
+  if (mode !== "live") return false;
+
+  const number = await whatsappNumberRepository.findActiveByTenant(tenant.id);
+  if (!number) return false;
+  const delivery = await sendWhatsappGraphMessage({
+    phoneNumberId: number.phoneNumberId,
+    to,
+    text,
+    env,
+    fetchImpl,
+  });
+  await whatsappOutboxRepository.record(tenant.id, {
+    tenantId: tenant.id,
+    source: "privacy_notice",
+    phoneNumberId: number.phoneNumberId,
+    to,
+    text,
+    conversationId,
+    mode,
+    status: delivery.ok ? "sent" : "failed",
+    error: delivery.ok ? null : delivery.error ?? null,
+  });
+  return delivery.ok;
 }
 
 // Mismo pipeline del canal de prueba: cliente de prueba + agente + conversación

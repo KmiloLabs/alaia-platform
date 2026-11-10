@@ -17,6 +17,7 @@ import {
 import { createService } from "./service-catalog.js";
 import { serviceRepository } from "./service-repository.js";
 import { resolveReminders, validateReminders } from "./reminder-config.js";
+import { resolveAssistant, validateAssistant } from "./assistant.js";
 import { sectorTemplateFor } from "./sector-templates.js";
 import { isPlatformAdminEmail } from "./platform.js";
 import {
@@ -195,7 +196,8 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
   const hasHoursFields = body.openingHours !== undefined || body.slotStepMinutes !== undefined;
   const hasScheduleFields = hasHoursFields || body.dateOverrides !== undefined;
   const hasReminders = body.reminders !== undefined;
-  if (!hasScheduleFields && !hasReminders && !profile.hasAny) {
+  const hasAssistant = body.assistant !== undefined;
+  if (!hasScheduleFields && !hasReminders && !hasAssistant && !profile.hasAny) {
     return sendError(res, 400, "empty_update", "Indica al menos un campo del negocio para actualizar.");
   }
 
@@ -208,6 +210,9 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
   const reminders = hasReminders ? validateReminders(body) : { ok: true, value: undefined };
   if (!reminders.ok) return sendError(res, 400, reminders.code, reminders.message);
 
+  const assistant = hasAssistant ? validateAssistant(body) : { ok: true, value: {} };
+  if (!assistant.ok) return sendError(res, 400, assistant.code, assistant.message);
+
   const update = {
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: req.user.uid,
@@ -216,6 +221,9 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
   if (schedule.value.slotStepMinutes !== undefined) update.slotStepMinutes = schedule.value.slotStepMinutes;
   if (overrides.value !== undefined) update.dateOverrides = overrides.value;
   if (reminders.value !== undefined) update.reminders = reminders.value;
+  if (assistant.value.privacyNotice !== undefined) {
+    update.assistant = { ...resolveAssistant(req.tenant), privacyNotice: assistant.value.privacyNotice };
+  }
   if (profile.value.description !== undefined) update.description = profile.value.description;
   if (profile.value.address !== undefined) update.address = profile.value.address;
   if (profile.value.phone !== undefined) update.phone = profile.value.phone;
@@ -234,6 +242,9 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
     slotStepMinutes: schedule.value.slotStepMinutes ?? req.tenant.slotStepMinutes,
     dateOverrides: overrides.value !== undefined ? overrides.value : resolveDateOverrides(req.tenant),
     reminders: reminders.value !== undefined ? reminders.value : resolveReminders(req.tenant),
+    assistant: assistant.value.privacyNotice !== undefined
+      ? { privacyNotice: assistant.value.privacyNotice }
+      : resolveAssistant(req.tenant),
     description: profile.value.description ?? req.tenant.description,
     address: profile.value.address ?? req.tenant.address,
     phone: profile.value.phone ?? req.tenant.phone,
@@ -250,6 +261,7 @@ tenantRoutes.patch("/tenants/:tenantId", requireTenantMembership, requireOwner, 
       openingHours: resolveOpeningHours(updatedTenant),
       dateOverrides: resolveDateOverrides(updatedTenant),
       reminders: resolveReminders(updatedTenant),
+      assistant: resolveAssistant(updatedTenant),
       slotStepMinutes: resolveSlotStepMinutes(updatedTenant),
       ...resolveBusinessProfile(updatedTenant),
     },
@@ -267,6 +279,7 @@ tenantRoutes.get("/tenants/:tenantId/context", requireTenantMembership, (req, re
       openingHours: resolveOpeningHours(req.tenant),
       dateOverrides: resolveDateOverrides(req.tenant),
       reminders: resolveReminders(req.tenant),
+      assistant: resolveAssistant(req.tenant),
       slotStepMinutes: resolveSlotStepMinutes(req.tenant),
       ...resolveBusinessProfile(req.tenant),
       status: req.tenant.status,
