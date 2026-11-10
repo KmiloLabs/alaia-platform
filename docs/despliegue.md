@@ -35,7 +35,7 @@ El plan gratuito de Render duerme el servicio tras ~15 minutos sin uso: la prime
 | Variable | Valor |
 |---|---|
 | `FIREBASE_PROJECT_ID` | `alaia-3f637` |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | El JSON completo de la cuenta de servicio (secreto) |
+| `FIREBASE_SERVICE_ACCOUNT_JSON_BASE64` | La cuenta de servicio en **base64** (una sola línea; generarla con `scripts/` o base64 del JSON) |
 | `VITE_FIREBASE_API_KEY` | La del `firebaseConfig` |
 | `VITE_FIREBASE_AUTH_DOMAIN` | `alaia-3f637.firebaseapp.com` |
 | `VITE_FIREBASE_PROJECT_ID` | `alaia-3f637` |
