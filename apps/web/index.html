@@ -244,6 +244,7 @@
           </button>
           <button class="nav-item" data-view="mi-agenda" id="professional-agenda-nav" hidden><span class="nav-icon" aria-hidden="true">▦</span><span>Mi agenda</span></button>
           <button class="nav-item" data-view="agenda"><span class="nav-icon" aria-hidden="true">▦</span><span>Agenda</span><span class="nav-count" id="nav-count">0</span></button>
+          <button class="nav-item" data-view="conversaciones" id="conversations-nav" hidden><span class="nav-icon" aria-hidden="true">💬</span><span>Conversaciones</span></button>
           <button class="nav-item" data-view="clientes"><span class="nav-icon" aria-hidden="true">♙</span><span>Clientes</span></button>
           <button class="nav-item" data-view="equipo"><span class="nav-icon" aria-hidden="true">♧</span><span>Equipo</span></button>
           <button class="nav-item" data-view="servicios"><span class="nav-icon" aria-hidden="true">◇</span><span>Servicios</span></button>
@@ -624,6 +625,14 @@
                     <textarea id="agent-instructions" name="instructions" rows="4" maxlength="500" placeholder="Ej. No agendamos los domingos. Confirma la dirección antes de crear una cita."></textarea>
                     <div class="config-counter"><span id="agent-instructions-count">0</span>/500 caracteres</div>
                   </div>
+                  <div class="agent-privacy-block">
+                    <label for="agent-privacy-notice">Aviso de privacidad para los clientes</label>
+                    <textarea id="agent-privacy-notice" rows="3" maxlength="500" placeholder="Ej. Este chat lo atiende un asistente de inteligencia artificial…"></textarea>
+                    <div class="config-counter"><span id="agent-privacy-count">0</span>/500 caracteres</div>
+                    <p class="field-hint">Se envía al inicio del chat. Usa {negocio} para insertar el nombre del negocio.</p>
+                    <p class="form-status" id="agent-privacy-status" role="status" aria-live="polite"></p>
+                    <button class="secondary-button" id="agent-privacy-save" type="button">Guardar aviso</button>
+                  </div>
                   <ul class="config-providers" id="agent-providers-note" hidden></ul>
                   <p class="form-status" id="agent-save-status" role="status" aria-live="polite"></p>
                   <div class="dialog-actions config-actions">
@@ -800,6 +809,51 @@
               <div class="professional-agenda-empty" id="professional-agenda-empty" hidden>
                 <strong>No tienes citas próximas</strong>
                 <span>Cuando te asignen una cita aparecerá aquí.</span>
+              </div>
+            </article>
+          </section>
+
+          <section class="conversations-view" id="conversations-view" aria-labelledby="conversations-title" hidden>
+            <article class="panel conversations-panel">
+              <div class="panel-heading">
+                <div><p class="eyebrow">CHATS DE WHATSAPP</p><h2 id="conversations-title">Conversaciones</h2></div>
+                <span class="services-count" id="conversations-count"></span>
+              </div>
+              <p class="config-intro">Lee los chats de tus clientes, pausa la IA y responde como persona cuando haga falta.</p>
+              <div class="conversation-filters" role="group" aria-label="Filtrar conversaciones">
+                <button class="conversation-filter is-active" type="button" data-conversation-filter="all" aria-pressed="true">Todas</button>
+                <button class="conversation-filter" type="button" data-conversation-filter="human" aria-pressed="false">Necesitan persona</button>
+                <button class="conversation-filter" type="button" data-conversation-filter="bot" aria-pressed="false">IA activa</button>
+              </div>
+              <p class="form-status" id="conversations-status" role="status" aria-live="polite"></p>
+              <div class="conversations-layout">
+                <div class="conversations-list" id="conversations-list" aria-busy="false"></div>
+                <div class="conversation-detail" id="conversation-detail">
+                  <div class="conversation-placeholder" id="conversation-placeholder">
+                    <strong>Elige una conversación</strong>
+                    <span>Aquí verás los mensajes y podrás responder como persona.</span>
+                  </div>
+                  <div class="conversation-detail-content" id="conversation-detail-content" hidden>
+                    <div class="conversation-detail-head">
+                      <button class="text-button conversation-back" id="conversation-back" type="button">← Volver</button>
+                      <div><strong id="conversation-name">Conversación</strong><span id="conversation-meta"></span></div>
+                      <span class="conversation-mode" id="conversation-mode">IA activa</span>
+                    </div>
+                    <div class="conversation-handoff-banner" id="conversation-handoff-banner" hidden>Mientras respondas tú, la IA no contesta en este chat.</div>
+                    <div class="conversation-messages" id="conversation-messages" aria-live="polite"></div>
+                    <p class="form-status" id="conversation-detail-status" role="status" aria-live="polite"></p>
+                    <p class="form-error" id="conversation-detail-error" role="alert" aria-live="assertive"></p>
+                    <div class="conversation-actions" id="conversation-actions">
+                      <button class="primary-button" id="conversation-takeover" type="button">Responder como persona</button>
+                      <button class="secondary-button" id="conversation-release" type="button" hidden>Devolver a la IA</button>
+                    </div>
+                    <form class="conversation-reply-form" id="conversation-reply-form" hidden>
+                      <label class="visually-hidden" for="conversation-reply-input">Respuesta humana</label>
+                      <textarea id="conversation-reply-input" rows="3" maxlength="2000" placeholder="Escribe tu respuesta como persona…"></textarea>
+                      <div class="conversation-reply-actions"><span class="config-counter" id="conversation-reply-count">0/2000</span><button class="primary-button" id="conversation-reply-send" type="submit">Enviar respuesta</button></div>
+                    </form>
+                  </div>
+                </div>
               </div>
             </article>
           </section>

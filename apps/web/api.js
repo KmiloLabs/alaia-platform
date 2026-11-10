@@ -26,6 +26,13 @@ const ERROR_MESSAGES = {
   invalid_reminders: "La configuración de recordatorios no es válida.",
   invalid_reminder_schedule: "Activa al menos un aviso (el primero o el segundo) para enviar recordatorios.",
   invalid_reminder_message: "El mensaje solo puede usar las variables permitidas y máximo 300 caracteres.",
+  conversation_not_found: "No encontramos esa conversación.",
+  invalid_active: "El estado de atención humana no es válido.",
+  human_not_active: "Activa la atención humana antes de responder.",
+  conversation_without_phone: "La conversación no tiene teléfono de destino.",
+  whatsapp_not_connected: "Conecta el número de WhatsApp antes de responder.",
+  whatsapp_send_failed: "No se pudo enviar la respuesta por WhatsApp.",
+  invalid_privacy_notice: "El aviso de privacidad no puede estar vacío ni superar 500 caracteres.",
   empty_update: "No hay cambios para guardar.",
   not_owner: "Solo el propietario del negocio puede cambiar esta configuración.",
   invalid_service_name: "El nombre del servicio debe tener entre 2 y 80 caracteres.",
@@ -310,6 +317,29 @@ export function updateAppointmentStatus(tenantId, appointmentId, status) {
     `/api/v1/tenants/${encodeURIComponent(tenantId)}/appointments/${encodeURIComponent(appointmentId)}/status`,
     { method: "POST", body: { status } },
   );
+}
+
+export function listConversations(tenantId, { status = "all", limit = 50 } = {}) {
+  const params = new URLSearchParams({ status, limit: String(limit) });
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/conversations?${params.toString()}`);
+}
+
+export function getConversation(tenantId, conversationId) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/conversations/${encodeURIComponent(conversationId)}`);
+}
+
+export function setConversationHandoff(tenantId, conversationId, active) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/conversations/${encodeURIComponent(conversationId)}/handoff`, {
+    method: "POST",
+    body: { active },
+  });
+}
+
+export function replyConversation(tenantId, conversationId, text) {
+  return request(`/api/v1/tenants/${encodeURIComponent(tenantId)}/conversations/${encodeURIComponent(conversationId)}/reply`, {
+    method: "POST",
+    body: { text },
+  });
 }
 
 export function getReminderSummary(tenantId) {

@@ -17,6 +17,7 @@ import { whatsappRoutes, whatsappPlatformRoutes, whatsappWebhookRoutes } from ".
 import { agentRoutes } from "./agent/routes.js";
 import { platformRoutes } from "./platform-routes.js";
 import { sendError } from "./http.js";
+import { legalRoutes } from "./legal.js";
 
 const app = express();
 const port = Number(process.env.PORT || process.env.API_PORT || 3001);
@@ -58,6 +59,8 @@ app.use("/api/v1", (_req, res, next) => {
 });
 
 app.get("/health", (_req, res) => res.json({ status: "ok", service: "alaia-api" }));
+// Documentos legales públicos (Meta exige una URL de privacidad).
+app.use(legalRoutes);
 // Las rutas públicas van antes de los routers autenticados: esos routers aplican
 // requireUser como middleware global del montaje y si no, interceptarían 401.
 app.use("/api/v1", publicRoutes);

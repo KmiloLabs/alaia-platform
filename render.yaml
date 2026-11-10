@@ -42,6 +42,15 @@ services:
         sync: false
       - key: CRON_SECRET
         sync: false
+      # Datos legales (se pueden actualizar cuando el RUT esté listo)
+      - key: LEGAL_NAME
+        value: Alaia
+      - key: LEGAL_NIT
+        value: "en trámite"
+      - key: LEGAL_CITY
+        value: Medellín
+      - key: LEGAL_EMAIL
+        value: automatizacionsaas@gmail.com
       # WhatsApp (cuando esté configurado en Meta)
       - key: WHATSAPP_MODE
         value: sandbox
