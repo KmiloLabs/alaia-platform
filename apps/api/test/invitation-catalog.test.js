@@ -91,7 +91,7 @@ test("serialización de administración sin token ni hash", () => {
     createdAt: new Date("2026-11-06T15:00:00.000Z"),
     acceptedBy: null,
     acceptedAt: null,
-  });
+  }, new Date("2026-11-06T15:00:00.000Z"));
   assert.equal(JSON.stringify(serialized).includes("hash-secreto"), false);
   assert.equal(Object.hasOwn(serialized, "tokenHash"), false);
   assert.equal(serialized.professionalName, "Andrés");
@@ -104,6 +104,7 @@ test("vista pública de la invitación", () => {
     tenant: { name: "Barbería Araan", slug: "barberia-araan" },
     professionalName: "Andrés",
     invitation: { email: "andres@example.com", status: "pending", expiresAt: new Date("2026-11-13T15:00:00.000Z") },
+    now: new Date("2026-11-06T15:00:00.000Z"),
   });
   assert.deepEqual(pending.tenant, { name: "Barbería Araan", slug: "barberia-araan" });
   assert.deepEqual(pending.professional, { name: "Andrés" });
