@@ -16,8 +16,10 @@ import { conversationRoutes } from "./conversation-routes.js";
 import { whatsappRoutes, whatsappPlatformRoutes, whatsappWebhookRoutes } from "./whatsapp-routes.js";
 import { agentRoutes } from "./agent/routes.js";
 import { platformRoutes } from "./platform-routes.js";
-import { sendError } from "./http.js";
+import { asyncRoute, sendError } from "./http.js";
 import { legalRoutes } from "./legal.js";
+import { buildPublicPageForCrawler, isCrawlerUserAgent, loadPublicTenantForCrawler } from "./public-page-crawler.js";
+import { db } from "./firebase.js";
 
 const app = express();
 const port = Number(process.env.PORT || process.env.API_PORT || 3001);
@@ -80,6 +82,19 @@ app.use("/api/v1", reminderRoutes);
 app.use("/api/v1", whatsappPlatformRoutes);
 app.use("/api/v1", agentRoutes);
 app.use("/api/v1", platformRoutes);
+// Página pública para rastreadores: contenido real del negocio (Meta, Google).
+app.get("/b/:slug", asyncRoute(async (req, res, next) => {
+  if (!isCrawlerUserAgent(req.get("user-agent"))) return next();
+  try {
+    const found = await loadPublicTenantForCrawler({ db, slug: req.params.slug });
+    if (!found) return next();
+    const appOrigin = `${req.protocol}://${req.get("host")}`;
+    const html = await buildPublicPageForCrawler({ tenant: found.tenant, slug: req.params.slug, services: found.services, appOrigin });
+    return res.type("html").send(html);
+  } catch {
+    return next();
+  }
+}));
 // Panel compilado: en producción un solo servicio sirve la API y el panel.
 const webDist = path.resolve(fileURLToPath(new URL("../../web/dist", import.meta.url)));
 if (existsSync(path.join(webDist, "index.html"))) {
