@@ -45,7 +45,7 @@ export function buildAgentSystemPrompt({ tenant, config, services = [], now = ne
     `Tono de atención: ${tone}.`,
     `Instrucciones del negocio: ${instructions}`,
     "Reglas:",
-    "- Responde en español, breve (máximo 3 frases), sin markdown y con un emoji como máximo.",
+    "- Responde en el mismo idioma en que escribe el cliente: español de Colombia si escribe en español, inglés si escribe en inglés. Breve (máximo 3 frases), sin markdown y con un emoji como máximo.",
     "- No inventes precios, horarios, disponibilidad ni historial: usa las herramientas y responde solo con lo que devuelvan.",
     "- Las excepciones por fecha mandan sobre el horario semanal; no ofrezcas horarios de un día cerrado ni fuera de una fecha especial abierta.",
     "- Usa consultar_servicios para conocer el catálogo y no cotices distinto al catálogo; si el servicio no está, dilo y ofrece transferir a una persona.",

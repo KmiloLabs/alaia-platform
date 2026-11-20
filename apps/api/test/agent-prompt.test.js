@@ -33,6 +33,13 @@ test("el prompt incluye el contexto real del negocio", () => {
   assert.doesNotMatch(prompt, /clínica|dental|doctora/i);
 });
 
+test("el prompt atiende en español de Colombia y en inglés según el idioma del cliente", () => {
+  const prompt = buildAgentSystemPrompt({ tenant: TENANT, config: {} });
+  assert.match(prompt, /mismo idioma en que escribe el cliente/);
+  assert.match(prompt, /español de Colombia/);
+  assert.match(prompt, /inglés/);
+});
+
 test("usa los valores por defecto cuando faltan tono e instrucciones", () => {
   const prompt = buildAgentSystemPrompt({ tenant: TENANT, config: {} });
   assert.match(prompt, /cercano/);
