@@ -4,18 +4,16 @@ Plataforma SaaS multiempresa para negocios de servicios. Su agente atiende las c
 
 ## Estado
 
-Corte actual (**panel real con citas guardadas**, 5 de noviembre de 2026): el panel ya no es una demostración. Tiene acceso con correo y contraseña (Firebase Auth), creación y selección de negocio, y una agenda que crea, lista y cancela citas **persistidas** en Firestore con aislamiento por `tenantId`, zona horaria del negocio, prevención de doble reserva e idempotencia. La API también calcula **disponibilidad real** según el horario del negocio y permite **reprogramar** citas; el panel muestra los huecos libres al crear o mover una cita, en vez de escribir horas a ciegas. Es la base para que el agente consulte horarios en vez de inventarlos.
+La **fuente única de verdad** es [ESTADO.md](ESTADO.md) (actualizado el 19 de noviembre de 2026). Si algo se contradice con este README o con documentos viejos, manda ESTADO.md.
 
-Estado por capas del [plano técnico](docs/plano-y-reglas-codex.md):
+Resumen:
 
-- **Capa 1 (identidad y tenant):** API y pantalla de acceso funcionando contra emuladores. Pendiente: invitaciones, verificación de correo, consola de plataforma.
-- **Configuración del negocio:** horario de atención por día, intervalo entre citas y catálogo de servicios con precio y duración; el panel y el agente usan esos datos reales para cotizar y encontrar huecos.
-- **Capa 5 (agenda y reservas):** citas, disponibilidad y reprogramación listas en backend y en el panel (crear, listar, cancelar, reprogramar y elegir horarios libres). Pendiente: página pública de reservas y reglas de asignación por profesional.
-- **Agente (parte IA de la Capa 7):** agente conversacional con herramientas reales de agenda (consultar disponibilidad, crear, reprogramar y cancelar citas). El dueño elige **proveedor y modelo** desde Configuración → Asistente IA y puede probarlo antes de publicarlo. Pendiente: entrada por WhatsApp, audio y recordatorios.
-- **Resto de capas:** pagos, inventario, consola de plataforma y página pública siguen documentadas, no implementadas.
-- **n8n:** la plantilla de recepción multiempresa existe en `infra/n8n/` como arnés de contrato; sigue inactiva y no es el agente final. El workflow real `Recepcionista epresarial IA` ya está analizado en [docs/agente-recepcion-n8n.md](docs/agente-recepcion-n8n.md).
-
-Todo se prueba con datos ficticios en emuladores locales. No hay despliegue ni datos reales de clientes.
+- Producto **desplegado**: panel + API en `https://alaia-ophy.onrender.com` (Firebase real).
+- Un negocio de prueba con datos reales (AraanBarbershop) y su página pública `/b/araanbarbershop`.
+- WhatsApp Cloud API: **código completo** (webhook firmado, multi-negocio, sandbox/live, coexistencia humano–IA, aviso de privacidad, bandeja). Falta el trámite del número en Meta.
+- Recordatorios, legales publicados (`/legal`), panel de plataforma y página pública: funcionando.
+- Pendiente: pago de planes (Wompi), onboarding automático con URL, cola durable de mensajes, omnicanal, inventario.
+- Documentos históricos (planos viejos, n8n, decisiones descartadas): [docs/historial/](docs/historial/).
 
 ## Arranque local
 

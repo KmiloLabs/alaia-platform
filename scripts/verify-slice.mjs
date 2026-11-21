@@ -896,6 +896,10 @@ async function main() {
   });
   check("Horas de excepción inválidas responden 400", badOverrideHours.status === 400 && badOverrideHours.json?.error?.code === "invalid_override_hours", `HTTP ${badOverrideHours.status}`);
 
+  // Se limpian las excepciones: la sección 26 elige una fecha futura al azar y
+  // no debe caer en el día cerrado de la prueba anterior.
+  await api(`/api/v1/tenants/${tenantA.tenantId}`, { method: "PATCH", token: userA.idToken, body: { dateOverrides: [] } });
+
   section("26. Recordatorios automáticos");
   const remindersSaved = await api(`/api/v1/tenants/${tenantA.tenantId}`, {
     method: "PATCH", token: userA.idToken,
